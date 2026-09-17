@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "colab-code"
+version = "0.1.0"
+description = "A Claude Code-style local CLI pair programmer powered by Google Colab GPU backend"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "openai>=1.30.0",
+    "rich>=13.7.0",
+    "prompt_toolkit>=3.0.40",
+    "python-dotenv>=1.0.0"
+]
+
+[project.scripts]
+colab-code = "code_agent:main"
+ccode = "code_agent:main"
