@@ -182,13 +182,25 @@ a.btn:hover { border-color: var(--teal); }
 .cpy:hover { opacity: 1; color: var(--text); }
 
 /* ---------------------------------------------------------------- the project's files, like an editor's explorer */
-#files { position: absolute; left: 0; top: 0; bottom: 0; width: 260px; overflow: auto; background: var(--bg2);
-  border-right: 1px solid var(--line); z-index: 4; font: 12px/1.6 var(--mono); padding-bottom: 40px; display: none; }
-main.tree-on #files { display: block; }
+/* a sidebar like ChatGPT's: open (260px) or folded to a slim rail (44px), animated */
+#files { position: absolute; left: 0; top: 0; bottom: 0; width: 44px; overflow: hidden; background: var(--bg2);
+  border-right: 1px solid var(--line); z-index: 4; font: 12px/1.6 var(--mono); transition: width calc(.22s * var(--k, 1)) ease; }
+#viewport { transition: left calc(.22s * var(--k, 1)) ease; }
+main #viewport { left: 44px; }
+main .caption { left: 56px; }
+main.tree-on #files { width: 260px; overflow: auto; padding-bottom: 40px; }
 main.tree-on #viewport { left: 260px; }
 main.tree-on .caption { left: 272px; max-width: calc(100% - 284px); }
-#files .fh { position: sticky; top: 0; display: flex; gap: 8px; align-items: baseline; padding: 8px 10px; background: var(--bg2);
-  border-bottom: 1px solid var(--line2); }
+#files .fh { position: sticky; top: 0; display: flex; gap: 8px; align-items: center; padding: 6px 8px 6px 10px; background: var(--bg2);
+  border-bottom: 1px solid var(--line2); min-height: 38px; }
+#files .fh b, #files .fh .sub, #files-body { transition: opacity calc(.15s * var(--k, 1)) ease; }
+main:not(.tree-on) #files .fh b, main:not(.tree-on) #files .fh .sub { display: none; }   /* only the button fits the rail */
+main:not(.tree-on) #files-body { opacity: 0; pointer-events: none; }
+main:not(.tree-on) #files .fh { padding: 8px 0; justify-content: center; border-bottom: none; }
+main:not(.tree-on) .side-btn { color: var(--text); border: 1px solid var(--line); background: var(--panel); }
+.side-btn { margin-left: auto; padding: 4px; line-height: 0; border: none; background: none; color: var(--dim); border-radius: 6px; }
+.side-btn:hover { color: var(--text); background: var(--panel); }
+main:not(.tree-on) .side-btn { margin: 0; }
 #files .fr { display: flex; align-items: center; gap: 4px; padding: 0 8px; white-space: nowrap; cursor: default; color: var(--dim); }
 #files .fr.dir { color: var(--text); cursor: pointer; }
 #files .fr.touched { color: var(--text); cursor: pointer; }
@@ -212,7 +224,7 @@ details.call[open] summary { color: var(--text); }
   #viewport { position: static; overflow: visible; cursor: auto; touch-action: auto; }
   #world { position: static; transform: none !important; display: flex; flex-direction: column; gap: 12px; padding: 12px 14px 60px; }
   #wires, .toolbar, .flychip, #files { display: none !important; }
-  main.tree-on #viewport { left: 0; }
+  main #viewport, main.tree-on #viewport { left: 0; }
   .ph { cursor: auto; }
   .pnl { position: static; width: auto !important; height: auto !important; }
   .pnl .pb { max-height: 300px; }
@@ -261,12 +273,11 @@ details.call[open] summary { color: var(--text); }
 </header>
 
 <main>
-  <aside id="files" aria-label="Project files"><div class="fh"><b>Files</b><span id="files-n" class="sub"></span></div><div id="files-body"></div></aside>
+  <aside id="files" aria-label="Project files"><div class="fh"><b>Files</b><span id="files-n" class="sub"></span><button id="tree-toggle" class="side-btn" title="Close sidebar (E)" aria-label="Close sidebar"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M7.5 3.5v13" stroke="currentColor" stroke-width="1.5"/></svg></button></div><div id="files-body"></div></aside>
   <div id="viewport">
     <div id="world"><svg id="wires" width="10" height="10"></svg></div>
   </div>
   <div class="toolbar">
-    <button id="tree-btn" title="Show or hide the project's files (E)">Files</button>
     <button id="fit" title="Fit everything (F)">Fit all</button>
     <button id="reset" title="Forget panels you moved or collapsed; back to the automatic layout">Reset layout</button>
     <button id="follow" class="on" title="Keep what is active in view">Follow</button>
@@ -1059,8 +1070,11 @@ let lastVer = -1, lastRender = 0, layoutSig = "";
 // ------------------------------------------------------------------ the explorer: real files, what happens to them
 let treeOn = storeGet("tree:on") !== "0", treeSig = "";
 const treeOpen = new Set(JSON.parse(storeGet("tree:open") || "[]"));
-function setTree(on) { treeOn = on; storeSet("tree:on", on ? null : "0"); document.querySelector("main").classList.toggle("tree-on", on);
-  $("tree-btn").classList.toggle("on", on); treeSig = ""; }
+function setTree(on) {
+  treeOn = on; storeSet("tree:on", on ? null : "0"); document.querySelector("main").classList.toggle("tree-on", on);
+  const b = $("tree-toggle"); b.title = on ? "Close sidebar (E)" : "Open sidebar: project files (E)";
+  b.setAttribute("aria-label", on ? "Close sidebar" : "Open sidebar"); treeSig = "";
+}
 // file-type icons in the spirit of VS Code's explorer (drawn here: no icon font, nothing downloaded)
 const ICONS = [
   [/\.py[iw]?$/, "py", "#4b8bbe"], [/\.ipynb$/, "nb", "#f37626"], [/\.(m|c)?js$/, "JS", "#f1e05a"], [/\.jsx$/, "⚛", "#61dafb"],
@@ -1391,7 +1405,7 @@ viewport.addEventListener("wheel", (e) => {
   zoomAt(e.clientX - r.left, e.clientY - r.top, cam.s * Math.exp(-e.deltaY * (e.ctrlKey ? .01 : .0015)));
 }, { passive: false });
 $("fit").onclick = () => { setFollow(false); fitAll(); };
-$("tree-btn").onclick = () => setTree(!treeOn);
+$("tree-toggle").onclick = () => setTree(!treeOn);
 $("files-body").addEventListener("click", (e) => {
   const dir = e.target.closest("[data-dir]"), file = e.target.closest("[data-file]");
   if (dir) {
