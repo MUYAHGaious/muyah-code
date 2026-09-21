@@ -156,7 +156,8 @@ muyah --resume                          # pick an earlier conversation from a li
 | `/resume`, `/sessions`, `/export` | sessions |
 | `/viz`, `/viz stop` | live view of the agent in your browser (or run `muyah viz` in another terminal) |
 | `/theme [teal\|muyah\|ocean\|forest\|mono\|light]` | color theme (saved; default: light teal) |
-| `/status`, `/doctor`, `/config`, `/permissions`, `/tools`, `/mcp`, `/cost` | inspection |
+| `/usage` (or `muyah usage`) | tokens used (session, today, 7 days) and your provider's remaining limits |
+| `/status`, `/doctor`, `/config`, `/permissions`, `/tools`, `/mcp` | inspection |
 
 ### Permission modes
 

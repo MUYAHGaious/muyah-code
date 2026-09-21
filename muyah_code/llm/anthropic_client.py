@@ -15,10 +15,11 @@ Translation rules
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Callable
 from typing import Any
 
-from muyah_code.llm.client import AssistantMessage, ContextOverflowError, LLMError, ToolCall
+from muyah_code.llm.client import AssistantMessage, ContextOverflowError, LLMError, ToolCall, limit_headers
 from muyah_code.llm.models import is_billing_error, is_context_overflow
 
 RAW_KEY = "_anthropic_content"
@@ -145,6 +146,8 @@ class AnthropicClient:
         self.fallbacks = fallbacks
         self.stream = True
         self.on_status: Callable[[str], None] | None = None  # "sent" / "first_token" (live view)
+        self.limits: dict = {}        # rate-limit headers of the last response (see /usage)
+        self.limits_at = 0.0
         self._client = anthropic.Anthropic(api_key=api_key, base_url=base_url, max_retries=max_retries,
                                            timeout=None if timeout <= 0 else timeout,
                                            default_headers={**(extra_headers or {})})
@@ -211,6 +214,7 @@ class AnthropicClient:
                           and getattr(event.delta, "type", "") == "thinking_delta"):
                         on_reasoning(event.delta.thinking)
                 final = stream.get_final_message()
+                self._remember_limits(getattr(getattr(stream, "response", None), "headers", None))
         except ValueError as e:  # the SDK could not parse a streamed tool input at all
             raise LLMError(f"Claude returned an unparseable tool call: {e}") from e
         except a.BadRequestError as e:
@@ -228,12 +232,18 @@ class AnthropicClient:
         except a.NotFoundError as e:
             raise LLMError(f"Model '{self.model}' was not found. Try /models or /provider.") from e
         except a.RateLimitError as e:
+            self._remember_limits(getattr(getattr(e, "response", None), "headers", None))
             raise LLMError("Claude rate limit reached; wait a moment and retry.") from e
         except a.APIStatusError as e:
             raise LLMError(f"Claude API error {e.status_code}: {getattr(e, 'message', e)}") from e
         except a.APIConnectionError as e:
             raise LLMError(f"Cannot reach the Claude API: {e}") from e
         return self._convert(final)
+
+    def _remember_limits(self, headers) -> None:
+        found = limit_headers(headers)
+        if found:
+            self.limits, self.limits_at = found, time.time()
 
     def _convert(self, final) -> AssistantMessage:
         blocks = [_block_dict(b) for b in final.content]

@@ -11,6 +11,7 @@
     muyah eval [tasks...]         run the benchmark and track the pass rate
     muyah config get|set|unset    edit ~/.muyah/settings.json
     muyah sessions                list sessions for this project
+    muyah usage                   tokens used today and in the last 7 days
     muyah viz [--replay [id]]     watch this folder's session live in your browser, or replay one
 """
 
@@ -24,7 +25,7 @@ from pathlib import Path
 
 from muyah_code import __version__
 
-SUBCOMMANDS = {"login", "logout", "connect", "serve", "doctor", "eval", "config", "sessions", "viz"}
+SUBCOMMANDS = {"login", "logout", "connect", "serve", "doctor", "eval", "config", "sessions", "viz", "usage"}
 PICK = "__pick__"  # `--resume` given without an id
 
 
@@ -285,6 +286,13 @@ def _subcommand(name: str, argv: list[str]) -> int:
 
     if name == "viz":
         return _viz(argv, console)
+
+    if name == "usage":
+        from muyah_code.ui.commands import render_usage
+
+        render_usage(console, load_config().home)
+        console.print("[dim]Your provider's live limits show with /usage inside a session (after a reply).[/]")
+        return 0
     return 2
 
 

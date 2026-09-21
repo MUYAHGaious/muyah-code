@@ -22,6 +22,16 @@ from muyah_code.llm.models import is_billing_error, is_context_overflow, is_tool
 THINK_RE = re.compile(r"<think>([\s\S]*?)(?:</think>|$)")
 
 
+def limit_headers(headers) -> dict:
+    """The rate-limit related headers of a response (what /usage shows about the provider's limits)."""
+    out = {}
+    for k, v in dict(headers or {}).items():
+        low = k.lower()
+        if "ratelimit" in low or low == "retry-after":
+            out[low] = v
+    return out
+
+
 ENDPOINT_KEY = "_endpoint"  # on assistant messages whose tool calls carry provider fields
 
 
@@ -213,6 +223,8 @@ class LLMClient:
         self.max_retries = max_retries
         # called with "sent" when a request leaves and "first_token" when the reply starts (live view)
         self.on_status: Callable[[str], None] | None = None
+        self.limits: dict = {}        # rate-limit headers of the last response (see /usage)
+        self.limits_at = 0.0
         # timeout <= 0 means "wait as long as it takes": huge models on CPU/NVMe streaming (e.g. colibri)
         # can spend many minutes on prefill before the first token arrives.
         http_timeout = httpx.Timeout(None, connect=30.0) if timeout <= 0 else httpx.Timeout(timeout, connect=30.0)
@@ -317,6 +329,7 @@ class LLMClient:
             except openai.AuthenticationError as e:
                 raise LLMError(f"Authentication failed ({e.status_code}). Check api_key for {self.base_url}.") from e
             except RETRYABLE as e:
+                self._remember_limits(getattr(getattr(e, "response", None), "headers", None))
                 if is_billing_error(str(e)):  # e.g. OpenAI 429 insufficient_quota: retrying cannot help
                     raise LLMError(self._billing_message(e)) from e
                 if attempt > self.max_retries:
@@ -343,7 +356,14 @@ class LLMClient:
             body["tools"] = kwargs.pop("tools")
         if self.on_status:
             self.on_status("sent")
-        return self._client.chat.completions.create(messages=[], extra_body=body, **kwargs)
+        raw = self._client.chat.completions.with_raw_response.create(messages=[], extra_body=body, **kwargs)
+        self._remember_limits(raw.headers)
+        return raw.parse()
+
+    def _remember_limits(self, headers) -> None:
+        found = limit_headers(headers)
+        if found:
+            self.limits, self.limits_at = found, time.time()
 
     def _chat_once(self, kwargs, on_text, on_reasoning) -> AssistantMessage:
         resp = self._create(kwargs)

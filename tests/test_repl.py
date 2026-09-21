@@ -53,7 +53,10 @@ def test_repl_session_end_to_end(project):
     assert "Undid changes" in out and not (project / "notes.md").exists()
     assert "always use type hints" in (project / "MUYAH.md").read_text()
     assert "Theme set to ocean" in out
-    assert "Requests: 2" in out
+    import re
+
+    assert re.search(r"This session\s+2\s", out)      # /cost (= /usage): 2 model requests this session
+    assert re.search(r"Today\s+2\s", out)             # and they were recorded in the usage log
 
 
 def test_header_is_compact(project):

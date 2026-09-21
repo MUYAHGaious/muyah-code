@@ -22,7 +22,8 @@ def error(status: int, message: str) -> dict:
 
 class FakeOpenAI:
     def __init__(self, script: list[dict] | None = None, models: list[dict] | None = None,
-                 require_key: str | None = None, chunk_delay: float = 0.0):
+                 require_key: str | None = None, chunk_delay: float = 0.0, headers: dict | None = None):
+        self.headers = headers or {}  # extra response headers (e.g. rate limits)
         self.chunk_delay = chunk_delay  # seconds between streamed chunks, to look like a real model (demos)
         self.script = list(script or [])
         self.models = models or [{"id": "fake-model", "object": "model", "max_model_len": 32768}]
@@ -39,6 +40,8 @@ class FakeOpenAI:
                 data = json.dumps(body).encode()
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
+                for k, v in server.headers.items():
+                    self.send_header(k, v)
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
@@ -83,6 +86,8 @@ class FakeOpenAI:
                 if body.get("stream"):
                     self.send_response(200)
                     self.send_header("Content-Type", "text/event-stream")
+                    for k, v in server.headers.items():
+                        self.send_header(k, v)
                     self.end_headers()
 
                     time.sleep(step.get("think") or 0)

@@ -130,6 +130,7 @@ class App:
         # Live event stream for /viz; also recorded next to the session file so it can be replayed.
         self.events = EventBus(record_to=self.session.path.with_suffix(".events.jsonl") if self.session else None)
         self.hooks.events = self.events
+        self.events.subscribe(self._record_usage)
 
         self.registry = ToolRegistry(builtin_tools() + list(self.mcp_tools))
         self.subagents = SubagentManager(self.agent_defs, self._make_subagent, depth=0)
@@ -154,6 +155,18 @@ class App:
     @property
     def session_id(self) -> str:
         return self.session.id if self.session else ""
+
+    def _record_usage(self, event: dict) -> None:
+        """Every model call goes into ~/.muyah/usage.jsonl (see /usage)."""
+        if event.get("type") != "llm_end" or event.get("error"):
+            return
+        from muyah_code import usage
+        from muyah_code.providers import BY_ID
+
+        prov = BY_ID.get(self.cfg.get("provider") or "")
+        usage.record(self.home, getattr(self.llm, "model", ""), prov.name if prov else self.llm.base_url,
+                     event.get("prompt_tokens") or 0, event.get("completion_tokens") or 0,
+                     event.get("agent") or "main")
 
     def _mcp_inventory(self) -> list[dict]:
         if not self.mcp:

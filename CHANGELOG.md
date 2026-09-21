@@ -5,6 +5,7 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **`/usage`** (also `muyah usage`): requests and tokens for this session, today and the last 7 days, broken down by model. It also shows the **live limits your provider reports**: requests and tokens left, and when they reset. Groq, OpenRouter, OpenAI, Anthropic and others send these with every reply; if a provider sends none (Gemini), `/usage` says so. `/cost` shows the same.
 - **An organized transcript**, following what Codex, Gemini CLI, OpenCode and Claude Code do:
   - Your prompt is a highlighted band, with no separator lines.
   - Each kind of action has its own glyph and verb: `$ Ran` for commands, `→ Read`, `✱ Searched`, `± Edited` (with +/- counts and the diff), `◈ Fetched`, `⇄ Called` for MCP, `◇ Using skill`, `◆ Agent`, `▣ Updated plan`.
