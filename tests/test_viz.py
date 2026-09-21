@@ -367,3 +367,32 @@ def test_recording_can_be_downloaded_and_limits_are_events(project):
     finally:
         server.stop()
         app.shutdown()
+
+
+def test_a_resumed_session_keeps_its_board(tmp_path):
+    from muyah_code.events import EventBus
+
+    log = tmp_path / "s.events.jsonl"
+    first = EventBus(record_to=log)
+    first.emit("turn_start", prompt="before the restart")
+    first.close()
+    again = EventBus(record_to=log)                      # the CLI was closed and the session resumed
+    assert [e.get("prompt") for e in again.history] == ["before the restart"]
+    assert again.emit("turn_start", prompt="after")["t"] > again.history[0]["t"]
+
+
+def test_the_explorer_gets_the_real_files_only_when_they_change(project):
+    from fakeserver import FakeOpenAI, reply
+    from test_agent_e2e import make_app
+
+    (project / "app.py").write_text("x = 1\n")
+    script = [reply("", [{"name": "Write", "arguments": {"file_path": "new.py", "content": "y = 2\n"}}]),
+              reply("done"), reply("nothing changed")]
+    with FakeOpenAI(script) as srv:
+        app = make_app(srv, project)
+        app.run_prompt("add a file")
+        app.run_prompt("say hi")
+        app.shutdown()
+    trees = [e for e in app.events.history if e["type"] == "tree"]
+    assert len(trees) == 2                                # at start, and after the turn that added new.py
+    assert "app.py" in trees[0]["files"] and "new.py" in trees[1]["files"]
