@@ -65,7 +65,7 @@ class CommandRouter:
             Command("logout", "Remove a provider's saved API key", self.logout, "<provider>"),
             Command("profile", "Show or switch backend profile", self.profile, "[name]"),
             Command("connect", "Point at a new endpoint (URL) and pick a model", self.connect, "<url> [model]"),
-            Command("mode", "Permission mode: plan | edit | manual | auto (or bypassPermissions)", self.mode, "[mode]"),
+            Command("mode", "Mode: manual | edit | ask | plan | auto (or bypassPermissions)", self.mode, "[mode]"),
             Command("plan", "Toggle plan mode (read-only exploration, then a plan)", self.plan),
             Command("undo", "Undo the last turn: its file changes and its messages", self.undo),
             Command("rewind", "Go back to before any earlier turn: code, conversation, or both (Esc Esc)",
@@ -97,7 +97,7 @@ class CommandRouter:
             Command("config", "Show effective configuration", self.config),
             Command("status", "Model, endpoint, context, mode and what's loaded", self.status),
             Command("doctor", "Check the setup", self.doctor),
-            Command("mic", "Talk instead of typing (Windows voice typing; also Ctrl+Space)", self.mic),
+            Command("mic", "Talk instead of typing (F2 or Ctrl+Space; press again to stop)", self.mic),
             Command("viz", "Watch the agent work, live, in your browser ('/viz stop' to end)", self.viz, "[stop]"),
             Command("theme", "Switch color theme (saved): teal | muyah | ocean | forest | mono | light", self.theme,
                     "[name]"),
@@ -614,10 +614,7 @@ class CommandRouter:
         run_doctor(self.app.cfg, self.console, deep=arg == "--deep")
 
     def mic(self, arg):
-        from muyah_code.ui.voice import start_dictation
-
-        started, message = start_dictation()
-        self.console.print(f"[dim]{escape(message)}[/]" if started else f"[yellow]{escape(message)}[/]")
+        self.repl._talk()
 
     def viz(self, arg):
         import webbrowser

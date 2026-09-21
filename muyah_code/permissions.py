@@ -25,13 +25,15 @@ from muyah_code.risk import is_delete_command, risky_command
 from muyah_code.tools.base import EXEC, META, NETWORK, READ, WRITE, Tool, ToolContext
 from muyah_code.tools.search import matches_glob
 
-MODES = ("default", "acceptEdits", "plan", "auto", "bypassPermissions")
-# Shift+Tab order. bypassPermissions (no checks at all) is deliberately not in it: only --mode sets it.
-CYCLE = ("plan", "acceptEdits", "default", "auto")
-MODE_NAMES = {"default": "manual", "acceptEdits": "edit", "plan": "plan", "auto": "auto",
+MODES = ("default", "acceptEdits", "ask", "plan", "auto", "bypassPermissions")
+# Shift+Tab order, as in Claude Code (manual -> edit -> plan -> auto) with ask mode (talk it through, change
+# nothing) before plan. bypassPermissions (no checks at all) is deliberately not in it: only --mode sets it.
+CYCLE = ("default", "acceptEdits", "ask", "plan", "auto")
+MODE_NAMES = {"default": "manual", "acceptEdits": "edit", "ask": "ask", "plan": "plan", "auto": "auto",
               "bypassPermissions": "bypass"}
 MODE_ALIASES = {
-    "default": "default", "ask": "default", "normal": "default", "manual": "default",
+    "default": "default", "normal": "default", "manual": "default",
+    "ask": "ask", "talk": "ask", "chat": "ask", "brainstorm": "ask",
     "acceptedits": "acceptEdits", "accept-edits": "acceptEdits", "auto-edit": "acceptEdits", "edits": "acceptEdits",
     "plan": "plan", "readonly": "plan", "read-only": "plan", "edit": "acceptEdits",
     "auto": "auto", "automatic": "auto",
@@ -188,7 +190,7 @@ class PermissionManager:
         return self.mode
 
     def cycle_mode(self) -> str:
-        """Shift+Tab: plan -> edit -> manual -> auto -> plan."""
+        """Shift+Tab: manual -> edit -> plan -> auto -> manual (from bypass: back to manual)."""
         self.mode = CYCLE[(CYCLE.index(self.mode) + 1) % len(CYCLE)] if self.mode in CYCLE else CYCLE[0]
         return self.mode
 
@@ -211,6 +213,9 @@ class PermissionManager:
         read_only = tool.is_read_only(args)
         if self.mode == "plan" and not read_only and tool.kind in (WRITE, EXEC):
             return Decision("deny", "plan mode is read-only: explore and present a plan; do not modify anything")
+        if self.mode == "ask" and not read_only and tool.kind in (WRITE, EXEC):
+            return Decision("deny", "ask mode is for talking the idea through: nothing is changed or run. The user "
+                            "switches modes (Shift+Tab) when it is time to plan or build")
 
         rule = self._find(self.ask, name, subject)
         if rule:
@@ -225,8 +230,8 @@ class PermissionManager:
             return self._auto(tool, args, subject, read_only)
         if tool.kind in (READ, META) or read_only:
             return Decision("allow", "read-only")
-        if tool.kind == NETWORK and self.mode == "plan":
-            return Decision("allow", "research is allowed in plan mode")
+        if tool.kind == NETWORK and self.mode in ("plan", "ask"):
+            return Decision("allow", f"research is allowed in {self.mode} mode")
         if tool.kind == WRITE and self.mode == "acceptEdits":
             target = Path(subject) if subject else None
             if target is not None and _is_within(target, self.project_root):

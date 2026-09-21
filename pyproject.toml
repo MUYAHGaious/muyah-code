@@ -38,6 +38,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5", "build>=1.2", "psutil>=5.9"]
+voice = ["sounddevice>=0.4.6"]
+voice-local = ["sounddevice>=0.4.6", "faster-whisper>=1.0"]
+acp = []
 
 [project.urls]
 Homepage = "https://github.com/MUYAHGaious/muyah-code"

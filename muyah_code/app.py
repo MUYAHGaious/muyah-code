@@ -213,6 +213,9 @@ class App:
             from muyah_code.mcp.manage import McpServersTool
 
             self.registry.register(McpServersTool(self))
+        from muyah_code.tools.plan import ExitPlanModeTool
+
+        self.registry.register(ExitPlanModeTool(self.set_mode))
         self.subagents = SubagentManager(self.agent_defs, self._make_subagent, depth=0, roles=self._roles)
         self.registry.register(AgentTool(self.subagents))
 

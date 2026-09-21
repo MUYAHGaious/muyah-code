@@ -28,9 +28,9 @@ from muyah_code.ui.commands import EXIT, CommandRouter
 from muyah_code.ui.select import Prompter
 from muyah_code.ui.terminal import TerminalUI
 from muyah_code.ui.theme import theme
-from muyah_code.ui.voice import windows_dictation_available
 
 MODE_LABEL = {
+    "ask": ("? ask", "talk it through: nothing is changed"),
     "plan": ("⏸ plan", "read-only: explores and proposes a plan"),
     "acceptEdits": ("⏵ edit", "accepts file edits, asks before commands"),
     "default": ("● manual", "asks before edits and commands"),
@@ -38,7 +38,8 @@ MODE_LABEL = {
     "bypassPermissions": ("⚠ bypass", "no permission checks at all"),
 }
 # each mode has its own color (status line and the ❯ prompt): plan green, edit violet, auto yellow, bypass red
-MODE_COLOR = {"plan": "#4ade80", "acceptEdits": "#c4b5fd", "auto": "#facc15", "bypassPermissions": "#f87171"}
+MODE_COLOR = {"plan": "#4ade80", "ask": "#67e8f9", "acceptEdits": "#c4b5fd", "auto": "#facc15",
+              "bypassPermissions": "#f87171"}
 EXIT_WINDOW = 2.0  # seconds between two Ctrl+C presses to exit
 RESIZE_POLL = 0.1     # how often the prompt checks the terminal width
 RESIZE_SETTLE = 0.3   # redraw once the width has stayed the same this long (user stopped dragging)
@@ -152,15 +153,22 @@ class Repl:
         def _(event):
             event.current_buffer.insert_text(self._paste(event.data))
 
-        @kb.add("c-space")
-        def _(event):
-            from prompt_toolkit.application import run_in_terminal
+        from muyah_code.ui.voice import VoiceInput
 
-            from muyah_code.ui.voice import start_dictation
+        self.voice = VoiceInput(app.cfg, app.home)
+        self.mic_key = str(app.cfg.get("mic_key", "f2") or "f2").lower()
+        self.ui.mic_key = self.mic_key
+        self.ui.on_mic = lambda: self._talk(into_box=True)
+        self.ui.slash_menu = self.router.menu
 
-            started, message = start_dictation()
-            if not started:
-                run_in_terminal(lambda: self.console.print(f"[dim]{escape(message)}[/]"))
+        def talk(event):
+            self._talk()
+
+        kb.add("c-space")(talk)
+        try:
+            kb.add(self.mic_key)(talk)
+        except ValueError:            # not a key prompt_toolkit knows: Ctrl+Space still works
+            pass
 
         @kb.add("escape", "escape")
         def _(event):
@@ -192,6 +200,7 @@ class Repl:
             "completion-menu.meta.completion.current": "bg:default fg:ansibrightblack",
             "bottom-toolbar": "noreverse fg:ansibrightblack",
         })
+        session_kwargs.setdefault("refresh_interval", 0.5)   # the status line's clocks (recording...) keep moving
         self.session = _CompactPromptSession(history=history, completer=_Completer(self), key_bindings=kb,
                                      complete_while_typing=True, bottom_toolbar=self._toolbar, style=style,
                                      reserve_space_for_menu=0, erase_when_done=True, **session_kwargs)
@@ -236,6 +245,43 @@ class Repl:
             what = "budget reached" if result.status == "budget" else f"stopped ({result.status})"
             self.notifier.notify("budget" if result.status == "budget" else "attention",
                                  f"{what}: {result.error or first}"[:160])
+
+    def _talk(self, into_box: bool = False) -> None:
+        """The talk key (F2 / Ctrl+Space): Windows voice typing, or record + transcribe into the prompt."""
+        def on_text(text: str) -> None:
+            if into_box:
+                self.ui._insert_paste(text)          # while it works: into the type-ahead box
+            else:
+                self._insert_text(text)
+
+        def on_note(message: str) -> None:
+            self._say(message)
+
+        message = self.voice.toggle(on_text, on_note)
+        if message:
+            self._say(message)
+
+    def _say(self, message: str) -> None:
+        app = getattr(self.session, "app", None)
+        if app is not None and app.is_running:
+            from prompt_toolkit.application import run_in_terminal
+
+            app.loop.call_soon_threadsafe(
+                lambda: run_in_terminal(lambda: self.console.print(f"[dim]{escape(message)}[/]")))
+        else:
+            self.console.print(f"[dim]{escape(message)}[/]")
+
+    def _insert_text(self, text: str) -> None:
+        """Transcribed speech into the prompt (from the transcription thread)."""
+        app = getattr(self.session, "app", None)
+        if app is not None and app.is_running:
+            def put():
+                app.current_buffer.insert_text(text if not app.current_buffer.text else " " + text)
+                app.invalidate()
+
+            app.loop.call_soon_threadsafe(put)
+        else:
+            self._resume_text = (self._resume_text + " " + text).strip()
 
     def _btw_async(self, question: str) -> None:
         """/btw typed while it works: answered in parallel, shown as soon as it is ready."""
@@ -289,8 +335,15 @@ class Repl:
         label, what = MODE_LABEL.get(self.app.permissions.mode, (self.app.permissions.mode, ""))
         style = f"fg:{self._mode_color()} bold"
         status = [("", "  "), (style, label), ("fg:ansibrightblack", f" · {what} (shift+tab)")]
-        if windows_dictation_available():
-            status.append(("fg:ansibrightblack", " · ctrl+space: speak"))
+        voice_state = getattr(getattr(self, "voice", None), "state", "")
+        if voice_state == "recording":
+            rec = self.voice.recorder
+            status.append(("fg:#f87171 bold", f" · ● recording {int(rec.seconds) if rec else 0}s "
+                                              f"({self.mic_key.upper()} to stop)"))
+        elif voice_state == "transcribing":
+            status.append(("fg:ansibrightblack", " · transcribing…"))
+        else:
+            status.append(("fg:ansibrightblack", f" · {self.mic_key.upper()}: speak"))
         viz = getattr(self.app, "viz", None)
         if viz is not None and viz.running:
             status.append((f"fg:{t.accent}", " · ● live view on (/viz reopens it)"))

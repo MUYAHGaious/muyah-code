@@ -132,7 +132,8 @@ class ContextManager:
         return chosen
 
     def compact(self, messages: list[dict], llm=None, focus: str = "", todos: list[dict] | None = None,
-                tools: list[dict] | None = None, emergency: bool = False) -> tuple[list[dict], str]:
+                tools: list[dict] | None = None, emergency: bool = False,
+                on_progress=None) -> tuple[list[dict], str]:
         """Return (new_messages, description). messages[0] must be the system message.
 
         emergency=True is used after the server rejected a prompt as too long: our estimate was low,
@@ -159,7 +160,7 @@ class ContextManager:
             self.last = {"kind": "pruned", "count": 0}
             return work, f"pruned tool outputs inside the current turn ({before} -> {self.count(work, tools)} tokens)"
 
-        summary = self._summarize(head, llm, focus)
+        summary = self._summarize(head, llm, focus, on_progress)
         mechanical = summary is None
         if mechanical:
             summary = mechanical_digest(head)
@@ -191,7 +192,8 @@ class ContextManager:
                          "yours": sum(1 for m in head if is_real_user_message(m))}
         return new, f"{desc} ({before} -> {after} tokens)"
 
-    def _summarize(self, head: list[dict], llm, focus: str) -> str | None:
+    def _summarize(self, head: list[dict], llm, focus: str, on_progress=None) -> str | None:
+        """on_progress(tokens written, most it may write): the summary streams, so progress is real."""
         if llm is None:
             return None
         budget_chars = int(self.usable * 0.55 * 3.5)
@@ -204,9 +206,19 @@ class ContextManager:
             {"role": "system", "content": SUMMARY_PROMPT.format(focus=focus_txt)},
             {"role": "user", "content": f"Transcript to summarize:\n\n{transcript}"},
         ]
+        limit = min(2000, self.window // 6)
+        written = [0]
+
+        def progress(chunk: str) -> None:
+            written[0] += len(chunk)
+            if on_progress is not None:
+                on_progress(min(int(written[0] / 3.5), limit), limit)
+
+        if on_progress is not None:
+            on_progress(0, limit)
         try:
-            out = llm.chat(messages, max_tokens=min(2000, self.window // 6), temperature=0, purpose="compact")
-        except Exception:
+            out = llm.chat(messages, max_tokens=limit, temperature=0, purpose="compact", on_text=progress)
+        except Exception:     # the model failed: a mechanical digest is used instead (see compact)
             return None
         text = (out.content or "").strip()
         return text or None

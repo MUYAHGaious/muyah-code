@@ -180,3 +180,33 @@ def test_pastes_while_it_works_are_one_message():
     ui._on_key("enter")
     assert ui._queued == ["[Pasted text #1 +50 lines]"]                            # shown collapsed
     assert ui.take_queued()[0].count("line ") == 50                                 # sent in full
+
+
+def test_slash_while_it_works_lists_commands_and_tab_completes():
+    from rich.text import Text
+
+    ui = TerminalUI(Console(file=io.StringIO(), width=100))
+    ui.slash_menu = lambda: [("model", "Switch the model"), ("models", "List models"), ("mode", "Set the mode"),
+                             ("help", "Show commands")]
+    ui._reader = object()
+    keys(ui, "/mo")
+    out = io.StringIO()
+    Console(file=out, width=100, color_system=None).print(ui._with_typing(Text("status")))
+    shown = out.getvalue()
+    assert "/model" in shown and "/mode " in shown and "/help" not in shown
+    keys(ui, "down", "down")
+    ui._on_key("tab")
+    assert ui._draft == "/mode "
+    keys(ui, "plan", "enter")
+    assert ui._queued == ["/mode plan"]
+
+
+def test_enter_runs_the_highlighted_command_and_commands_wait_for_the_turn_to_end():
+    ui = TerminalUI(Console(file=io.StringIO(), width=100))
+    ui.slash_menu = lambda: [("compact", "Summarize"), ("context", "Context use")]
+    keys(ui, "/con", "enter", "also check the tests", "enter")
+    assert ui._queued == ["/context", "also check the tests"]
+    assert ui.take_queued() == ["also check the tests"]      # only the message goes to the model now
+    assert ui._queued == ["/context"]                        # the command runs after the turn
+    keys(ui, "/c", "esc")
+    assert ui._draft == "" and ui._queued == ["/context"]    # esc closes the menu, nothing else

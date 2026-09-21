@@ -77,7 +77,7 @@ def test_suggest_rule(ctx, project):
 
 def test_cycle_mode(project):
     p = pm(project)
-    assert [p.cycle_mode(), p.cycle_mode(), p.cycle_mode()] == ["auto", "plan", "acceptEdits"]
+    assert [p.cycle_mode() for _ in range(4)] == ["acceptEdits", "ask", "plan", "auto"]
 
 
 def test_quoted_program_paths_are_normalized(ctx, project):
@@ -91,14 +91,14 @@ def test_quoted_program_paths_are_normalized(ctx, project):
     assert p.check(BashTool(), {"command": "pythonx evil"}, ctx).action == "ask"
 
 
-def test_shift_tab_cycles_plan_edit_manual_auto():
+def test_shift_tab_cycles_manual_edit_plan_auto_like_claude_code():
     from muyah_code.permissions import PermissionManager
 
-    pm = PermissionManager(mode="plan")
-    seen = [pm.cycle_mode() for _ in range(4)]
-    assert seen == ["acceptEdits", "default", "auto", "plan"]
-    pm.set_mode("bypassPermissions")           # never reached by Shift+Tab; leaving it goes back to plan
-    assert pm.cycle_mode() == "plan"
+    pm = PermissionManager(mode="default")
+    seen = [pm.cycle_mode() for _ in range(5)]
+    assert seen == ["acceptEdits", "ask", "plan", "auto", "default"]
+    pm.set_mode("bypassPermissions")           # never reached by Shift+Tab; leaving it goes back to manual
+    assert pm.cycle_mode() == "default"
     for alias, mode in (("manual", "default"), ("edit", "acceptEdits"), ("auto", "auto")):
         assert PermissionManager(mode=alias).mode == mode
 
@@ -159,3 +159,53 @@ def test_delete_targets_are_resolved(tmp_path, monkeypatch):
     monkeypatch.setenv("BUILD_DIR", "out")
     targets = delete_targets("rm -rf dist $BUILD_DIR ~/tmp.txt", tmp_path)
     assert targets[0] == str(tmp_path / "dist") and targets[1].endswith("out") and "~" not in targets[2]
+
+
+def test_each_mode_really_does_what_it_says_including_a_switch_mid_turn(project):
+    """manual asks for edits and commands; edit writes freely but asks for commands; plan refuses changes;
+    auto runs commands but still asks for risky ones. A switch while it works applies from the next action."""
+    import sys
+
+    from fakeserver import FakeOpenAI, reply
+    from test_agent_e2e import RecUI, make_app
+
+    write = {"name": "Write", "arguments": {"file_path": "x.txt", "content": "x"}}
+    safe_cmd = {"name": "Bash", "arguments": {"command": f'"{sys.executable}" -c "print(1)"'}}
+    risky = {"name": "Bash", "arguments": {"command": "git push --force origin main"}}
+
+    def run(mode, calls):
+        with FakeOpenAI([reply("", [c]) for c in calls] + [reply("done")]) as srv:
+            ui = RecUI()
+            app = make_app(srv, project, ui=ui, mode=mode)
+            app.run_prompt("go")
+            app.shutdown()
+        tool_msgs = [m["content"] for m in srv.requests[-1]["messages"] if m["role"] == "tool"]
+        return [e for e in ui.events if e[0] == "ask"], tool_msgs
+
+    asks, _ = run("default", [write, safe_cmd])
+    assert [a[1].split("(")[0] for a in asks] == ["Write", "Bash"]               # manual: both ask
+    asks, _ = run("acceptEdits", [dict(write, arguments={"file_path": "e.txt", "content": "e"}), safe_cmd])
+    assert [a[1].split("(")[0] for a in asks] == ["Bash"]                        # edit: only the command
+    asks, out = run("plan", [dict(write, arguments={"file_path": "p.txt", "content": "p"})])
+    assert not asks and "plan mode" in out[0].lower()                            # plan: refused, read-only
+    assert not (project / "p.txt").exists()
+    asks, _ = run("auto", [safe_cmd, risky])
+    assert len(asks) == 1 and "git push" in asks[0][1]                           # auto: only the risky one
+
+    # a switch mid-turn (Shift+Tab while it works) applies from the next action
+    first = {"name": "Write", "arguments": {"file_path": "m1.txt", "content": "1"}}
+    second = {"name": "Write", "arguments": {"file_path": "m2.txt", "content": "2"}}
+    with FakeOpenAI([reply("", [first]), reply("", [second]), reply("done")]) as srv:
+        ui = RecUI()
+        app = make_app(srv, project, ui=ui, mode="default")
+        original = ui.ask_permission
+
+        def approve_then_switch(req):
+            app.set_mode("plan")                                                 # the user presses Shift+Tab
+            return original(req)
+
+        ui.ask_permission = approve_then_switch
+        app.run_prompt("write two files")
+        app.shutdown()
+    last = [m["content"] for m in srv.requests[-1]["messages"] if m["role"] == "tool"][-1]
+    assert (project / "m1.txt").exists() and not (project / "m2.txt").exists() and "plan mode" in last.lower()

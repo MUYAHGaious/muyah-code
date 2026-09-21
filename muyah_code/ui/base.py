@@ -36,6 +36,10 @@ class UI:
     def busy(self, label: str) -> None: ...           # work with no output of its own (keep the spinner going)
     def handoff(self, command: str, targets: list[str]) -> None: ...  # a delete the user should run themselves
     def compact_started(self, messages: int, yours: int, tokens: int) -> None: ...   # compaction begins
+    def compact_progress(self, written: int, limit: int) -> None: ...   # summary tokens written so far
+
+    def show_plan(self, plan: str) -> None:   # plan mode: the plan, before the user decides
+        self.info(plan)
 
     def compact_finished(self, summary: str) -> None:   # what it did, one line
         self.info(summary)

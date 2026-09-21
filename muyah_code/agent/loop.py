@@ -388,7 +388,8 @@ class Agent:
         yours = sum(1 for m in convo if is_real_user_message(m))
         self.ui.compact_started(len(convo), yours, before)
         new, detail = self.context.compact(self.messages, self.summarizer or self.llm, focus=focus,
-                                           todos=self.ctx.todos, tools=tools, emergency=emergency)
+                                           todos=self.ctx.todos, tools=tools, emergency=emergency,
+                                           on_progress=self.ui.compact_progress)
         after = self.context.count(new, tools)
         desc = compact_summary(getattr(self.context, "last", {}) or {}, before, after)
         self.ui.compact_finished(desc)

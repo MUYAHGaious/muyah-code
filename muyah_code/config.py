@@ -71,6 +71,9 @@ DEFAULTS: dict[str, Any] = {
     "notify": "auto",
     "notify_after": 20,
     "notify_sound": "im",       # im | default | mail | reminder | sms | silent
+    # the talk key (also Ctrl+Space); voice.engine: auto | windows | whisper | local (see ui/voice.py)
+    "mic_key": "f2",
+    "voice": {"engine": "auto"},
     # model per role (see llm/pool.py): main, explore, edit, summarize, verify, btw, strong
     "models": {},
     # profiles or provider:model specs that answer when the main provider fails (rate limit, 5xx, network)

@@ -63,8 +63,17 @@ McpServers (add writes the config and starts it now; no restart). Ask the user f
 PLAN_MODE = """\
 # PLAN MODE IS ACTIVE
 You are in read-only planning mode. Explore the code and research as needed, but do NOT create, edit or delete \
-files and do NOT run commands that change anything. When you understand the task, reply with a concrete plan: \
-context, the files to change and how, and how you will verify it. The user will approve it and switch modes."""
+files and do NOT run commands that change anything. When you understand the task, call ExitPlanMode with a \
+concrete plan (markdown): context, the files to change and how, and how you will verify it. The user then \
+chooses how to proceed; if they approve, implement it right away."""
+
+ASK_MODE = """\
+# ASK MODE IS ACTIVE
+The user wants to talk the idea through before any planning or building. Discuss it: ask clarifying questions \
+(one or two at a time), point out trade-offs and options, challenge weak assumptions, and help shape what should be \
+built. You may read files and search the web to ground the discussion, but do not change files, run commands or \
+write a plan document. When the idea is clear, sum it up in a few lines and suggest switching to plan mode \
+(Shift+Tab)."""
 
 
 @dataclass
@@ -126,6 +135,8 @@ def build_lean_prompt(inp: PromptInputs) -> str:
     parts.append(environment_block(inp))
     if inp.permission_mode == "plan":
         parts.append(PLAN_MODE)
+    if inp.permission_mode == "ask":
+        parts.append(ASK_MODE)
     if inp.skill_names:
         parts.append("# Skills\n" + ", ".join(inp.skill_names) + " (find_tools \"skill\" to use one).")
     if inp.instructions:
@@ -144,6 +155,8 @@ def build_system_prompt(inp: PromptInputs) -> str:
     parts.append(environment_block(inp))
     if inp.permission_mode == "plan":
         parts.append(PLAN_MODE)
+    if inp.permission_mode == "ask":
+        parts.append(ASK_MODE)
     if inp.skills_index and "Skill" in inp.tool_names:
         parts.append("# Available skills (load with the Skill tool)\n" + inp.skills_index)
     if inp.instructions:

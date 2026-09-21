@@ -182,7 +182,8 @@ class KeyReader:
             return list(data.decode("utf-8", errors="ignore"))   # a paste: the assembler sorts it out
         if data == b"\x1b[Z":
             return "shift-tab"
-        named = {b"\x1b[D": "left", b"\x1bOD": "left", b"\x1b[C": "right", b"\x1bOC": "right",
+        named = {b"\x1bOP": "f1", b"\x1bOQ": "f2", b"\x1bOR": "f3", b"\x1bOS": "f4", b"\x1b[12~": "f2",
+                 b"\x1b[20~": "f9", b"\x1b[21~": "f10", b"\x1b[D": "left", b"\x1bOD": "left", b"\x1b[C": "right", b"\x1bOC": "right",
                  b"\x1b[H": "home", b"\x1bOH": "home", b"\x1b[1~": "home", b"\x1b[F": "end", b"\x1bOF": "end",
                  b"\x1b[4~": "end", b"\x1b[I": "focus-in", b"\x1b[O": "focus-out", b"\x1b[A": "up", b"\x1bOA": "up", b"\x1b[B": "down", b"\x1bOB": "down", b"\x1b[3~": "delete"}
         if data in named:
@@ -227,7 +228,8 @@ class _WindowsConsole:
     SHIFT = 0x0010
     CTRL = 0x0004 | 0x0008   # left / right ctrl
     VK = {0x09: "tab", 0x0D: "enter", 0x08: "backspace", 0x1B: "esc", 0x26: "up", 0x28: "down", 0x2E: "delete",
-          0x25: "left", 0x27: "right", 0x24: "home", 0x23: "end"}
+          0x25: "left", 0x27: "right", 0x24: "home", 0x23: "end",
+          0x70: "f1", 0x71: "f2", 0x72: "f3", 0x73: "f4", 0x78: "f9", 0x79: "f10"}
 
     def __init__(self):
         self._api = None
@@ -305,6 +307,8 @@ def _name(ch: str) -> str | None:
         return "esc"
     if ch == "\x03":
         return "ctrl-c"
+    if ch == "\t":
+        return "tab"                     # completes a /command in the box while it works
     if ch.isprintable():
         return ch
     return None

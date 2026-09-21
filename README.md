@@ -42,9 +42,10 @@
 You need Python 3.10 or newer.
 
 ```bash
-pipx install muyah-code          # recommended: isolated install, `muyah` lands on your PATH
-# or: uv tool install muyah-code
-# or: pip install muyah-code
+pipx install git+https://github.com/MUYAHGaious/muyah-code     # isolated install, `muyah` lands on your PATH
+# or: uv tool install git+https://github.com/MUYAHGaious/muyah-code
+# or: pip install git+https://github.com/MUYAHGaious/muyah-code
+# voice outside Windows: pipx install "muyah-code[voice] @ git+https://github.com/MUYAHGaious/muyah-code"
 
 muyah login                      # pick a provider, paste your API key
 muyah                            # start coding
@@ -164,8 +165,18 @@ muyah --resume                          # pick an earlier conversation from a li
 - `/` opens the command menu: move with **↑/↓**, choose with **Enter**. Every list works this way (providers, models, permission prompts).
 - `@path` attaches a file.
 - `#note` saves a note to `MUYAH.md`.
-- **Shift+Tab** cycles permission modes.
-- **Talk instead of typing:** Ctrl+Space (or `/mic`) opens Windows voice typing, which types into the prompt.
+- **Shift+Tab** cycles the modes, in this order:
+  - **manual** asks before edits and commands;
+  - **edit** accepts edits and asks before commands;
+  - **ask** talks the idea through (questions, options, trade-offs) and changes nothing;
+  - **plan** explores read-only and then shows a plan; you choose to build it in auto, edit or manual mode, or to keep planning;
+  - **auto** runs on its own and asks only for risky actions.
+- **Talk instead of typing:** press **F2** (or Ctrl+Space, or `/mic`), speak, then press it again or just stop talking. The words land in your prompt for you to edit; they are never sent on their own.
+  - On Windows this opens Windows voice typing.
+  - Elsewhere it records and transcribes with Groq Whisper (your `/provider groq` key), OpenAI, or any `/audio/transcriptions` URL (`"voice": {"url": ...}`).
+  - Offline: `"voice": {"engine": "local"}` with the `voice-local` extra (faster-whisper).
+  - The key can be changed with `"mic_key"`.
+- **Type `/`** for the command list, at the prompt and while it works. ↑↓ choose, Tab completes, Enter runs it. While it works, a command runs when the turn ends.
 - **Big pastes** show as `[Pasted text #1 +245 lines]`; the full text is sent.
 - **While it works, keep typing.** **Enter** queues a message; the model gets it at the next step. **Esc** stops the current step and sends it right away.
 - **Alt+Enter** / **Ctrl+J** inserts a newline.
@@ -176,10 +187,10 @@ muyah --resume                          # pick an earlier conversation from a li
 | `/help` | all commands |
 | `/provider` (or `/login`), `/logout <provider>` | pick a provider + paste an API key; remove a saved key |
 | `/model [id]`, `/models`, `/profile [name]`, `/connect <url>` | switch backends at runtime (the context window is re-detected) |
-| `/mode [default\|acceptEdits\|plan\|bypassPermissions]`, `/plan` | permission modes |
+| `/mode [manual\|edit\|ask\|plan\|auto]`, `/plan` | modes (also Shift+Tab) |
 | `/undo`, `/rewind` (Esc Esc) | go back to before the last turn, or any earlier one: code, conversation or both (commands' changes included) |
 | `/verify [quick\|full\|e2e]` | check the last changes only when you ask: lint + the changed files' tests, the whole suite, or run the app end to end |
-| `/mic` (Ctrl+Space) | talk instead of typing (Windows voice typing) |
+| `/mic` (F2, Ctrl+Space) | talk instead of typing (Windows voice typing, or Whisper elsewhere) |
 | `/btw <question>` | a side question, answered now and never added to the conversation (also while it works) |
 | `/mcp [enable\|disable\|reconnect <name>]` | MCP servers: status, or switch one off/on (remembered per project) |
 | `/compact [focus]`, `/context` | context management |
@@ -256,7 +267,8 @@ parallel sessions never touch each other's files.
 
 ### Permission modes
 
-**Shift+Tab** cycles **plan → edit → manual → auto**. Each mode has its own color in the status line.
+**Shift+Tab** cycles **manual → edit → plan → auto** (the same order as Claude Code). Each mode has its own
+color in the status line, and a switch while it works applies from the agent's next action.
 
 | Mode | What it does |
 |---|---|

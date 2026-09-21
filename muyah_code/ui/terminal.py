@@ -273,6 +273,10 @@ class TerminalUI(UI):
         # True while carried-over messages wait for their own turn (they are not fed into the running one)
         self._hold_queue = False
         self.on_btw = None         # (question) -> None: answer a /btw side question now (set by the REPL)
+        self.on_mic = None         # () -> None: the talk key while it works (set by the REPL)
+        self.slash_menu = None     # () -> [(name, help)]: the "/" suggestions (set by the REPL)
+        self._slash_sel = 0
+        self.mic_key = "f2"
         self.focused: bool | None = None   # the terminal window has focus (None: it never said)
         from muyah_code.ui.tips import TipRotation
 
@@ -322,13 +326,24 @@ class TerminalUI(UI):
         # the turn's time, then the tokens right beside it (like Claude Code); context use is at the bottom right
         if self._phase == "Compacting" and self._compacting:
             messages, tokens = self._compacting
-            width, span = 24, 6
-            pos = int(elapsed * 10) % (width + span) - span      # a segment sliding along the bar
+            width = 24
             bar = Text()
-            for i in range(width):
-                bar.append("━", style=t.accent if pos <= i < pos + span else "bright_black")
-            line = Text.assemble(("Compacting the conversation  ", t.accent), bar,
-                                 (f"  {messages} messages · {_tokens(tokens)} tokens · {_clock(elapsed)}", t.dim))
+            done = self._compact_done
+            if done and done[0] > 0:
+                # the summary streams: fill the bar with what is written against the most it may write
+                written, limit = done
+                share = min(1.0, written / max(1, limit))
+                filled = int(share * width)
+                bar.append("━" * filled, style=t.accent)
+                bar.append("━" * (width - filled), style="bright_black")
+                info = f"  {written:,} / {limit:,} tokens · {share:.0%} · {messages} messages · {_clock(elapsed)}"
+            else:
+                span = 6
+                pos = int(elapsed * 10) % (width + span) - span   # reading the conversation: nothing written yet
+                for i in range(width):
+                    bar.append("━", style=t.accent if pos <= i < pos + span else "bright_black")
+                info = f"  reading {messages} messages ({_tokens(tokens)} tokens) · {_clock(elapsed)}"
+            line = Text.assemble(("Compacting  ", t.accent), bar, (info, t.dim))
             return self._spin(line)
         if self._phase == "thinking" and self._sent_at:
             # the request is out and nothing has come back yet: say so (slow providers queue requests)
@@ -413,7 +428,8 @@ class TerminalUI(UI):
             # like Claude Code: the queued messages as one block, then a single hint under it
             rows.append(blocks.queued_prompts(queued, selected))
             hint = ("  enter: edit · delete: remove · ↑↓: choose · esc: back" if selected is not None else
-                    "  queued: goes in at the next step · esc: send now")
+                    "  queued: runs when this turn ends · esc: run now" if all(q.startswith("/") for q in queued)
+                    else "  queued: goes in at the next step · esc: send now")
             rows.append(Text(hint, style=t.dim))
         if self._reader is None:
             return Group(*rows)
@@ -433,6 +449,18 @@ class TerminalUI(UI):
         if not draft:
             field.no_wrap, field.overflow = True, "ellipsis"   # the hint stays on one line; your text wraps
         rows.append(field)
+        matches = self._slash_matches(draft)
+        if matches:
+            # like the idle prompt (and Claude Code): "/" lists the commands, ↑↓ choose, tab completes
+            sel = min(self._slash_sel, len(matches) - 1)
+            start = max(0, min(sel - self.SLASH_ROWS + 1, len(matches) - self.SLASH_ROWS))
+            pad = max(len(n) for n, _ in matches) + 3
+            for i, (name, help_text) in enumerate(matches[start:start + self.SLASH_ROWS], start):
+                row = Text(" ")
+                row.append(f"/{name}".ljust(pad), style=f"bold {t.accent}" if i == sel else "")
+                row.append(help_text, style=t.dim)
+                row.no_wrap, row.overflow = True, "ellipsis"
+                rows.append(row)
         rows.append(Text("─" * width, style="bright_black"))
         status = Text("  ")
         if label:
@@ -482,7 +510,10 @@ class TerminalUI(UI):
         with self._keys:
             if self._hold_queue:
                 return []
-            queued, self._queued, self._selected = [self._expand(q) for q in self._queued], [], None
+            # a /command waits for the turn to end (the REPL runs it); only messages go to the model now
+            commands = [q for q in self._queued if q.startswith("/")]
+            queued = [self._expand(q) for q in self._queued if not q.startswith("/")]
+            self._queued, self._selected = commands, None
         if queued:
             self._emit_queue()
         for msg in queued:
@@ -497,6 +528,18 @@ class TerminalUI(UI):
                 items = list(self._queued)
             self.events.emit("queue", items=items)
 
+    SLASH_ROWS = 8
+
+    def _slash_matches(self, draft: str) -> list[tuple[str, str]]:
+        if not draft.startswith("/") or " " in draft or self.slash_menu is None:
+            return []
+        try:
+            items = self.slash_menu()
+        except Exception:        # the menu is a convenience: a failing skill listing must not break typing
+            return []
+        typed = draft[1:].lower()
+        return [(n, h) for n, h in items if n.lower().startswith(typed)]
+
     def _on_key(self, key: str) -> None:
         if key in ("focus-in", "focus-out"):
             self.focused = key == "focus-in"
@@ -509,7 +552,20 @@ class TerminalUI(UI):
         before = list(self._queued)
         with self._keys:
             sel = self._selected if self._selected is not None and self._selected < len(self._queued) else None
-            if key == "up" and self._queued:
+            menu = self._slash_matches(self._draft) if sel is None else []
+            pick = menu[min(self._slash_sel, len(menu) - 1)][0] if menu else ""
+            if menu and key in ("up", "down"):
+                self._slash_sel = (min(self._slash_sel, len(menu) - 1) + (1 if key == "down" else -1)) % len(menu)
+            elif menu and key == "tab":
+                self._draft = f"/{pick} "          # tab completes; you can add arguments
+            elif menu and key == "esc":
+                self._draft = ""                   # esc closes the menu (esc again interrupts)
+            elif menu and key == "enter" and self._draft[1:] != pick:
+                self._queued.append(f"/{pick}")    # enter runs the highlighted command (after this turn)
+                self._draft = ""
+            elif key == "tab":
+                pass
+            elif key == "up" and self._queued:
                 self._selected = len(self._queued) - 1 if sel is None else max(0, sel - 1)
             elif key == "down" and sel is not None:
                 self._selected = sel + 1 if sel + 1 < len(self._queued) else None
@@ -538,7 +594,7 @@ class TerminalUI(UI):
                 if self._cursor > 0:
                     self._draft = self._draft[:self._cursor - 1] + self._draft[self._cursor:]
                     self._cursor -= 1
-            elif key in ("shift-tab", "mic"):
+            elif key in ("shift-tab", "mic", self.mic_key):
                 pass                       # handled below, outside the lock
             elif key == "esc" and sel is not None:
                 self._selected = None      # leave the queue; esc again sends now
@@ -554,17 +610,16 @@ class TerminalUI(UI):
                 self._selected = None
             if key not in ("up", "down"):
                 self._hist = None        # typing (or sending) starts a fresh walk through the history
-            if key in ("up", "down", "enter", "esc", "ctrl-c") or key.startswith("focus"):
+                self._slash_sel = 0      # the menu starts at the top again as you type
+            if key in ("up", "down", "enter", "esc", "ctrl-c", "tab") or key.startswith("focus"):
                 self._cursor = len(self._draft)   # a new or recalled draft: type at its end
             self._cursor = max(0, min(self._cursor, len(self._draft)))
         if btw:
             self.on_btw(btw)
         if key == "shift-tab" and self.on_mode_cycle is not None:
             self.on_mode_cycle()           # takes effect from the agent's next action
-        if key == "mic":
-            from muyah_code.ui.voice import start_dictation
-
-            start_dictation()              # Windows voice typing types into this box
+        if key in ("mic", self.mic_key) and self.on_mic is not None:
+            self.on_mic()                  # voice: Windows voice typing types here; Whisper text is inserted
         if self._queued != before:
             self._emit_queue()
         if interrupt and self._turn_active:
@@ -694,9 +749,23 @@ class TerminalUI(UI):
         self._turn_chars += len(chunk)
         self._stream.update(chunk)
 
+    def show_plan(self, plan: str) -> None:
+        t = theme()
+        self._stop_live()
+        self._space("block")
+        self.console.print(Panel(Markdown(plan, code_theme=t.code_theme), title=f"[bold {t.accent}]Plan[/]",
+                                 title_align="left", border_style=t.accent, padding=(0, 1)))
+        self._last = "block"
+
     def compact_started(self, messages: int, yours: int, tokens: int) -> None:
         self._compacting = (messages, tokens)
+        self._compact_done = None
         self._start_live("Compacting")
+
+    def compact_progress(self, written: int, limit: int) -> None:
+        self._compact_done = (written, limit)
+
+    _compact_done = None
 
     def compact_finished(self, summary: str) -> None:
         self._compacting = None

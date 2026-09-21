@@ -25,6 +25,7 @@ from muyah_code.ui.base import UI, PermissionReply, PermissionRequest
 PROTOCOL_VERSION = 1
 MODES = [("plan", "Plan", "Read-only: explore and propose a plan"),
          ("acceptEdits", "Edit", "Accept file edits; ask before commands"),
+         ("ask", "Ask", "Talk the idea through: nothing is changed or run"),
          ("default", "Manual", "Ask before edits, commands and network access"),
          ("auto", "Auto", "Run on its own; still asks for risky actions"),
          ("bypassPermissions", "Bypass", "Never ask (deletes are still never run)")]

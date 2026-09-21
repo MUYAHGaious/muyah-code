@@ -5,6 +5,27 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **Ask mode:** talk an idea through before planning or building.
+  - Shift+Tab goes manual → edit → ask → plan → auto, the same order as Claude Code with ask before plan.
+  - In ask mode the model asks clarifying questions, weighs options and may read files or search, but it changes and runs nothing.
+- **Plan approval, as in Claude Code.** In plan mode the model presents its plan with the new `ExitPlanMode` tool, and you choose one of:
+  - build it in auto mode;
+  - build it in edit mode (accept edits);
+  - build it in manual mode (approve each change);
+  - keep planning, saying what to change.
+
+  On a yes, the mode switches and the work starts in the same turn.
+- **Every mode really does what it says,** including switching while it works. An end-to-end test checks each one.
+- **Compaction shows real progress:** the summary streams, so the bar fills with the tokens written, for example `1,240 / 2,000 tokens · 62% · 34 messages`.
+- **Voice (Phase E2):** one key, **F2** (`mic_key`; Ctrl+Space still works).
+  - Windows uses Windows voice typing.
+  - Elsewhere it records (the `voice` extra) and transcribes with Groq Whisper, OpenAI or any `/audio/transcriptions` URL, or offline with faster-whisper (the `voice-local` extra).
+  - It stops when you stop talking. The status line shows `● recording 3s`, and the text lands in the prompt, never sent on its own.
+- **Fix: typing `/` while it works showed no commands.** The box while it works now lists them too: ↑↓ choose, Tab completes, Enter runs.
+  - A command typed then runs when the turn ends. Before, it went to the model as plain text.
+  - Tab was also swallowed by the key reader.
+- **Install:** the README now shows `pipx install git+https://github.com/MUYAHGaious/muyah-code`; the package is not on PyPI yet.
+
 - **The agent sets up MCP servers itself** (new `McpServers` tool).
   - It writes the server to `.mcp.json` (project) or `~/.muyah/mcp.json` (all projects) and starts it at once, with no restart, so its tools are usable from the next reply.
   - It also lists, reconnects and disables servers.

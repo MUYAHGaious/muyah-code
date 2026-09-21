@@ -36,7 +36,7 @@ def test_lean_mode_cuts_the_fixed_cost_of_every_request(project):
         lean_tokens, full_tokens = tokens(lean), tokens(full)
         lean.shutdown()
         full.shutdown()
-    assert lean.agent.registry.names() == ["Read", "Edit", "Write", "Bash", "Grep", "Glob", "find_tools"]
+    assert lean.agent.registry.names() == ["Read", "Edit", "Write", "Bash", "Grep", "Glob", "ExitPlanMode", "find_tools"]
     assert lean_tokens < full_tokens * 0.4, (lean_tokens, full_tokens)
 
 

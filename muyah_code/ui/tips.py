@@ -10,14 +10,15 @@ from __future__ import annotations
 import random
 
 KEYS = [
-    "Shift+Tab switches the mode: plan → edit → manual → auto",
+    "Shift+Tab switches the mode: manual → edit → plan → auto",
     "Type while it works: your message goes in at the next step (Esc sends it now)",
     "↑ picks a queued message to edit or remove; with nothing queued it brings back earlier prompts",
     "Esc Esc on an empty prompt rewinds to before any earlier turn",
     "@path adds a file (or an image) to your message",
     "#note saves a note to MUYAH.md for future sessions",
     "Drag an image into the terminal to show it to the model",
-    "Ctrl+Space (Windows) opens voice typing",
+    "F2 (or Ctrl+Space): talk instead of typing",
+    "Ask mode (Shift+Tab): talk an idea through before planning or building",
     "/btw asks a side question without touching the conversation, even while it works",
 ]
 SKIP = {"exit", "quit", "login", "cost", "help"}

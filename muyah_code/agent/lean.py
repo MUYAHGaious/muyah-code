@@ -22,7 +22,7 @@ from muyah_code.tools.registry import ToolRegistry
 
 LEAN_WINDOW = 32768          # auto: lean below this window
 SMALL_PARAMS_B = 14
-CORE = ("Read", "Edit", "Write", "Bash", "Grep", "Glob")
+CORE = ("Read", "Edit", "Write", "Bash", "Grep", "Glob", "ExitPlanMode")
 INSTRUCTIONS_CAP = 4000
 
 LEAN_PROMPT = """\
