@@ -1,24 +1,41 @@
-# MUYAH-CODE
+<p align="center">
+  <img src="docs/images/logo.png" alt="MUYAH-CODE" width="520">
+</p>
 
-An agentic coding CLI that reads, searches, edits and runs your code from the terminal, like Claude Code, **with any model you choose**:
-- a hosted provider: Claude, OpenAI, Gemini, OpenRouter, Groq, DeepSeek, Mistral, xAI and 8 more. Run `muyah login` and paste your key.
-- a local server: Ollama, LM Studio, llama.cpp, vLLM, colibri or Soup.
-- your own GPU in Colab: vLLM or colibri behind a Pinggy or Cloudflare tunnel.
+<p align="center">
+  <b>An agentic coding CLI for any model: Claude, OpenAI, Gemini, OpenRouter, local Ollama/vLLM, or your own GPU.</b><br>
+  It reads, searches, edits and runs your code, asks before it acts, and learns from its own mistakes.
+</p>
 
-It works well with smaller open-weights models too:
-- **Tool calling:** strict native function calling, with an automatic fallback to a text tool protocol.
-- **Context:** compaction that adapts to any window size, from 8k to 1M.
-- **Safety:** permission-gated actions, plus checkpoints so you can `/undo`.
-- **Learning:** it learns from its own failures and fixes, and you can measure the effect with `muyah eval`.
+<p align="center">
+  <a href="https://github.com/MUYAHGaious/muyah-code/actions/workflows/ci.yml"><img src="https://github.com/MUYAHGaious/muyah-code/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <img src="https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-3776AB?logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-6fd6c9" alt="Platforms">
+  <img src="https://img.shields.io/badge/providers-20-6fd6c9" alt="20 providers">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license"></a>
+</p>
 
-```
-███╗   ███╗██╗   ██╗██╗   ██╗ █████╗ ██╗  ██╗
-████╗ ████║██║   ██║╚██╗ ██╔╝██╔══██╗██║  ██║
-██╔████╔██║██║   ██║ ╚████╔╝ ███████║███████║
-██║╚██╔╝██║██║   ██║  ╚██╔╝  ██╔══██║██╔══██║
-██║ ╚═╝ ██║╚██████╔╝   ██║   ██║  ██║██║  ██║
-╚═╝     ╚═╝ ╚═════╝    ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝  C O D E
-```
+<p align="center">
+  <img src="docs/images/session.png" alt="MUYAH-CODE fixing a failing test: plan, read, edit with a diff, run the tests, answer" width="860">
+</p>
+
+## Why MUYAH-CODE
+
+- **Any model, one key away.** `muyah login` lists 20 providers. Pick one, paste your key, and you're coding. Claude runs through Anthropic's native API; everything else through an OpenAI-compatible one.
+- **Built for open-weights models too.** Strict tool calling with a fallback text protocol, and context compaction that adapts to any window size (8k–1M) and to how each model counts tokens.
+- **Asks before it acts.** You see the exact diff or command before approving it, and `/undo` reverts a whole turn.
+- **Gets better over time.** It turns its own failures and fixes into lessons, and `muyah eval` measures whether that's helping.
+- **Runs your own GPU.** `muyah serve` starts Ollama, vLLM, llama.cpp, colibri or Soup locally, and a Colab notebook serves big models through a tunnel.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/trust.png" alt="Workspace trust check"><br><sub><b>Trust check</b>: asked once per folder, before any of the folder's own hooks or MCP servers load.</sub></td>
+    <td width="50%"><img src="docs/images/permission.png" alt="Permission prompt with the exact diff"><br><sub><b>Permission prompts</b> show the exact change. Choose with ↑/↓ and Enter.</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/images/home.png" alt="Home screen with the slash-command menu"><br><sub><b>Type <code>/</code></b> for the command menu. The status line shows the mode and how full the context is.</sub></td>
+  </tr>
+</table>
 
 ## Install
 
@@ -224,7 +241,7 @@ Your old colab-code config is imported automatically on first run.
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest -q          # 164 tests: parser, tools, permissions, context, learning, hooks, full agent loop
+python -m pytest -q          # 168 tests: parser, tools, permissions, context, learning, hooks, full agent loop
 python -m ruff check .       #   against a scripted fake OpenAI server, headless CLI, REPL, eval harness
 ```
 

@@ -59,9 +59,9 @@ def test_repl_session_end_to_end(project):
 def test_header_is_compact(project):
     code, out, app = run_session(project, ["/exit"], [])
     header = out.split("Bye.")[0].strip().splitlines()
-    assert header[0].startswith("✻ MUYAH-CODE")
-    assert len(header) <= 3  # name, model + folder, one hint - no banner, no stats box
-    assert "███" not in out
+    assert len(header) == 3  # mascot beside: name + version, model + provider, folder - nothing else
+    assert "MUYAH-CODE v" in header[0] and "fake-model" in header[1] and header[2].rstrip().endswith("proj")
+    assert "███╗" not in out  # the old big banner is gone
 
 
 def test_header_never_wraps_on_long_paths(tmp_path):
@@ -71,7 +71,7 @@ def test_header_never_wraps_on_long_paths(tmp_path):
     code, out, app = run_session(deep, ["/exit"], [])
     header = out.split("Bye.")[0].strip().splitlines()
     assert len(header) == 3 and all(len(line) <= 100 for line in header)
-    assert header[1].rstrip().endswith("my-project")  # the part of the path that matters is kept
+    assert header[2].rstrip().endswith("my-project")  # the part of the path that matters is kept
 
 
 def test_input_field_has_rule_with_folder_and_status_line(project):
@@ -98,9 +98,12 @@ def test_input_field_has_rule_with_folder_and_status_line(project):
         Repl(app, ui).run()
         app.shutdown()
     text = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07", "", screen.getvalue())
-    assert re.search(r"─{20,} proj ─", text)                     # rule with the folder name on the right
-    assert "❯" in text
-    assert "accept edits on" in text and "fake-model" in text and "/ for commands" in text  # status line
+    lines = text.replace("\r", "").split("\n")
+    at = next(i for i, ln in enumerate(lines) if ln.startswith("❯"))
+    assert set(lines[at - 1].strip()) == {"─"} and len(lines[at - 1].strip()) >= 70   # rule above the input
+    below = [ln for ln in lines[at + 1:] if ln.strip()]
+    assert set(below[0].strip()) == {"─"}                                          # rule below the input
+    assert "accept edits on" in below[1] and "shift+tab to cycle" in below[1]       # then the status line
 
 
 def test_double_ctrl_c_exits_without_typing_exit(project):
@@ -154,3 +157,31 @@ def test_repl_unknown_command_and_skill_invocation(project):
     assert "follow the debugging skill" in out
     sent = app.agent.messages[1]["content"]
     assert "Systematic debugging" in sent and "the login test fails" in sent
+
+
+def test_trust_prompt_blocks_untrusted_folder_until_accepted(tmp_path):
+    from muyah_code.trust import ensure_trusted, is_trusted, risky_config
+
+    class Pick:
+        def __init__(self, answer):
+            self.answer, self.asked = answer, []
+
+        def select(self, message, options, default=None):
+            self.asked.append([label for _, label in options])
+            return self.answer
+
+    home, folder = tmp_path / "home", tmp_path / "work" / "repo"
+    (folder / ".muyah").mkdir(parents=True)
+    (folder / ".mcp.json").write_text("{}")
+    (folder / ".muyah" / "settings.json").write_text('{"hooks": {}}')
+    out = io.StringIO()
+    console = Console(file=out, width=100, color_system=None)
+    no = Pick("no")
+    assert ensure_trusted(folder, home, console, no) is False and not is_trusted(home, folder)
+    assert no.asked == [["No, exit", "Yes, I trust this folder"]]
+    assert "Accessing workspace:" in out.getvalue() and "defines hooks" in out.getvalue()
+    assert len(risky_config(folder)) == 2
+    assert ensure_trusted(folder, home, console, Pick("yes")) is True
+    asked_again = Pick("no")
+    assert ensure_trusted(folder / "sub", home, console, asked_again) is True  # subfolders inherit trust
+    assert asked_again.asked == []

@@ -179,6 +179,13 @@ def _interactive(cfg, cwd, args, prompt: str | None) -> int:
     except ValueError:
         set_theme("teal")
     console = _console()
+    from muyah_code.trust import ensure_trusted
+    from muyah_code.ui.select import Prompter
+
+    # Before anything from this folder is loaded (its hooks and MCP servers can run commands).
+    if not ensure_trusted(cwd, cfg.home, console, Prompter()):
+        console.print("[dim]OK, not opening this folder.[/]")
+        return 0
     ui = TerminalUI(console, show_reasoning=args.show_reasoning)
     try:
         with console.status("Starting MUYAH-CODE..."):

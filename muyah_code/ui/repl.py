@@ -7,7 +7,6 @@ to exit) · Ctrl+D exit · typing "/" opens the command menu (↑/↓ + Enter).
 from __future__ import annotations
 
 import time
-from pathlib import Path
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.application.current import get_app
@@ -140,53 +139,56 @@ class Repl:
         turns = self.app.checkpoints.turns
         return len(turns[-1]["changes"]) if turns else 0
 
+    @staticmethod
+    def _cols() -> int:
+        try:
+            return get_app().output.get_size().columns
+        except Exception:
+            return 80
+
     def _toolbar(self):
-        """The status line under the input: mode · model · context · hint."""
+        """Under the input: a closing rule, then one status line (mode · context · hint)."""
         t = theme()
+        rule = [("fg:ansibrightblack", "─" * self._cols() + "\n")]
         if time.monotonic() - self._last_interrupt < EXIT_WINDOW:
-            return [(f"fg:{t.accent}", "  Press Ctrl+C again to exit")]
-        parts: list[tuple[str, str]] = [("", "  ")]
+            return rule + [(f"fg:{t.accent}", "  Press Ctrl+C again to exit")]
         mode = MODE_LABEL.get(self.app.permissions.mode, "")
         if mode:
-            parts += [(f"fg:{t.accent} bold", mode), ("", " (shift+tab) · ")]
-        parts += [("", f"{self.app.llm.model} · ctx {self._ctx_pct()}% · / for commands")]
-        return parts
+            status = [("", "  "), (f"fg:{t.accent} bold", mode), ("fg:ansibrightblack", " (shift+tab to cycle)")]
+        else:
+            status = [("fg:ansibrightblack", "  / for commands · shift+tab for modes")]
+        status.append(("fg:ansibrightblack", f" · ctx {self._ctx_pct()}%"))
+        return rule + status
 
     def _prompt_message(self):
-        """A thin rule with the folder name on the right, then the ❯ prompt (like Claude Code)."""
-        t = theme()
-        try:
-            cols = get_app().output.get_size().columns
-        except Exception:
-            cols = 80
-        name = self.app.cwd.name or str(self.app.cwd)
-        label = f" {name} "
-        if len(label) > cols // 2:
-            label = f" {name[: max(4, cols // 2 - 4)]}… "
-        rule = "─" * max(4, cols - len(label) - 2) + label + "─"
-        return [("fg:ansibrightblack", rule + "\n"), (f"fg:{t.accent}", "❯ ")]
+        """A rule above the ❯ prompt (the input sits between two rules, like Claude Code)."""
+        return [("fg:ansibrightblack", "─" * self._cols() + "\n"), (f"fg:{theme().accent}", "❯ ")]
 
-    def header(self) -> None:
-        """Just what you need: which model, which folder, where to go next."""
+    def _provider_label(self) -> str:
+        from muyah_code.providers import BY_ID
+
+        a = self.app
+        prov = BY_ID.get(a.cfg.get("provider") or "")
+        if prov:
+            return prov.name
+        profile = a.cfg.get("profile")
+        return f"profile {profile}" if profile else a.llm.base_url.split("//")[-1].split("/")[0]
+
+    def header(self, animate: bool = True) -> None:
+        """Mascot + name/version, model/provider and folder - nothing else."""
+        from muyah_code.ui.logo import play_intro
+
         a = self.app
         t = theme()
         cwd = str(a.cwd)
-        home = str(Path.home())
-        if cwd.lower().startswith(home.lower()):
-            cwd = "~" + cwd[len(home):]
-        width = self.console.width
-        room = width - len(a.llm.model) - 6
+        room = max(20, self.console.width - 20)
         if len(cwd) > room:  # keep the end of the path (the folder you are in), never wrap
-            cwd = "…" + cwd[-max(8, room - 1):]
-        line = Text()
-        line.append("✻ ", style=t.accent)
-        line.append("MUYAH-CODE", style=f"bold {t.accent}")
-        line.append(f" v{__version__}", style=t.dim)
-        for text in (line, Text(f"  {a.llm.model} · {cwd}", style=t.dim),
-                     Text("  / for commands · /provider to switch model · Ctrl+C twice to exit", style=t.dim)):
-            text.no_wrap = True
-            text.overflow = "ellipsis"
-            self.console.print(text)
+            cwd = "…" + cwd[-(room - 1):]
+        title = Text()
+        title.append("MUYAH-CODE", style="bold")
+        title.append(f" v{__version__}", style=t.dim)
+        lines = [title, Text(f"{a.llm.model} · {self._provider_label()}", style=t.dim), Text(cwd, style=t.dim)]
+        play_intro(self.console, lines, animate=animate and self.ui.animate)
         if a.mcp:
             for name, status in a.mcp.status.items():
                 if status.startswith("failed"):

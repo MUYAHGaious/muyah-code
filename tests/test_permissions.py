@@ -78,3 +78,14 @@ def test_suggest_rule(ctx, project):
 def test_cycle_mode(project):
     p = pm(project)
     assert [p.cycle_mode(), p.cycle_mode(), p.cycle_mode()] == ["acceptEdits", "plan", "default"]
+
+
+def test_quoted_program_paths_are_normalized(ctx, project):
+    from muyah_code.permissions import normalize_command
+
+    cmd = '"C:/Program Files/Python314/python.exe" -m pytest -q'
+    assert normalize_command(cmd) == "python -m pytest -q"
+    assert suggest_rule(BashTool(), {"command": cmd}, ctx) == "Bash(python:*)"
+    p = pm(project, allow=["Bash(python:*)"])
+    assert p.check(BashTool(), {"command": cmd}, ctx).action == "allow"
+    assert p.check(BashTool(), {"command": "pythonx evil"}, ctx).action == "ask"

@@ -73,11 +73,15 @@ class Rule:
             return True
         pat = self.pattern
         if tool_name == "Bash":
-            cmd = " ".join(subject.split())
-            if pat.endswith(":*"):
-                prefix = pat[:-2].strip()
-                return cmd == prefix or cmd.startswith(prefix + " ")
-            return fnmatch.fnmatchcase(cmd, pat)
+            # match both the raw command and its normalized form ("C:\...\python.exe" -m x -> python -m x)
+            for cmd in {" ".join(subject.split()), normalize_command(subject)}:
+                if pat.endswith(":*"):
+                    prefix = pat[:-2].strip()
+                    if cmd == prefix or cmd.startswith(prefix + " "):
+                        return True
+                elif fnmatch.fnmatchcase(cmd, pat):
+                    return True
+            return False
         if tool_name in ("WebFetch",) and pat.startswith("domain:"):
             host = (urlparse(subject).hostname or "").lower()
             dom = pat[len("domain:"):].lower()
@@ -103,14 +107,31 @@ class Decision:
     rule: str | None = None
 
 
+def normalize_command(command: str) -> str:
+    """'"C:\\Program Files\\Python\\python.exe" -m pytest' -> 'python -m pytest' (program name only)."""
+    command = command.strip()
+    if not command:
+        return ""
+    if command[0] in "\"'":
+        end = command.find(command[0], 1)
+        first, rest = (command[1:end], command[end + 1:]) if end > 0 else (command[1:], "")
+    else:
+        first, _, rest = command.partition(" ")
+    prog = re.split(r"[\\/]", first)[-1].lower()
+    prog = prog[:-4] if prog.endswith((".exe", ".cmd", ".bat")) else prog
+    return " ".join([prog, *rest.split()])
+
+
+KIND_REASON = {"write": "edits a file", "exec": "runs a command", "network": "uses the network"}
+
+
 def suggest_rule(tool: Tool, args: dict, ctx: ToolContext) -> str:
     """The rule offered for 'always allow' in the permission prompt."""
     if tool.name == "Bash":
-        cmd = args.get("command", "").strip().split()
+        cmd = normalize_command(args.get("command", "")).split()
         if not cmd:
             return "Bash"
-        prog = Path(cmd[0]).name.lower().removesuffix(".exe")
-        two = prog in SUBCOMMAND_CLIS and len(cmd) > 1 and re.fullmatch(r"[a-z][\w:-]*", cmd[1])
+        two = cmd[0] in SUBCOMMAND_CLIS and len(cmd) > 1 and re.fullmatch(r"[a-z][\w:-]*", cmd[1])
         return f"Bash({' '.join(cmd[:2] if two else cmd[:1])}:*)"
     if tool.name in ("Write", "Edit"):
         path = ctx.resolve(args.get("file_path", ""))
@@ -198,7 +219,7 @@ class PermissionManager:
             if target is not None and _is_within(target, self.project_root):
                 return Decision("allow", "acceptEdits mode")
             return Decision("ask", "file is outside the project")
-        return Decision("ask", f"{tool.kind} action")
+        return Decision("ask", KIND_REASON.get(tool.kind, f"{tool.kind} action"))
 
 
 def _is_within(path: Path, root: Path) -> bool:

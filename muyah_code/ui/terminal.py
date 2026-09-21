@@ -92,6 +92,11 @@ class _MarkdownStream:
 
     def update(self, chunk: str, final: bool = False) -> None:
         self.text += chunk
+        if self.live is None:  # not animating (piped output, screenshots): render once at the end
+            if final:
+                for i, ln in enumerate(self._lines(self.text)):
+                    self.console.print(self._prefix(i) + Text.from_ansi(ln))
+            return
         now = time.monotonic()
         if not final and now - self._last_render < 0.08:
             return
@@ -111,9 +116,11 @@ class _MarkdownStream:
 class TerminalUI(UI):
     headless = False
 
-    def __init__(self, console: Console | None = None, show_reasoning: bool = False):
+    def __init__(self, console: Console | None = None, show_reasoning: bool = False, animate: bool | None = None):
         self.console = console or Console(highlight=False)
         self.show_reasoning = show_reasoning
+        # spinners/live markdown only on a real terminal; plain output when piped or recorded
+        self.animate = self.console.is_terminal if animate is None else animate
         self._live: Live | None = None
         self._stream: _MarkdownStream | None = None
         self._phase = ""
@@ -153,6 +160,8 @@ class TerminalUI(UI):
         self._stop_live()
         self._phase = phase
         self._t0 = time.monotonic()
+        if not self.animate:
+            return
         self._live = Live(self._StatsRenderable(self), console=self.console, refresh_per_second=8, transient=True)
         self._live.start()
 
@@ -187,7 +196,7 @@ class TerminalUI(UI):
         if self._stream is None:
             if not chunk.strip():
                 return
-            if self._live is None:
+            if self._live is None and self.animate:
                 self._start_live("writing")
             self._phase = "writing"
             self._first_token = time.monotonic()
@@ -289,21 +298,23 @@ class TerminalUI(UI):
     def ask_permission(self, req: PermissionRequest) -> PermissionReply:
         t = theme()
         self._stop_live()
+        heading = {"Bash": "Run command", "Edit": "Edit file", "Write": "Write file", "WebFetch": "Fetch web page",
+                   "WebSearch": "Search the web"}.get(req.tool_name, req.tool_name)
         body = Text()
-        body.append(req.title + "\n", style="bold")
+        detail = (req.detail or "").rstrip()
+        target = req.title[len(req.tool_name) + 1:-1] if req.title.startswith(req.tool_name + "(") else req.title
+        if req.tool_name in ("Edit", "Write") and ("@@" in detail or detail.startswith("new file")):
+            body.append(target + "\n\n", style="bold")
+            body.append_text(render_diff(detail, limit=60))
+        else:
+            shown = detail or target  # show the command / URL once, not twice
+            body.append("\n".join(shown.splitlines()[:30]) + "\n", style=f"bold {t.tool}")
         if req.reason:
-            body.append(f"{req.reason}\n", style=t.dim)
-        detail = req.detail or ""
-        if detail:
-            body.append("\n")
-            if req.tool_name in ("Edit", "Write") and ("@@" in detail or detail.startswith("new file")):
-                body.append_text(render_diff(detail, limit=60))
-            else:
-                body.append("\n".join(detail.splitlines()[:30]) + "\n", style=t.tool)
-        self.console.print(Panel(body, title=f"[bold {t.accent}]Allow this {req.kind} action?[/]",
+            body.append(f"\n{req.reason[0].upper() + req.reason[1:]}", style=t.dim)
+        self.console.print(Panel(body, title=f"[bold {t.accent}]{heading}[/]", title_align="left",
                                  border_style=t.accent, expand=False, padding=(0, 1)))
         if self.prompter is not None:
-            picked = self.prompter.select("Allow?", [
+            picked = self.prompter.select("Do you want to proceed?", [
                 ("yes", "Yes"),
                 ("always", f"Yes, and don't ask again this session for {req.suggested_rule}"),
                 ("project", "Yes, always in this project"),
