@@ -15,6 +15,7 @@ Robustness features for open-weights models:
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 from collections.abc import Callable
@@ -50,6 +51,54 @@ class TurnResult:
     error: str | None = None
     signals: list[dict] = field(default_factory=list)
     duration: float = 0.0
+
+
+STOCK_OPENER = re.compile(
+    r"^\s*(?:(?:you(?:'re| are) (?:absolutely|completely|totally|so|entirely) (?:right|correct)|"
+    r"(?:great|excellent|good|fantastic) (?:question|catch|point|idea|call)|absolutely right|"
+    r"i apologi[sz]e for (?:the|any) confusion|sorry for (?:the|any) confusion)[.!,:;]*\s*)+",
+    re.IGNORECASE)
+
+
+def strip_stock_opener(text: str) -> str:
+    """Drop flattering / reflexive openers from the start of an answer; the rest stays as written."""
+    stripped = STOCK_OPENER.sub("", text, count=1)
+    if stripped != text and stripped[:1].islower():
+        stripped = stripped[:1].upper() + stripped[1:]
+    return stripped
+
+
+class _OpenerFilter:
+    """Hold back the first words of a streamed answer until it is clear whether they are a stock opener."""
+
+    WINDOW = 90
+
+    def __init__(self, sink: Callable[[str], None], on_strip: Callable[[], None] | None = None):
+        self.sink = sink
+        self.on_strip = on_strip
+        self.buf = ""
+        self.decided = False
+
+    def feed(self, chunk: str) -> None:
+        if self.decided:
+            self.sink(chunk)
+            return
+        self.buf += chunk
+        if len(self.buf) >= self.WINDOW or "\n" in self.buf.strip():
+            self._decide()
+
+    def _decide(self) -> None:
+        self.decided = True
+        text = strip_stock_opener(self.buf)
+        if text != self.buf and self.on_strip:
+            self.on_strip()
+        self.buf = ""
+        if text:
+            self.sink(text)
+
+    def flush(self) -> None:
+        if not self.decided:
+            self._decide()
 
 
 class _TagHider:
@@ -453,7 +502,9 @@ class Agent:
             max_tokens = self.context.completion_budget(self.messages, tools)
             self.ui.assistant_start()
             hider = _TagHider(self.ui.text) if self.text_mode else None
-            on_text = hider.feed if hider else self.ui.text
+            opener = _OpenerFilter(hider.feed if hider else self.ui.text,
+                                   lambda: self._emit("stock_opener_removed"))
+            on_text = opener.feed
             on_reasoning = self.ui.reasoning
             meter = None
             if self.events is not None:
@@ -481,8 +532,11 @@ class Agent:
             try:
                 resp = interruptible_call(self.llm.chat, self.messages, tools=tools, on_text=on_text,
                                           on_reasoning=on_reasoning, max_tokens=max_tokens)
+                opener.flush()
                 if hider:
                     hider.flush()
+                if resp.content:
+                    resp.content = strip_stock_opener(resp.content)
                 if meter is not None:
                     meter.flush()
                     self._emit("llm_end", prompt_tokens=int(resp.usage.get("prompt_tokens") or 0),

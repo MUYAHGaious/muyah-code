@@ -11,7 +11,8 @@ TASKS = Path(__file__).resolve().parent.parent / "muyah_code" / "evals" / "tasks
 
 def test_bundled_tasks_are_discoverable():
     names = [t.name for t in discover_tasks(TASKS)]
-    assert names == ["add-cli-flag", "fix-off-by-one", "implement-function", "keyerror-traceback", "rename-refactor"]
+    assert names == ["add-cli-flag", "contradictory-instructions", "false-bug-report", "false-premise",
+                     "fix-off-by-one", "implement-function", "keyerror-traceback", "rename-refactor"]
 
 
 def test_eval_passes_when_the_model_fixes_the_bug(monkeypatch):

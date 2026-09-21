@@ -4,6 +4,7 @@ A task is a directory:
     evals/tasks/<name>/task.json   {"prompt": "...", "max_steps": 30, "timeout": 600}
     evals/tasks/<name>/fixture/    files copied into a fresh temp workspace
     evals/tasks/<name>/check.py    run in the workspace after the agent finishes; exit 0 = pass
+                                   (the final answer is in .muyah/answer.md)
 
 Results are appended to ~/.muyah/evals.jsonl so you can see whether prompt/skill/lesson changes
 actually make the agent better on YOUR model.
@@ -65,6 +66,8 @@ def run_task(task_dir: Path, overrides: dict, learn: bool, verbose: bool) -> Tas
             result = app.run_prompt(spec["prompt"])
         finally:
             app.shutdown()
+        # checks can read the final answer too (e.g. "did it push back on a false premise?")
+        (ws / ".muyah" / "answer.md").write_text(result.text or "", encoding="utf-8")
         duration = time.time() - start
         check = task_dir / "check.py"
         try:
@@ -74,6 +77,8 @@ def run_task(task_dir: Path, overrides: dict, learn: bool, verbose: bool) -> Tas
             detail = (proc.stdout + proc.stderr).strip()[-400:]
         except subprocess.TimeoutExpired:
             passed, detail = False, "check timed out"
+        if result.status == "error" and result.error:  # the model call failed: say why, not just "check failed"
+            detail = f"model error: {result.error[:300]}"
         return TaskResult(task_dir.name, passed, result.status, result.steps, result.tool_calls, round(duration, 1),
                           detail)
 

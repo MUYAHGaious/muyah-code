@@ -37,6 +37,16 @@ the user explicitly asked. Never commit or push unless asked. Never expose secre
 8. Communicate briefly. Lead with the answer or result. Use short markdown. Reference code as path:line. \
 When you finish, state what changed and how you verified it, in a few lines. Report failures honestly."""
 
+HONESTY = """\
+# Be honest, not agreeable
+- Treat claims about code (yours and the user's) as hypotheses. Before agreeing that something is a bug, that a \
+change is correct, or that something works, check the code or run it.
+- If the evidence contradicts the user, say so plainly and show the evidence. If a request contradicts itself or \
+an earlier instruction, or a better approach exists, point it out in one sentence, then continue as asked.
+- Change your position only when new evidence supports it, not because the user pushed back.
+- No flattery or stock openers ("You're absolutely right", "Great question"), and no reflexive apologies: state \
+what is true and what you will do."""
+
 TOOL_TIPS = """\
 # Tool tips
 - Call several independent read-only tools in one reply to save round trips.
@@ -103,7 +113,7 @@ def environment_block(inp: PromptInputs) -> str:
 
 
 def build_system_prompt(inp: PromptInputs) -> str:
-    parts = [IDENTITY, HABITS, TOOL_TIPS]
+    parts = [IDENTITY, HABITS, HONESTY, TOOL_TIPS]
     if inp.text_protocol:
         parts.append(inp.text_protocol)
     parts.append(environment_block(inp))
@@ -124,11 +134,17 @@ def build_system_prompt(inp: PromptInputs) -> str:
     return "\n\n".join(parts)
 
 
-def turn_context_block(lessons: str) -> str:
+PUSHBACK_NOTE = ("<note>The user is disagreeing with your previous answer. Re-examine the evidence (re-read the "
+                 "code or re-run the check) before you reply. Change your position only if the evidence supports "
+                 "it; if it does not, say so plainly and show why.</note>")
+
+
+def turn_context_block(lessons: str, pushback: bool = False) -> str:
     """Per-turn additions appended to the user message (keeps the system prompt cache-stable)."""
-    if not lessons:
-        return ""
-    return (
-        "<lessons>\nLessons MUYAH-CODE learned in past sessions that look relevant to this request. "
-        "Apply them when they fit:\n" + lessons + "\n</lessons>"
-    )
+    parts = []
+    if pushback:
+        parts.append(PUSHBACK_NOTE)
+    if lessons:
+        parts.append("<lessons>\nLessons MUYAH-CODE learned in past sessions that look relevant to this request. "
+                     "Apply them when they fit:\n" + lessons + "\n</lessons>")
+    return "\n".join(parts)

@@ -5,6 +5,13 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **Honest, not agreeable.**
+  - A short "check the premise" section in the system prompt: verify claims before agreeing, say so when the evidence contradicts the user, point out contradictory requests, don't flatter.
+  - When you push back on an answer, the model is asked to re-examine the evidence rather than cave.
+  - Stock openers ("You're absolutely right!", "Great question") are removed from answers as they stream.
+  - Three new eval tasks test this: a false bug report, contradictory instructions and a false premise. Checks can now read the final answer, and the eval table shows the model's error when a request fails.
+- **Big pastes no longer break the input.** A long paste shows as `[Pasted text #1 +245 lines]`, like Claude Code, and the full text is sent. The input box never grows taller than the terminal; it scrolls instead (this fixes "Window too small").
+- **Talk instead of typing:** Ctrl+Space (or `/mic`) opens Windows voice typing, the same as Win+H: free, no key, and it types into the prompt, or into the queue while the agent works.
 - **MUYAH-CODE never deletes files.** In every mode, bypass included, and whatever your allow rules say, delete commands are never run. Instead you get a panel with the exact command and what it would remove (paths resolved), and the command is copied to your clipboard. The model is told it wasn't run and not to try another way.
   - Detection covers each part of chained commands: `rm`, `rmdir`, `rd`, `del`, `erase`, `unlink`, `shred`, PowerShell's `Remove-Item`/`ri`, `git clean`, `git rm`, `find -delete`, `xargs rm`, `cmd /c …`/`bash -c …`, and Python/Node one-liners (`os.remove`, `shutil.rmtree`, `fs.rmSync`…).
   - Why: agents have wiped whole drives, including one on Windows with Git Bash in September 2026.

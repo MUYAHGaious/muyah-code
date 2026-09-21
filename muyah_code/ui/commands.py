@@ -138,6 +138,7 @@ class CommandRouter:
             Command("config", "Show effective configuration", self.config),
             Command("status", "Model, endpoint, context, mode and what's loaded", self.status),
             Command("doctor", "Check the setup", self.doctor),
+            Command("mic", "Talk instead of typing (Windows voice typing; also Ctrl+Space)", self.mic),
             Command("viz", "Watch the agent work, live, in your browser ('/viz stop' to end)", self.viz, "[stop]"),
             Command("theme", "Switch color theme (saved): teal | muyah | ocean | forest | mono | light", self.theme,
                     "[name]"),
@@ -535,6 +536,12 @@ class CommandRouter:
         from muyah_code.doctor import run_doctor
 
         run_doctor(self.app.cfg, self.console, deep=arg == "--deep")
+
+    def mic(self, arg):
+        from muyah_code.ui.voice import start_dictation
+
+        started, message = start_dictation()
+        self.console.print(f"[dim]{escape(message)}[/]" if started else f"[yellow]{escape(message)}[/]")
 
     def viz(self, arg):
         import webbrowser

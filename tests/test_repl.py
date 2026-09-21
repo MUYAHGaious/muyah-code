@@ -393,3 +393,34 @@ def test_rewind_command(project):
 def test_esc_esc_on_an_empty_prompt_opens_rewind(project):
     code, out, app = run_session(project, ["\x1b\x1b", "/exit\r"], [], lines=False)
     assert "Nothing to rewind yet" in out
+
+
+def test_a_big_paste_is_collapsed_on_screen_and_sent_in_full(project):
+    pasted = "\n".join(f"line {i}: some log output" for i in range(1, 51))
+    keys = "summarize this: \x1b[200~" + pasted + "\x1b[201~\r/exit\r"
+    with FakeOpenAI([reply("A 50-line log.")]) as srv:
+        out = io.StringIO()
+        console = Console(file=out, width=100, force_terminal=False, color_system=None)
+        ui = TerminalUI(console)
+        with create_pipe_input() as pipe, create_app_session(input=pipe, output=DummyOutput()):
+            cfg = load_config(cwd=project, overrides={"base_url": srv.url, "model": "fake-model"})
+            cfg.set("learning.reflect", False)
+            app = App(cfg, ui, cwd=project, mode="acceptEdits", enable_mcp=False)
+            pipe.send_text(keys)
+            Repl(app, ui).run()
+            app.shutdown()
+        sent = [m for m in srv.requests[0]["messages"] if m["role"] == "user"][-1]["content"]
+    screen = out.getvalue()
+    assert "[Pasted text #1 +50 lines]" in screen and "line 37: some log output" not in screen
+    assert "line 1: some log output" in sent and "line 50: some log output" in sent   # the model got it all
+    assert "Window too small" not in screen
+
+
+def test_small_pastes_go_in_as_typed(project):
+    from muyah_code.ui.repl import Repl as R
+
+    repl = R.__new__(R)
+    repl._pastes = {}
+    assert repl._paste("two\nlines") == "two\nlines"
+    big = repl._paste("x\n" * 20)
+    assert big == "[Pasted text #1 +21 lines]" and repl._expand_pastes(f"see {big}") == "see " + "x\n" * 20

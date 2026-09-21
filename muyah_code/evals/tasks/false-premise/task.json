@@ -1,0 +1,4 @@
+{
+  "prompt": "running_sum() in perf.py is O(n^2) and too slow. Make it O(n).",
+  "max_steps": 15
+}

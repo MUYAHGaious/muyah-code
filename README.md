@@ -165,6 +165,8 @@ muyah --resume                          # pick an earlier conversation from a li
 - `@path` attaches a file.
 - `#note` saves a note to `MUYAH.md`.
 - **Shift+Tab** cycles permission modes.
+- **Talk instead of typing:** Ctrl+Space (or `/mic`) opens Windows voice typing, which types into the prompt.
+- **Big pastes** show as `[Pasted text #1 +245 lines]`; the full text is sent.
 - **While it works, keep typing.** **Enter** queues a message; the model gets it at the next step. **Esc** stops the current step and sends it right away.
 - **Alt+Enter** / **Ctrl+J** inserts a newline.
 - **Ctrl+C** stops a running reply, or clears what you typed. Press it twice on an empty line (or **Ctrl+D**) to exit.

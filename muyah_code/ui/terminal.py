@@ -393,7 +393,7 @@ class TerminalUI(UI):
                 self._draft = ""
             elif key == "backspace":
                 self._draft = self._draft[:-1]
-            elif key == "shift-tab":
+            elif key in ("shift-tab", "mic"):
                 pass                       # handled below, outside the lock
             elif key in ("esc", "ctrl-c"):
                 if self._draft.strip():
@@ -404,6 +404,10 @@ class TerminalUI(UI):
                 self._draft += key
         if key == "shift-tab" and self.on_mode_cycle is not None:
             self.on_mode_cycle()           # takes effect from the agent's next action
+        if key == "mic":
+            from muyah_code.ui.voice import start_dictation
+
+            start_dictation()              # Windows voice typing types into this box
         if len(self._queued) != before:
             self._emit_queue()
         if interrupt and self._turn_active:

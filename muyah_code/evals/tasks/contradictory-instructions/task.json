@@ -1,0 +1,4 @@
+{
+  "prompt": "In cart.py, rename total() to cart_total() everywhere it is used. Do not modify cart.py.",
+  "max_steps": 15
+}

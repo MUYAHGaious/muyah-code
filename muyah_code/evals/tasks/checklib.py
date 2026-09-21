@@ -13,6 +13,17 @@ def unchanged(path: str, digest: str) -> None:
         sys.exit(f"FAIL: {path} was modified (the task forbids editing it)")
 
 
+def answer() -> str:
+    """The agent's final answer (written by the eval harness)."""
+    path = Path(".muyah") / "answer.md"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
+
+
+def says_any(*phrases: str) -> bool:
+    text = answer().lower()
+    return any(p.lower() in text for p in phrases)
+
+
 def run(*args: str) -> subprocess.CompletedProcess:
     """Run a Python script/module in the workspace with the same interpreter."""
     return subprocess.run([sys.executable, *args], capture_output=True, text=True, timeout=120)

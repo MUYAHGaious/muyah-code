@@ -14,6 +14,7 @@ from prompt_toolkit.application.current import get_app
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.keys import Keys
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.styles import Style
 from rich.markup import escape
@@ -26,6 +27,7 @@ from muyah_code.ui.commands import EXIT, CommandRouter
 from muyah_code.ui.select import Prompter
 from muyah_code.ui.terminal import TerminalUI
 from muyah_code.ui.theme import theme
+from muyah_code.ui.voice import windows_dictation_available
 
 MODE_LABEL = {
     "plan": ("⏸ plan", "read-only: explores and proposes a plan"),
@@ -41,6 +43,8 @@ RESIZE_POLL = 0.1     # how often the prompt checks the terminal width
 RESIZE_SETTLE = 0.3   # redraw once the width has stayed the same this long (user stopped dragging)
 _RESIZED = object()   # prompt result meaning "the terminal was resized; redraw and ask again"
 MENU_ROWS = 8      # rows the "/" and "@" menus may use
+PASTE_LINES = 8    # a paste longer than this (or PASTE_CHARS) shows as "[Pasted text #1 +245 lines]"
+PASTE_CHARS = 1200
 
 
 class _CompactPromptSession(PromptSession):
@@ -50,7 +54,12 @@ class _CompactPromptSession(PromptSession):
 
     def _get_default_buffer_control_height(self) -> Dimension:
         buff = self.default_buffer
-        lines = max(1, buff.document.line_count)
+        try:
+            rows = get_app().output.get_size().rows
+        except Exception:
+            rows = 24
+        # never taller than the terminal: prompt_toolkit would show "Window too small"; the box scrolls instead
+        lines = max(1, min(buff.document.line_count, max(3, rows - 6)))
         if not get_app().is_done and buff.complete_state is not None:
             rows = min(MENU_ROWS, len(buff.complete_state.completions)) + 1
             return Dimension.exact(lines + rows)
@@ -108,12 +117,27 @@ class Repl:
         self._last_interrupt = 0.0
         self._layout_width: int | None = None   # width the transcript was last laid out at
         self._resume_text = ""                  # typed text to restore after a resize redraw
+        self._pastes: dict[str, str] = {}       # "[Pasted text #1 +245 lines]" -> the text (sent on Enter)
         kb = KeyBindings()
 
         @kb.add("s-tab")
         def _(event):
             self.app.set_mode(self.app.permissions.cycle_mode())
             event.app.invalidate()
+
+        @kb.add(Keys.BracketedPaste)
+        def _(event):
+            event.current_buffer.insert_text(self._paste(event.data))
+
+        @kb.add("c-space")
+        def _(event):
+            from prompt_toolkit.application import run_in_terminal
+
+            from muyah_code.ui.voice import start_dictation
+
+            started, message = start_dictation()
+            if not started:
+                run_in_terminal(lambda: self.console.print(f"[dim]{escape(message)}[/]"))
 
         @kb.add("escape", "escape")
         def _(event):
@@ -177,6 +201,8 @@ class Repl:
         label, what = MODE_LABEL.get(self.app.permissions.mode, (self.app.permissions.mode, ""))
         style = f"fg:{self._mode_color()} bold"
         status = [("", "  "), (style, label), ("fg:ansibrightblack", f" · {what} (shift+tab)")]
+        if windows_dictation_available():
+            status.append(("fg:ansibrightblack", " · ctrl+space: speak"))
         status.append(("fg:ansibrightblack", f" · ctx {self._ctx_pct()}%"))
         viz = getattr(self.app, "viz", None)
         if viz is not None and viz.running:
@@ -291,9 +317,25 @@ class Repl:
                 return line
             # the input area is erased when you press Enter; your message is shown as a highlighted block
             if line.strip():
-                self.console.print(blocks.user_prompt(line))
+                self.console.print(blocks.user_prompt(line))   # big pastes stay collapsed on screen
                 self.ui.mark_prompt()
-            return line
+            return self._expand_pastes(line)
+
+    def _paste(self, data: str) -> str:
+        """A big paste goes into the prompt as a short placeholder (like Claude Code); the real text is sent."""
+        text = data.replace("\r\n", "\n").replace("\r", "\n")
+        lines = text.count("\n") + 1
+        if lines <= PASTE_LINES and len(text) <= PASTE_CHARS:
+            return text
+        key = f"[Pasted text #{len(self._pastes) + 1} +{lines} lines]"
+        self._pastes[key] = text
+        return key
+
+    def _expand_pastes(self, line: str) -> str:
+        for key, text in self._pastes.items():
+            line = line.replace(key, text)
+        self._pastes.clear()
+        return line
 
     def offer_viz(self) -> None:
         """At startup: open the live view? Asked until you pick Always or Never (setting viz.autostart)."""

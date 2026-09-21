@@ -153,6 +153,7 @@ class _WindowsConsole:
 
     KEY_EVENT = 0x0001
     SHIFT = 0x0010
+    CTRL = 0x0004 | 0x0008   # left / right ctrl
     VK = {0x09: "tab", 0x0D: "enter", 0x08: "backspace", 0x1B: "esc"}
 
     def __init__(self):
@@ -190,6 +191,8 @@ class _WindowsConsole:
         if record.EventType != self.KEY_EVENT or not record.Event.KeyEvent.bKeyDown:
             return None                  # key releases, mouse, focus and resize events
         key = record.Event.KeyEvent
+        if key.wVirtualKeyCode == 0x20 and key.dwControlKeyState & self.CTRL:
+            return "mic"
         special = self.VK.get(key.wVirtualKeyCode)
         if special == "tab":
             return "shift-tab" if key.dwControlKeyState & self.SHIFT else None

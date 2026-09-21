@@ -1,0 +1,4 @@
+{
+  "prompt": "add() in calc.py gives the wrong answer for negative numbers: add(-2, -3) should be -5. Fix it.",
+  "max_steps": 15
+}
