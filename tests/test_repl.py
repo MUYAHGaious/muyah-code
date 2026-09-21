@@ -58,7 +58,7 @@ def test_repl_session_end_to_end(project):
 
 def test_header_is_compact(project):
     code, out, app = run_session(project, ["/exit"], [])
-    header = out.split("Bye.")[0].strip().splitlines()
+    header = out.split("Bye.")[0].split("› ")[0].strip().splitlines()
     assert len(header) == 3  # mascot beside: name + version, model + provider, folder - nothing else
     assert "MUYAH-CODE v" in header[0] and "fake-model" in header[1] and header[2].rstrip().endswith("proj")
     assert "███╗" not in out  # the old big banner is gone
@@ -69,7 +69,7 @@ def test_header_never_wraps_on_long_paths(tmp_path):
     deep.mkdir(parents=True)
     (deep / ".muyah").mkdir()
     code, out, app = run_session(deep, ["/exit"], [])
-    header = out.split("Bye.")[0].strip().splitlines()
+    header = out.split("Bye.")[0].split("› ")[0].strip().splitlines()
     assert len(header) == 3 and all(len(line) <= 100 for line in header)
     assert header[2].rstrip().endswith("my-project")  # the part of the path that matters is kept
 

@@ -26,14 +26,17 @@ from rich.panel import Panel
 from rich.spinner import Spinner
 from rich.text import Text
 
+from pathlib import Path
+
 from muyah_code.tools.base import ToolResult
+from muyah_code.ui import blocks
 from muyah_code.ui.base import UI, PermissionReply, PermissionRequest
 from muyah_code.ui.theme import theme
 
 MAX_DIFF_LINES = 40
 LIVE_TAIL_LINES = 8
 HUNK_RE = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
-LONG_TOOLS = ("Bash", "Agent", "WebFetch", "WebSearch", "BashOutput")
+PROSE_WIDTH = 110  # answers wrap at this width even on very wide terminals (readable line length)
 
 
 def render_diff(diff: str, limit: int = MAX_DIFF_LINES) -> Text:
@@ -124,12 +127,12 @@ class PrefixedMarkdown:
         self.text = text
 
     def __rich_console__(self, console, options):
-        width = max(20, options.max_width - 2)
+        width = max(20, min(options.max_width - 2, PROSE_WIDTH))
         lines = console.render_lines(Markdown(self.text, code_theme=theme().code_theme),
                                      options.update(width=width), pad=False)
         while lines and not "".join(s.text for s in lines[-1]).strip():
             lines.pop()
-        bullet = Segment("● ", Style.parse(theme().accent))
+        bullet = Segment("● ", Style.parse(f"bold {theme().accent}"))
         for i, line in enumerate(lines):
             yield bullet if i == 0 else Segment("  ")
             yield from line
@@ -148,7 +151,7 @@ class _MarkdownStream:
         self._last_render = 0.0
 
     def _lines(self, text: str) -> list[str]:
-        width = max(20, self.console.width - 2)
+        width = max(20, min(self.console.width - 2, PROSE_WIDTH))
         buf = io.StringIO()
         c = Console(file=buf, force_terminal=True, width=width, color_system=self.console.color_system or "standard",
                     highlight=False)
@@ -159,7 +162,7 @@ class _MarkdownStream:
         return lines
 
     def _prefix(self, i: int) -> Text:
-        return Text("● ", style=theme().accent) if i == 0 else Text("  ")
+        return Text("● ", style=f"bold {theme().accent}") if i == 0 else Text("  ")
 
     def update(self, chunk: str, final: bool = False) -> None:
         self.text += chunk
@@ -205,12 +208,31 @@ class TerminalUI(UI):
         self._reasoning_chars = 0
         self.context_pct = None  # set by the REPL so the stats line can show context usage
         self.prompter = None     # arrow-key menus; set by the REPL (ui.select.Prompter)
+        self.cwd: Path | None = None  # paths are shown relative to this
+        self._last = None        # what was printed last: "inline" | "block" | None (spacing between blocks)
+        self._tool: tuple[blocks.ToolTitle, float] | None = None   # the tool running now (live area)
+        self._sub_current = ""   # a sub-agent's current step (shown under its Agent line while it runs)
+        self._sub_steps = 0
+        self._sub_errors = 0
 
     # ------------------------------------------------------------------ live status
 
     def _stats_line(self):
         t = theme()
         elapsed = time.monotonic() - self._t0
+        if self._tool is not None:
+            tt, _ = self._tool
+            line = blocks.header(tt, True, self.cwd, self.console.width - 22)
+            line.append(f"  {elapsed:.0f}s", style=t.dim)
+            line.append("  (ctrl+c to interrupt)", style=t.dim)
+            spin = Spinner("dots", text=line, style=t.accent)
+            if tt.name == "Agent" and self._sub_current:
+                step = Text("  ⎿ ", style=t.dim)
+                step.append(f"{self._sub_current}", style=t.dim)
+                step.append(f"  · {self._sub_steps} step{'s' if self._sub_steps != 1 else ''}", style=t.dim)
+                step.no_wrap, step.overflow = True, "ellipsis"
+                return Group(spin, step)
+            return spin
         parts = [f"{elapsed:.0f}s"]
         if self._phase == "thinking":
             label = "Thinking"
@@ -255,6 +277,7 @@ class TerminalUI(UI):
     # ------------------------------------------------------------------ assistant text
 
     def assistant_start(self) -> None:
+        self._tool = None
         self._chars = 0
         self._reasoning_chars = 0
         self._stream = None
@@ -275,6 +298,7 @@ class TerminalUI(UI):
                 self._start_live("writing")
             self._phase = "writing"
             self._first_token = time.monotonic()
+            self._space("block")
             self._stream = _MarkdownStream(self.console, self._live, self._stats_line)
             chunk = chunk.lstrip("\n")
         self._chars += len(chunk)
@@ -285,74 +309,156 @@ class TerminalUI(UI):
             self._stream.update("", final=True)
             self._stream = None
             self._stop_live()
-            self.console.print()
         else:
             self._stop_live()
+
+    # ------------------------------------------------------------------ spacing
+
+    def _space(self, kind: str) -> None:
+        """One blank line between blocks; quick one-line lookups stack without gaps."""
+        if self._last is not None and not (kind == "inline" and self._last == "inline"):
+            self._out(Text(""))
+        self._last = kind
+
+    def _out(self, renderable) -> None:
+        if self._live is not None:
+            self._live.console.print(renderable)
+        else:
+            self.console.print(renderable)
+
+    def mark_prompt(self) -> None:
+        """The REPL printed your prompt: the next block starts after one blank line."""
+        self._last = "block"
 
     # ------------------------------------------------------------------ tools
 
     def tool_start(self, title: str) -> None:
-        t = theme()
+        tt = blocks.parse_title(title)
+        if tt.label and self._tool is not None and self._tool[0].name == "Agent":
+            # a sub-agent's own step: shown live under its Agent line, not printed one by one
+            self._sub_current = blocks.header(tt, True, self.cwd, 200).plain
+            self._sub_steps += 1
+            return
         self._stop_live()
-        name, _, rest = title.partition("(")
-        line = Text("● ", style=t.tool)
-        line.append(name, style="bold")
-        if rest:
-            line.append("(" + rest, style=t.dim)
-        self.console.print(line)
-        base = name.split("] ")[-1]
-        if base in LONG_TOOLS or base.startswith("mcp__"):
-            self._start_live("Running " + base)
+        self._tool = (tt, time.monotonic())
+        if tt.name == "Agent":
+            self._sub_current, self._sub_steps, self._sub_errors = "", 0, 0
+        self._start_live("tool")
 
     def tool_end(self, title: str, result: ToolResult) -> None:
-        t = theme()
-        elapsed = time.monotonic() - self._t0 if self._live is not None else 0
+        tt = blocks.parse_title(title)
+        if tt.label and self._tool is not None and self._tool[0].name == "Agent":
+            self._sub_errors += 1 if result.is_error else 0
+            return
+        started = self._tool[1] if self._tool is not None else time.monotonic()
+        elapsed = time.monotonic() - started
+        self._tool = None
         self._stop_live()
-        summary = result.summary or ("error" if result.is_error else "done")
-        if elapsed >= 2:
-            summary += f" · {elapsed:.0f}s"
-        self.console.print(Text("  ⎿  ", style=t.dim) + Text(summary, style=t.err if result.is_error else t.dim))
-        base = title.split("] ")[-1].split("(")[0]
-        if result.is_error and result.content:
-            lines = result.content.strip().splitlines()
-            shown = lines[-6:] if base == "Bash" else lines[:6]
-            self.console.print(Text("\n".join("     " + ln[:200] for ln in shown), style=t.err))
-        elif result.display:
-            self.console.print(render_diff(result.display), end="")
-        elif base == "Bash" and result.content and result.content != "(no output)":
-            lines = result.content.rstrip().splitlines()
-            tail = lines[-3:]
-            if len(lines) > 3:
-                self.console.print(Text(f"     … {len(lines) - 3} more lines", style=t.dim))
-            self.console.print(Text("\n".join("     " + ln[:160] for ln in tail), style=t.dim))
+        if tt.name in ("TodoWrite", "AskUser") and not result.is_error:
+            return  # the plan / the question already has its own block
+        self._print_tool(tt, result, elapsed)
+
+    def _print_tool(self, tt: blocks.ToolTitle, result: ToolResult, elapsed: float) -> None:
+        t = theme()
+        ok = not result.is_error
+        head = blocks.header(tt, False, self.cwd, self.console.width - 3)
+        glyph = blocks.glyph_for(tt, ok)
+        if tt.label:
+            head = Text(f"[{tt.label}] ", style=t.dim) + head
+        children: list = []
+        kind = tt.kind
+        took = f" · {elapsed:.1f}s" if elapsed >= 1 else ""
+        if not ok:
+            lines = (result.content or result.summary or "failed").strip().splitlines()
+            if lines and re.fullmatch(r"\[exit code -?\d+\]", lines[-1].strip()):
+                lines.pop()  # shown below as "exit N"
+            shown = lines[-6:] if tt.name == "Bash" else lines[:6]
+            children.append(Text("\n".join(ln[:220] for ln in shown), style=t.err))
+            if tt.name == "Bash":
+                code = result.meta.get("exit_code")
+                if code is not None:
+                    children.append(Text(f"exit {code}{took}", style=t.err))
+            self._space("block")
+            self._out(blocks.gutter(glyph, head, children))
+            return
+        if kind == "explore":
+            summary = result.summary or ""
+            verb = blocks.KINDS.get(tt.name, ("", "", "", ""))[3]
+            if verb and summary.lower().startswith(verb.lower() + " "):
+                summary = summary[len(verb) + 1:]   # "Read · Read 3 lines" -> "Read · 3 lines"
+            line = head.copy()
+            if summary:
+                line.append(f"  · {summary}", style=t.dim)
+            line.truncate(max(20, self.console.width - 3), overflow="ellipsis")
+            self._space("inline")
+            self._out(blocks.gutter(glyph, line))
+            return
+        if kind == "shell":
+            if took:
+                head.append(took, style=t.dim)
+            children.append(blocks.preview(result.content if result.content != "(no output)" else ""))
+        elif kind == "edit":
+            added, removed = blocks.diff_counts(result.display)
+            if added or removed:
+                head.append("  ")
+                head.append(f"+{added}", style=t.ok)
+                head.append(" ")
+                head.append(f"-{removed}", style=t.err)
+            if result.display:
+                diff = render_diff(result.display)
+                diff.rstrip()
+                children.append(diff)
+        elif kind == "agent":
+            steps = f"{self._sub_steps} step{'s' if self._sub_steps != 1 else ''}"
+            errs = f" · {self._sub_errors} failed" if self._sub_errors else ""
+            children.append(Text(f"✓ Done · {steps}{errs}{took}", style=t.dim))
+            self._sub_current, self._sub_steps, self._sub_errors = "", 0, 0
+        elif kind == "mcp":
+            children.append(blocks.preview(result.content, head=1, tail=3))
+        else:
+            if result.summary:
+                children.append(Text(result.summary + took, style=t.dim))
+        self._space("block")
+        self._out(blocks.gutter(glyph, head, children))
 
     def on_todos(self, todos: list[dict]) -> None:
         t = theme()
         self._stop_live()
-        for td in todos:
+        done = sum(1 for td in todos if td.get("status") == "completed")
+        head = Text("Updated plan", style="bold")
+        head.append(f"  {done}/{len(todos)} done", style=t.dim)
+        items = Text()
+        for i, td in enumerate(todos):
+            if i:
+                items.append("\n")
             if td["status"] == "completed":
-                self.console.print(Text("     ✔ " + td["content"], style=f"{t.dim} strike"))
+                items.append("✔ " + td["content"], style=f"{t.dim} strike")
             elif td["status"] == "in_progress":
-                self.console.print(Text("     ▶ " + td.get("activeForm", td["content"]), style=f"bold {t.accent}"))
+                items.append("◼ " + td.get("activeForm", td["content"]), style=f"bold {t.accent}")
             else:
-                self.console.print(Text("     ○ " + td["content"]))
+                items.append("□ " + td["content"])
+        self._space("block")
+        self._out(blocks.gutter(Text("▣", style=f"bold {t.accent}"), head, [items] if todos else []))
 
     # ------------------------------------------------------------------ messages
 
     def info(self, msg: str) -> None:
-        self._print_status(Text(msg, style=theme().dim))
+        self._space("inline")
+        self._print_status(blocks.gutter(Text(" "), Text(msg, style=theme().dim)))
 
     def warn(self, msg: str) -> None:
-        self._print_status(Text("⚠ " + msg, style=theme().warn))
+        self._space("block")
+        self._print_status(blocks.gutter(Text("⚠", style=f"bold {theme().warn}"), Text(msg, style=theme().warn)))
 
     def error(self, msg: str) -> None:
-        self._print_status(Text("✗ " + msg, style=f"bold {theme().err}"))
+        self._space("block")
+        self._print_status(blocks.gutter(Text("✗", style=f"bold {theme().err}"), Text(msg, style=theme().err)))
 
-    def _print_status(self, text: Text) -> None:
+    def _print_status(self, renderable) -> None:
         if self._live is not None:
-            self._live.console.print(text)
+            self._live.console.print(renderable)
         else:
-            self.console.print(text)
+            self.console.print(renderable)
 
     def rerender(self) -> bool:
         """Redraw the whole conversation at the current terminal width (after a resize)."""
@@ -366,7 +472,9 @@ class TerminalUI(UI):
         t = theme()
         ok = status == "ok"
         mark = Text("✓ " if ok else "• ", style=t.ok if ok else t.warn)
-        parts = [f"{seconds:.0f}s"]
+        self._space("block")
+        self._last = None
+        parts = [f"Worked {seconds:.0f}s" if ok else f"{seconds:.0f}s"]
         if tool_calls:
             parts.append(f"{tool_calls} tool call{'s' if tool_calls != 1 else ''}")
         if files_changed:
@@ -394,8 +502,9 @@ class TerminalUI(UI):
             body.append("\n".join(shown.splitlines()[:30]) + "\n", style=f"bold {t.tool}")
         if req.reason:
             body.append(f"\n{req.reason[0].upper() + req.reason[1:]}", style=t.dim)
-        self.console.print(Panel(body, title=f"[bold {t.accent}]{heading}[/]", title_align="left",
-                                 border_style=t.accent, expand=False, padding=(0, 1)))
+        self._space("block")
+        self.console.print(Panel(body, title=f"[bold {t.warn}]{heading}[/]", title_align="left",
+                                 border_style=t.warn, expand=False, padding=(0, 1)))
         if self.prompter is not None:
             picked = self.prompter.select("Do you want to proceed?", [
                 ("yes", "Yes"),
@@ -405,8 +514,11 @@ class TerminalUI(UI):
                 ("no", "No"),
             ], default="yes")
             if picked == "feedback":
-                return PermissionReply("no", feedback=self.prompter.ask("What should it do instead? ").strip())
-            return PermissionReply(picked or "no")
+                reply = PermissionReply("no", feedback=self.prompter.ask("What should it do instead? ").strip())
+            else:
+                reply = PermissionReply(picked or "no")
+            self._decision(reply, req)
+            return reply
         self.console.print(
             f"  [bold]⏎/y[/] yes   [bold]a[/] always this session [{t.dim}]({escape(req.suggested_rule)})[/]   "
             f"[bold]p[/] always in project   [bold]n[/] no   [{t.dim}]or type what to do instead[/]")
@@ -426,6 +538,20 @@ class TerminalUI(UI):
                 return PermissionReply("no")
             if len(ans) > 1:
                 return PermissionReply("no", feedback=ans)
+
+    def _decision(self, reply: PermissionReply, req: PermissionRequest) -> None:
+        t = theme()
+        if reply.choice == "no":
+            line = Text("✗ You declined", style=f"bold {t.err}")
+            if reply.feedback:
+                line.append(f" and said: {reply.feedback}", style=t.err)
+        else:
+            line = Text("✔ You approved", style=f"bold {t.ok}")
+            line.append({"yes": " this once", "always": f" · allowed for this session: {req.suggested_rule}",
+                         "project": f" · allowed in this project: {req.suggested_rule}"}.get(reply.choice, ""),
+                        style=t.dim)
+        self.console.print(line)
+        self._last = "block"
 
     def ask_user(self, question: str, options: list[str]) -> str:
         t = theme()

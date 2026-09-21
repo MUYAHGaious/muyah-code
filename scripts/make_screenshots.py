@@ -30,7 +30,6 @@ from prompt_toolkit.data_structures import Size  # noqa: E402
 from prompt_toolkit.input import create_pipe_input  # noqa: E402
 from prompt_toolkit.output.vt100 import Vt100_Output  # noqa: E402
 from rich.console import Console  # noqa: E402
-from rich.text import Text  # noqa: E402
 from termshot import render  # noqa: E402
 
 from muyah_code.app import App  # noqa: E402
@@ -149,7 +148,10 @@ def scene_permission() -> None:
     ui = TerminalUI(s.console, animate=False)
     ui.prompter = Prompter()
     with create_pipe_input() as pipe, create_app_session(input=pipe, output=s.term):
-        s.console.print(Text("● ", style=theme().tool) + Text("Edit", style="bold") + Text("(cart.py)", style=theme().dim))
+        from muyah_code.ui.blocks import user_prompt
+
+        s.console.print(user_prompt("the cart total test is failing, fix it"))
+        ui.mark_prompt()
         diff = ("--- a/cart.py\n+++ b/cart.py\n@@ -1,3 +1,3 @@\n def total(prices, tax=0.0):\n"
                 "-    subtotal = sum(prices[1:])\n+    subtotal = sum(prices)\n     return round(subtotal * (1 + tax), 2)")
         later(1.0, lambda: s.save("permission.png"), lambda: pipe.send_text("\x1b"))

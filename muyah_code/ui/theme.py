@@ -18,6 +18,7 @@ class Theme:
     code_theme: str   # pygments theme for code blocks
     add_bg: str       # diff backgrounds
     del_bg: str
+    user_bg: str = "#23302f"   # band behind your sent prompts
 
 
 THEMES = {
@@ -31,9 +32,9 @@ THEMES = {
     "forest": Theme("forest", "#8fbf5a", "#d4c86a", "#8fbf5a", "#d9534f", "#e6b450", "grey58", "#6fb3b8",
                     "gruvbox-dark", "#1f3318", "#3b1c16"),
     "mono": Theme("mono", "white", "grey70", "white", "bold white", "white", "grey50", "white",
-                  "bw", "grey15", "grey11"),
+                  "bw", "grey15", "grey11", "grey19"),
     "light": Theme("light", "#b3541e", "#c28f00", "#2e7d32", "#c62828", "#a15c00", "grey42", "#1565c0",
-                   "friendly", "#e3f5e3", "#fbe3e3"),
+                   "friendly", "#e3f5e3", "#fbe3e3", "#ececec"),
 }
 
 DEFAULT_THEME = "teal"

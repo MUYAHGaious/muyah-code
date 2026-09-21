@@ -10,7 +10,7 @@
   --bg: #071012; --bg2: #0b181b; --panel: rgba(15, 32, 36, .72); --line: rgba(94, 234, 212, .14);
   --text: #d8f3ee; --dim: #7fa6a0; --faint: #4b6b67;
   --teal: #5eead4; --teal2: #2dd4bf; --cyan: #67e8f9; --amber: #fbbf24; --rose: #fb7185;
-  --green: #86efac; --violet: #c4b5fd; --pink: #f0abfc; --orange: #fdba74;
+  --green: #86efac; --violet: #c4b5fd; --pink: #f0abfc; --orange: #fdba74; --blue: #93c5fd;
   --mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
@@ -24,74 +24,131 @@ header { display: flex; align-items: center; gap: 14px; padding: 12px 18px; bord
 .brand svg { width: 30px; height: 18px; }
 .brand small { font-weight: 400; color: var(--dim); letter-spacing: 0; }
 .badge { font: 11px var(--mono); padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--dim);
-  white-space: nowrap; }
+  white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .badge.live { color: var(--bg); background: var(--teal); border-color: var(--teal); }
 .badge.live::before { content: "● "; animation: blink 1.4s infinite; }
 .badge.off { color: var(--rose); border-color: rgba(251,113,133,.4); }
 @keyframes blink { 50% { opacity: .25; } }
-.meta { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+.meta { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; min-width: 0; }
 .controls { display: none; align-items: center; gap: 8px; width: 100%; }
 .controls.on { display: flex; }
 .controls button, .controls select { background: var(--bg2); color: var(--text); border: 1px solid var(--line);
   border-radius: 6px; padding: 4px 10px; font: 12px var(--mono); cursor: pointer; }
 .controls button:hover { border-color: var(--teal); }
-.controls input[type=range] { flex: 1; accent-color: var(--teal); min-width: 80px; }
-.controls .clock { font: 12px var(--mono); color: var(--dim); min-width: 110px; text-align: right; }
-main { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 14px; padding: 14px 18px; min-height: 0; }
-.stage { position: relative; min-height: 420px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+.controls input[type=range] { flex: 1; accent-color: var(--teal); min-width: 60px; }
+.controls .clock { font: 12px var(--mono); color: var(--dim); min-width: 96px; text-align: right; }
+main { display: grid; grid-template-columns: minmax(0, 1fr) 370px; gap: 14px; padding: 14px 18px; min-height: 0; }
+.stage { position: relative; min-height: 440px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
   background: linear-gradient(180deg, rgba(10,26,29,.6), rgba(7,16,18,.6)); }
 #scene { position: absolute; inset: 0; width: 100%; height: 100%; }
-.caption { position: absolute; left: 14px; bottom: 12px; right: 14px; font: 12px var(--mono); color: var(--dim);
+.caption { position: absolute; left: 14px; bottom: 10px; right: 14px; font: 12px var(--mono); color: var(--dim);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
-.caption b { color: var(--teal); font-weight: 600; }
-aside { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #1f3b3d transparent; }
-.card { flex: none; }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
-  backdrop-filter: blur(8px); }
+aside { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto; scrollbar-width: thin;
+  scrollbar-color: #1f3b3d transparent; padding-right: 2px; }
+.card { flex: none; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+  backdrop-filter: blur(8px); min-width: 0; }
 .card h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim);
-  font-weight: 600; }
+  font-weight: 600; display: flex; align-items: baseline; gap: 8px; }
+.card h3 .count { margin-left: auto; letter-spacing: 0; font: 11px var(--mono); color: var(--faint); text-transform: none; }
 .ctx { display: flex; align-items: center; gap: 14px; }
-#ring { width: 104px; height: 104px; flex: none; }
-.legend { font: 12px var(--mono); display: grid; gap: 3px; }
-.legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+#ring { width: 96px; height: 96px; flex: none; }
+.legend { font: 12px var(--mono); display: grid; gap: 3px; min-width: 0; }
+.legend i, .lg i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; }
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.stat { background: rgba(0,0,0,.18); border-radius: 8px; padding: 6px 8px; }
+.stat { background: rgba(0,0,0,.18); border-radius: 8px; padding: 6px 8px; min-width: 0; }
 .stat b { display: block; font: 600 16px var(--mono); color: var(--text); }
 .stat span { font-size: 11px; color: var(--dim); }
 ul.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 12px; }
-ul.list li { display: flex; gap: 8px; align-items: baseline; }
+ul.list li { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
 ul.list .mark { font-family: var(--mono); width: 14px; flex: none; text-align: center; }
 .todo-done { color: var(--faint); text-decoration: line-through; }
 .todo-active { color: var(--amber); }
 .empty { color: var(--faint); font-size: 12px; }
-#log { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: #1f3b3d transparent; font: 12px/1.5 var(--mono); }
-#log div { display: flex; gap: 8px; white-space: nowrap; }
-#log time { color: var(--faint); flex: none; width: 52px; text-align: right; }
-#log span { overflow: hidden; text-overflow: ellipsis; }
-.k-turn { color: var(--teal); } .k-llm { color: var(--cyan); } .k-tool { color: var(--amber); }
-.k-mcp { color: var(--pink); } .k-hook { color: var(--orange); }
-.k-err { color: var(--rose); } .k-ok { color: var(--green); } .k-sub { color: var(--violet); } .k-dim { color: var(--dim); }
-.now li { justify-content: space-between; }
-.now .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-.now .secs { font-family: var(--mono); color: var(--dim); flex: none; }
+/* right now */
+.now li { align-items: center; }
+.now .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.now .st { font: 11px var(--mono); flex: none; padding: 0 6px; border-radius: 999px; border: 1px solid currentColor;
+  opacity: .9; white-space: nowrap; }
+.now .secs { font-family: var(--mono); color: var(--dim); flex: none; min-width: 42px; text-align: right; }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; display: inline-block; background: currentColor; }
+.dot.hollow { background: transparent; border: 1.5px solid currentColor; }
+.dot.spin { animation: blink 1s infinite; }
 .stream { margin-top: 8px; font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word;
-  max-height: 150px; overflow: hidden; display: flex; flex-direction: column-reverse; color: var(--text); }
+  max-height: 130px; overflow: hidden; display: flex; flex-direction: column-reverse; color: var(--text);
+  border-top: 1px dashed var(--line); padding-top: 6px; }
 .stream:empty { display: none; }
 .stream .thinking { color: var(--faint); font-style: italic; }
 .stream .cursor { display: inline-block; width: 7px; height: 13px; background: var(--cyan); vertical-align: -2px;
   animation: blink 1s infinite; }
+/* commands */
+.cmds { display: grid; gap: 6px; max-height: 340px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #1f3b3d transparent; }
+.cmd { background: rgba(0,0,0,.2); border: 1px solid rgba(94,234,212,.08); border-radius: 8px; min-width: 0; }
+.cmd > .row, .cmd > summary { display: flex; align-items: center; gap: 8px; padding: 6px 8px; min-width: 0; list-style: none; }
+.cmd > summary { cursor: pointer; }
+.cmd > summary::-webkit-details-marker { display: none; }
+.cmd > summary::after { content: "▸"; color: var(--faint); font-size: 10px; flex: none; }
+.cmd[open] > summary::after { content: "▾"; }
+.cmd code { font: 12px var(--mono); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.cmd .cm { font: 11px var(--mono); color: var(--dim); flex: none; white-space: nowrap; }
+.cmd .tag, .tag { font: 10px var(--mono); color: var(--violet); border: 1px solid rgba(196,181,253,.35); border-radius: 4px;
+  padding: 0 4px; flex: none; }
+.cmd pre { margin: 0; padding: 6px 8px 8px; font: 11px/1.45 var(--mono); color: #b9d8d2; white-space: pre-wrap;
+  overflow-wrap: anywhere; max-height: 200px; overflow-y: auto; border-top: 1px solid rgba(94,234,212,.08); }
+.c-requested { color: var(--dim); } .c-asking { color: var(--amber); } .c-approved { color: var(--amber); }
+.c-running { color: var(--teal); } .c-ok { color: var(--green); } .c-fail { color: var(--rose); } .c-denied { color: var(--rose); }
+/* tools used */
+.tstat { display: grid; grid-template-columns: minmax(0, 118px) minmax(0, 1fr) auto; gap: 8px; align-items: center;
+  font: 12px var(--mono); padding: 2px 0; }
+.tstat .tn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tstat .bar { height: 8px; background: rgba(94,234,212,.06); border-radius: 4px; overflow: hidden; display: flex; }
+.tstat .bar i { display: block; height: 100%; }
+.tstat .tv { color: var(--dim); font-size: 11px; white-space: nowrap; }
+.avail { margin-top: 8px; font-size: 11px; color: var(--faint); line-height: 1.5; }
+/* extensions */
+.ext h4 { margin: 10px 0 5px; font: 600 11px var(--sans); color: var(--dim); display: flex; gap: 6px; align-items: baseline; }
+.ext h4:first-child { margin-top: 0; }
+.ext h4 small { font: 11px var(--mono); color: var(--faint); font-weight: 400; }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip { font: 11px var(--mono); padding: 1px 7px; border-radius: 999px; border: 1px solid rgba(94,234,212,.12);
+  color: var(--faint); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip b { font-weight: 600; margin-left: 4px; }
+.chip.used { color: var(--text); border-color: currentColor; }
+.chip.err b { color: var(--rose); }
+.srv { margin: 4px 0 6px; }
+.srv .sh { display: flex; align-items: center; gap: 7px; font: 12px var(--mono); min-width: 0; }
+.srv .sh span:last-child { color: var(--faint); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.srv .chips { margin: 4px 0 0 15px; }
+.hk { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 7px; align-items: baseline; font: 11px var(--mono);
+  color: var(--faint); padding: 1px 0; }
+.hk .hc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hk.used { color: var(--dim); } .hk.used .he { color: var(--orange); }
+/* activity */
+.logcard { display: flex; flex-direction: column; height: 280px; }
+#log { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: #1f3b3d transparent; font: 12px/1.5 var(--mono); }
+#log div { display: flex; gap: 8px; white-space: nowrap; }
+#log time { color: var(--faint); flex: none; width: 44px; text-align: right; }
+#log span { overflow: hidden; text-overflow: ellipsis; }
+.k-turn { color: var(--teal); } .k-llm { color: var(--cyan); } .k-tool { color: var(--amber); }
+.k-mcp { color: var(--pink); } .k-hook { color: var(--orange); } .k-ask { color: var(--amber); }
+.k-err { color: var(--rose); } .k-ok { color: var(--green); } .k-sub { color: var(--violet); } .k-dim { color: var(--dim); }
 footer { padding: 0 18px 14px; }
 .timeline { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 8px 12px; }
-.timeline h3 { margin: 0 0 4px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
-#timeline { width: 100%; height: 92px; display: block; }
+.timeline h3 { margin: 0 0 4px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim);
+  display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.lg { display: flex; flex-wrap: wrap; gap: 2px 10px; font: 10px var(--mono); letter-spacing: 0; text-transform: none; color: var(--faint); }
+.lg .hatch { background: repeating-linear-gradient(135deg, var(--amber) 0 2px, transparent 2px 4px); }
+#timeline { width: 100%; height: 112px; display: block; }
 @media (max-width: 900px) {
   body { height: auto; min-height: 100vh; }
-  aside { overflow: visible; }
-  #log { max-height: 260px; }
+  aside { overflow: visible; padding-right: 0; }
   main { grid-template-columns: minmax(0, 1fr); padding: 12px 16px; }
   header, footer { padding-left: 16px; padding-right: 16px; }
-  .stage { min-height: 360px; }
+  .stage { min-height: 460px; }
   .meta { margin-left: 0; }
+}
+@media (max-width: 560px) {
+  .stage { min-height: 500px; }
+  .tstat { grid-template-columns: minmax(0, 96px) minmax(0, 1fr) auto; }
 }
 </style>
 </head>
@@ -132,9 +189,21 @@ footer { padding: 0 18px 14px; }
       <div class="stream" id="stream"></div>
     </div>
     <div class="card">
+      <h3>Commands <span class="count" id="cmd-count"></span></h3>
+      <div class="cmds" id="cmds"><div class="empty">No commands run yet</div></div>
+    </div>
+    <div class="card">
+      <h3>Tools used <span class="count" id="tool-count"></span></h3>
+      <div id="toolstats"><div class="empty">No tools used yet</div></div>
+    </div>
+    <div class="card ext">
+      <h3>Extensions (skills · agents · MCP · hooks)</h3>
+      <div id="ext"><div class="empty">Waiting for the session inventory</div></div>
+    </div>
+    <div class="card">
       <h3>Context window</h3>
       <div class="ctx">
-        <canvas id="ring" width="208" height="208"></canvas>
+        <canvas id="ring" width="192" height="192"></canvas>
         <div class="legend" id="legend"></div>
       </div>
     </div>
@@ -151,14 +220,27 @@ footer { padding: 0 18px 14px; }
     </div>
     <div class="card"><h3>Todos</h3><ul class="list" id="todos"><li class="empty">No plan yet</li></ul></div>
     <div class="card"><h3>Lessons recalled</h3><ul class="list" id="lessons"><li class="empty">None this turn</li></ul></div>
-    <div class="card" style="flex:1 0 190px;display:flex;flex-direction:column;min-height:190px">
-      <h3>Activity</h3><div id="log"></div>
-    </div>
+    <div class="card logcard"><h3>Activity</h3><div id="log"></div></div>
   </aside>
 </main>
 
 <footer>
-  <div class="timeline"><h3>Timeline</h3><canvas id="timeline"></canvas></div>
+  <div class="timeline">
+    <h3>Timeline
+      <span class="lg">
+        <span><i style="background:#67e8f9;opacity:.3"></i>model waiting</span>
+        <span><i style="background:#67e8f9"></i>model streaming</span>
+        <span><i style="background:#5eead4"></i>files</span>
+        <span><i style="background:#fbbf24"></i>commands</span>
+        <span><i style="background:#93c5fd"></i>web</span>
+        <span><i style="background:#f0abfc"></i>MCP</span>
+        <span><i style="background:#c4b5fd"></i>skills · agents</span>
+        <span><i class="hatch"></i>awaiting approval</span>
+        <span><i style="background:#fb7185"></i>failed</span>
+      </span>
+    </h3>
+    <canvas id="timeline"></canvas>
+  </div>
 </footer>
 
 <script>
@@ -167,25 +249,88 @@ const $ = (id) => document.getElementById(id);
 const C = {
   teal: "#5eead4", teal2: "#2dd4bf", cyan: "#67e8f9", amber: "#fbbf24", rose: "#fb7185",
   green: "#86efac", violet: "#c4b5fd", text: "#d8f3ee", dim: "#7fa6a0", faint: "#4b6b67",
-  pink: "#f0abfc", orange: "#fdba74",
+  pink: "#f0abfc", orange: "#fdba74", blue: "#93c5fd", other: "#a7c4bf",
 };
+const MONO = 'ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace';
+const SANS = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 const PART_COLORS = { system: C.violet, conversation: C.teal, tools: C.amber };
+const KIND_COLOR = { file: C.teal, search: C.teal, cmd: C.amber, web: C.blue, mcp: C.pink, skill: C.violet,
+  agent: C.violet, todo: C.other, other: C.other };
+const KIND_ICON = { file: "doc", search: "search", cmd: "term", web: "globe", mcp: "plug", skill: "sparkle",
+  agent: "robot", todo: "check", other: "cog" };
 const MAX_GAP = 2.5;   // replay: idle gaps longer than this (seconds) are shortened
 const fmtNum = (n) => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e4 ? Math.round(n / 1e3) + "k"
   : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n);
 const fmtTime = (s) => { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
+const fmtDur = (s) => s >= 60 ? fmtTime(s) : (s || 0).toFixed(s < 10 ? 1 : 0) + "s";
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const oneLine = (s) => String(s || "").replace(/\s+/g, " ").trim();
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const since = (t) => fmtDur(Math.max(0, clock() - t));
+
+// ------------------------------------------------------------------ what a tool is (from its real name/args)
+
+function mcpParts(name) {   // MCP tools are named mcp__<server>__<tool>
+  if (!name || !name.startsWith("mcp__")) return null;
+  const rest = name.slice(5), i = rest.indexOf("__");
+  return i < 0 ? { server: rest, tool: "" } : { server: rest.slice(0, i), tool: rest.slice(i + 2) };
+}
+function toolKind(name) {
+  if (!name) return "other";
+  if (name.startsWith("mcp__")) return "mcp";
+  if (["Read", "Write", "Edit", "MultiEdit", "NotebookEdit"].includes(name)) return "file";
+  if (["Grep", "Glob", "LS"].includes(name)) return "search";
+  if (["Bash", "BashOutput", "KillShell"].includes(name)) return "cmd";
+  if (["WebFetch", "WebSearch"].includes(name)) return "web";
+  if (name === "Skill") return "skill";
+  if (name === "Agent" || name === "Task") return "agent";
+  if (name === "TodoWrite") return "todo";
+  return "other";
+}
+function baseName(p) { const parts = String(p || "").split(/[\\/]/).filter(Boolean); return parts.length ? parts[parts.length - 1] : ""; }
+function shortUrl(u) { const m = /^[a-z]+:\/\/([^/?#]+)([^?#]*)/i.exec(String(u || "")); return m ? m[1] + (m[2] && m[2] !== "/" ? m[2] : "") : String(u || ""); }
+function cmdLabel(t) {
+  const a = t.args || {};
+  if (t.name === "Bash") return "$ " + oneLine(a.command || t.title);
+  if (t.name === "BashOutput") return "output of job " + (a.job_id ?? "");
+  if (t.name === "KillShell") return "kill job " + (a.job_id ?? "");
+  return t.title || t.name;
+}
+function toolLabel(t) {
+  const a = t.args || {};
+  switch (t.kind) {
+    case "file": return baseName(a.file_path || a.path || a.notebook_path) || t.title || t.name;
+    case "cmd": return cmdLabel(t);
+    case "web": return t.name === "WebSearch" ? oneLine(a.query || t.title) : shortUrl(a.url || t.title);
+    case "mcp": return t.mcp.server + " · " + (t.mcp.tool || "?");
+    case "skill": return a.skill || t.title || "skill";
+    case "agent": return (a.subagent_type || "agent") + (a.description ? " · " + oneLine(a.description) : "");
+    case "search": return oneLine(a.pattern || a.path || t.title || t.name);
+    default: return oneLine(t.title || t.name);
+  }
+}
+function toolVerb(t) {
+  return t.kind === "mcp" ? "MCP" : t.kind === "agent" ? "sub-agent" : t.name;
+}
+function statKey(t) { return t.kind === "mcp" ? t.mcp.server + " · " + t.mcp.tool : t.name; }
 
 // ------------------------------------------------------------------ state (pure: rebuilt on seek)
 
 function freshState() {
   return {
-    model: "", provider: "", mode: "", window: 0,
-    ctx: { used: 0, usable: 0, window: 0, parts: {} },
+    model: "", provider: "", mode: "", window: 0, sessionSeen: false,
+    inv: { tools: [], skills: [], agents: [], mcp: [], hooks: [] },
+    ctx: { used: 0, usable: 0, window: 0, parts: {} }, ctxUsed: {},
     turns: 0, calls: 0, toolCalls: 0, toolErrors: 0, tokIn: 0, tokOut: 0,
-    llmActive: null, tools: new Map(), toolNames: [], subagents: new Map(),
+    turn: null,                 // {start, prompt} while a turn runs
+    llm: new Map(),             // agent -> model call in flight {state: preparing|sent|streaming}
+    llmFailed: null,            // the last model call failed: {agent, t, error}
+    tools: new Map(),           // `${agent}:${id}` -> tool call in flight (requested ... running)
+    toolStats: new Map(), commands: [], subagents: new Map(),
+    skillUse: new Map(), agentUse: new Map(), mcpUse: new Map(), hookUse: new Map(), hookRuns: 0, lessonsSeen: false,
     todos: [], lessons: [], log: [], spans: [], caption: "Waiting for the agent…", now: 0,
-    stream: null, mcp: new Map(), hooks: 0, sessionSeen: false,
+    stream: null, answer: null,
+    ver: 0, cmdVer: 0, statVer: 0, extVer: 0,
   };
 }
 let S = freshState();
@@ -194,426 +339,748 @@ function log(ev, kind, text) {
   S.log.push({ t: ev.t || 0, kind, text });
   if (S.log.length > 400) S.log.splice(0, S.log.length - 400);
 }
+function pushSpan(sp) { S.spans.push(sp); if (S.spans.length > 3000) S.spans.splice(0, S.spans.length - 3000); }
 
-function isSub(ev) { return ev.agent && ev.agent !== "main"; }
-// MCP tools are named mcp__<server>__<tool>
-function mcpParts(name) {
-  if (!name || !name.startsWith("mcp__")) return null;
-  const rest = name.slice(5), i = rest.indexOf("__");
-  return i < 0 ? { server: rest, tool: "" } : { server: rest.slice(0, i), tool: rest.slice(i + 2) };
+function newTool(ev, key) {
+  const t = { key, agent: ev.agent || "main", id: ev.id, name: ev.name || "?", title: ev.title || ev.name || "",
+    args: ev.args || {}, kind: toolKind(ev.name), mcp: mcpParts(ev.name), state: "requested", reqAt: ev.t || 0,
+    askAt: null, askEnd: null, startAt: null, endAt: null, ok: null, ran: false, cmd: null };
+  if (t.kind === "cmd") {
+    t.cmd = { key: key + "@" + t.reqAt, agent: t.agent, label: cmdLabel(t), state: "requested", t: t.reqAt,
+      startAt: null, dur: null, exit: null, output: "", summary: "" };
+    S.commands.push(t.cmd);
+    if (S.commands.length > 200) S.commands.splice(0, S.commands.length - 200);
+    S.cmdVer++;
+  }
+  return t;
+}
+function syncCmd(t) {
+  if (!t.cmd) return;
+  Object.assign(t.cmd, { state: t.state === "done" ? (t.ok ? "ok" : t.ran ? "fail" : "denied") : t.state,
+    startAt: t.startAt, label: cmdLabel(t) });
+  S.cmdVer++;
+}
+
+function endLlm(agent, t, error) {
+  const c = S.llm.get(agent);
+  if (!c) return;
+  pushSpan({ lane: 0, agent, start: c.start, sent: c.sentAt, first: c.firstAt, end: t, ok: !error });
+  S.llm.delete(agent);
+}
+
+function closeTool(key, t, why) {   // a tool still in flight when its turn ended (interrupted)
+  const x = S.tools.get(key);
+  if (!x) return;
+  x.state = "done"; x.ok = false; x.endAt = t; x.summary = why;
+  if (x.ran) pushSpan({ lane: 1, agent: x.agent, kind: x.kind, label: toolLabel(x), req: x.reqAt, ask: x.askAt,
+    askEnd: x.askEnd, start: x.startAt, end: t, ok: false });
+  syncCmd(x);
+  S.tools.delete(key);
 }
 
 function apply(ev, fx) {
   S.now = Math.max(S.now, ev.t || 0);
-  const who = isSub(ev) ? `[${ev.agent}] ` : "";
+  S.ver++;
+  const agent = ev.agent || "main", sub = agent !== "main", who = sub ? `[${agent}] ` : "";
+  const key = agent + ":" + ev.id;
   switch (ev.type) {
     case "session":
       Object.assign(S, { model: ev.model || "", provider: ev.provider || "", mode: ev.mode || "", window: ev.window || 0 });
-      S.sessionSeen = true;
-      for (const m of ev.mcp || []) S.mcp.set(m.name, { status: m.status || "", calls: 0, errors: 0 });
+      S.inv = { tools: ev.tools || [], skills: ev.skills || [], agents: ev.agents || [], mcp: ev.mcp || [], hooks: ev.hooks || [] };
+      S.sessionSeen = true; S.extVer++;
       if (S.turns === 0) S.caption = "Ready. Send a prompt in the terminal.";
-      log(ev, "k-dim", `session · ${ev.model} · ${fmtNum(ev.window || 0)} window`);
+      log(ev, "k-dim", `session · ${ev.model || "?"} · ${fmtNum(ev.window || 0)} window · mode ${ev.mode || "?"}`);
       break;
     case "turn_start":
-      S.turns++; S.lessons = [];
-      S.caption = "You: " + (ev.prompt || "").replace(/\s+/g, " ");
-      log(ev, "k-turn", "❯ " + (ev.prompt || "").replace(/\s+/g, " "));
-      fx && fx.turn();
+      S.turns++; S.lessons = []; S.answer = null; S.llmFailed = null;
+      S.turn = { start: ev.t || 0, prompt: oneLine(ev.prompt) };
+      S.caption = "You: " + oneLine(ev.prompt);
+      log(ev, "k-turn", "❯ " + oneLine(ev.prompt));
+      fx && fx.turn(ev);
       break;
     case "turn_end":
-      closeLlm(ev); S.tools.forEach((_, id) => closeTool(ev, id, true));
-      S.caption = `Turn ${ev.status} in ${(ev.duration || 0).toFixed(1)}s · ${ev.tool_calls || 0} tool calls`;
-      log(ev, ev.status === "ok" ? "k-ok" : "k-err", `turn ${ev.status} · ${(ev.duration || 0).toFixed(1)}s`);
-      fx && fx.answer();
+      endLlm("main", ev.t, false);
+      [...S.tools.keys()].forEach((k) => { const x = S.tools.get(k); closeTool(k, ev.t, "stopped: turn " + ev.status); fx && fx.toolGone(x); });
+      S.subagents.forEach((s) => { if (s.active) { s.active = false; s.end = ev.t; } });
+      S.turn = null;
+      if (S.answer) S.answer.done = true;
+      S.caption = `Turn ${ev.status} in ${fmtDur(ev.duration || 0)} · ${ev.tool_calls || 0} tool calls`;
+      log(ev, ev.status === "ok" ? "k-ok" : "k-err", `turn ${ev.status} · ${fmtDur(ev.duration || 0)} · ${ev.tool_calls || 0} tool calls`);
+      fx && fx.answer(ev);
       break;
     case "llm_start":
-      closeLlm(ev);
-      S.llmActive = { start: ev.t, agent: ev.agent, chars: 0 };
-      S.stream = { agent: ev.agent || "main", text: "", thinking: "" };
+      endLlm(agent, ev.t, false);
+      S.llm.set(agent, { agent, start: ev.t || 0, state: "preparing", sentAt: null, firstAt: null, chars: 0, model: ev.model || "" });
+      if (S.llmFailed && S.llmFailed.agent === agent) S.llmFailed = null;
       S.calls++;
-      S.caption = who + "Model is thinking…";
-      fx && fx.think(ev);
+      S.stream = { agent, text: "", thinking: "" };
+      if (!sub) S.answer = { text: "", done: false };
+      S.caption = who + "Preparing a request for the model…";
       break;
-    case "llm_tokens":
-      if (S.llmActive) S.llmActive.chars += ev.chars || 0;
-      if (S.stream && S.stream.agent === (ev.agent || "main")) {
+    case "llm_status": {
+      const c = S.llm.get(agent);
+      if (!c) break;
+      if (ev.state === "sent") {
+        c.state = "sent"; c.sentAt = ev.t;
+        S.caption = who + `Request sent (~${fmtNum(S.ctxUsed[agent] || 0)} tokens) · waiting for the model…`;
+        fx && fx.request(ev, S.ctxUsed[agent] || 0);
+      } else if (ev.state === "first_token" && c.state !== "streaming") {
+        c.state = "streaming"; c.firstAt = ev.t;
+        S.caption = who + "The model is replying…";
+      }
+      break;
+    }
+    case "llm_tokens": {
+      const c = S.llm.get(agent);
+      if (c) {
+        c.chars += ev.chars || 0;
+        if (c.state !== "streaming") { c.state = "streaming"; c.firstAt = ev.t; }   // older recordings have no llm_status
+      }
+      if (S.stream && S.stream.agent === agent) {
         S.stream.text = (S.stream.text + (ev.text || "")).slice(-4000);
         S.stream.thinking = (S.stream.thinking + (ev.thinking || "")).slice(-1500);
       }
-      fx && fx.tokens(ev);
+      if (!sub && S.answer && ev.text) S.answer.text = (S.answer.text + ev.text).slice(-2000);
       break;
+    }
     case "llm_end":
       S.tokIn += ev.prompt_tokens || 0; S.tokOut += ev.completion_tokens || 0;
-      closeLlm(ev, !!ev.error);
+      endLlm(agent, ev.t, !!ev.error);
       if (ev.error) {
+        S.llmFailed = { agent, t: ev.t, error: ev.error };
+        if (!sub) S.answer = null;
         log(ev, "k-err", `${who}model request failed · ${ev.error}`);
         S.caption = who + "Model request failed: " + ev.error;
-        fx && fx.modelError();
+        fx && fx.modelError(ev);
         break;
       }
+      if (!sub && S.answer) { if ((ev.calls || []).length) S.answer = null; else S.answer.done = true; }
       log(ev, "k-llm", `${who}model · ${fmtNum(ev.prompt_tokens || 0)} in → ${fmtNum(ev.completion_tokens || 0)} out · `
-        + `${(ev.duration || 0).toFixed(1)}s` + ((ev.calls || []).length ? " · calls " + ev.calls.join(", ") : ""));
+        + fmtDur(ev.duration || 0) + ((ev.calls || []).length ? " · asks for " + ev.calls.join(", ") : ""));
+      if (!sub) S.caption = (ev.calls || []).length ? "The model asked for " + ev.calls.join(", ") : "The model answered";
       break;
+    case "tool_request": {
+      const t = newTool(ev, key);
+      S.tools.set(key, t);
+      S.caption = who + "Requested " + toolVerb(t) + ": " + toolLabel(t);
+      break;
+    }
+    case "tool_permission": {
+      const t = S.tools.get(key);
+      if (!t) break;
+      if (ev.state === "asking") {
+        t.state = "asking"; t.askAt = ev.t;
+        S.caption = who + "Waiting for your approval: " + toolLabel(t);
+        log(ev, "k-ask", `${who}approval needed · ${t.title || t.name}${ev.reason ? " · " + ev.reason : ""}`);
+      } else if (ev.state === "approved") {
+        t.state = "approved"; t.askEnd = ev.t;
+        log(ev, "k-ok", `${who}approved${ev.choice ? " (" + ev.choice + ")" : ""} · ${t.title || t.name}`);
+      } else if (ev.state === "denied") {
+        t.state = "denied"; if (t.askAt != null) t.askEnd = ev.t;
+        log(ev, "k-err", `${who}denied · ${t.title || t.name}${ev.reason ? " · " + ev.reason : ""}`);
+      }
+      syncCmd(t);
+      break;
+    }
     case "tool_start": {
-      const key = (ev.agent || "main") + ":" + ev.id;
-      const mcp = mcpParts(ev.name);
-      S.tools.set(key, { name: ev.name, title: ev.title, start: ev.t, agent: ev.agent, mcp });
-      if (mcp) {
-        if (!S.mcp.has(mcp.server)) S.mcp.set(mcp.server, { status: "", calls: 0, errors: 0 });
-        S.mcp.get(mcp.server).calls++;
-      } else if (!S.toolNames.includes(ev.name)) S.toolNames.push(ev.name);
+      let t = S.tools.get(key);
+      if (!t) { t = newTool(ev, key); S.tools.set(key, t); }
+      Object.assign(t, { state: "running", startAt: ev.t || 0, ran: true, title: ev.title || t.title, args: ev.args || t.args });
+      if (t.askAt != null && t.askEnd == null) t.askEnd = t.startAt;
       S.toolCalls++;
-      S.caption = who + "● " + (ev.title || ev.name);
-      fx && fx.toolStart(ev);
+      if (t.kind === "skill") { const n = (t.args || {}).skill || "?"; S.skillUse.set(n, (S.skillUse.get(n) || 0) + 1); S.extVer++; }
+      S.caption = who + "Running " + toolVerb(t) + ": " + toolLabel(t);
+      syncCmd(t);
       break;
     }
     case "tool_end": {
-      const key = (ev.agent || "main") + ":" + ev.id;
+      let t = S.tools.get(key);
+      if (!t) t = newTool(ev, key);
+      Object.assign(t, { state: "done", ok: !!ev.ok, endAt: ev.t || 0, summary: ev.summary || "", dur: ev.duration || 0,
+        exit: ev.exit_code ?? null, added: ev.added ?? null, removed: ev.removed ?? null, output: ev.output || "" });
+      S.tools.delete(key);
       if (!ev.ok) S.toolErrors++;
-      const t = S.tools.get(key);
-      const mcp = mcpParts(ev.name);
-      if (mcp && !ev.ok && S.mcp.has(mcp.server)) S.mcp.get(mcp.server).errors++;
-      if (t) { S.spans.push({ lane: 1, start: t.start, end: ev.t, label: mcp ? mcp.server : ev.name, ok: ev.ok, mcp: !!mcp }); S.tools.delete(key); }
-      log(ev, !ev.ok ? "k-err" : mcp ? "k-mcp" : "k-tool", `${who}${ev.ok ? "●" : "✗"} ${t ? t.title || ev.name : ev.name}`
-        + (ev.summary ? " — " + ev.summary : "") + ` · ${(ev.duration || 0).toFixed(2)}s`);
-      fx && fx.toolEnd(ev);
+      const sk = statKey(t);
+      const st = S.toolStats.get(sk) || { name: sk, kind: t.kind, count: 0, errors: 0, time: 0, denied: 0 };
+      st.count++; if (!ev.ok) st.errors++; if (t.ran) st.time += ev.duration || 0; else if (!ev.ok) st.denied++;
+      S.toolStats.set(sk, st); S.statVer++;
+      if (t.mcp) {
+        const u = S.mcpUse.get(t.mcp.server) || { calls: 0, errors: 0, tools: new Map() };
+        u.calls++; if (!ev.ok) u.errors++;
+        const tu = u.tools.get(t.mcp.tool) || { calls: 0, errors: 0 }; tu.calls++; if (!ev.ok) tu.errors++;
+        u.tools.set(t.mcp.tool, tu); S.mcpUse.set(t.mcp.server, u); S.extVer++;
+      }
+      if (t.ran || t.askAt != null) pushSpan({ lane: 1, agent: t.agent, kind: t.kind, label: toolLabel(t), req: t.reqAt, ask: t.askAt,
+        askEnd: t.askEnd ?? (t.askAt != null ? t.endAt : null), start: t.ran ? t.startAt : null, end: t.endAt, ok: t.ok });
+      if (t.cmd) { t.cmd.dur = t.ran ? t.dur : null; t.cmd.exit = t.exit; t.cmd.output = t.output; t.cmd.summary = t.summary; }
+      syncCmd(t);
+      log(ev, !ev.ok ? "k-err" : t.mcp ? "k-mcp" : "k-tool", `${who}${ev.ok ? "●" : "✗"} ${t.title || t.name}`
+        + (ev.summary ? " — " + ev.summary : "") + (t.ran ? ` · ${fmtDur(ev.duration || 0)}` : " · never ran"));
+      S.caption = who + (ev.ok ? "Done: " : t.ran ? "Failed: " : "Not run: ") + toolLabel(t) + (ev.summary ? " — " + ev.summary : "");
+      fx && fx.toolEnd(t);
       break;
     }
     case "context":
-      if (!isSub(ev)) S.ctx = { used: ev.used || 0, usable: ev.usable || 0, window: ev.window || 0, parts: ev.parts || {} };
+      S.ctxUsed[agent] = ev.used || 0;
+      if (!sub) S.ctx = { used: ev.used || 0, usable: ev.usable || 0, window: ev.window || 0, parts: ev.parts || {} };
       break;
     case "compact":
       log(ev, "k-sub", `${ev.emergency ? "emergency " : ""}compaction · ${ev.description || ""}`);
       S.caption = "Context compacted: " + (ev.description || "");
-      fx && fx.compact();
+      fx && fx.compact(ev);
       break;
     case "lessons":
-      S.lessons = ev.items || [];
+      S.lessons = ev.items || []; S.lessonsSeen = true;
       log(ev, "k-sub", `recalled ${S.lessons.length} lesson${S.lessons.length === 1 ? "" : "s"}`);
-      fx && fx.lessons();
+      fx && fx.lessons(ev);
       break;
     case "subagent_start":
-      S.subagents.set(ev.agent, { task: ev.prompt || "", start: ev.t, active: true });
-      log(ev, "k-sub", `sub-agent ${ev.agent} started · ${(ev.prompt || "").replace(/\s+/g, " ")}`);
-      fx && fx.subStart(ev);
+      S.subagents.set(agent, { start: ev.t || 0, active: true, prompt: oneLine(ev.prompt), status: "", end: null });
+      S.agentUse.set(agent, (S.agentUse.get(agent) || 0) + 1); S.extVer++;
+      log(ev, "k-sub", `sub-agent ${agent} started · ${oneLine(ev.prompt).slice(0, 200)}`);
       break;
     case "subagent_end": {
-      const s = S.subagents.get(ev.agent);
-      if (s) { s.active = false; S.spans.push({ lane: 2, start: s.start, end: ev.t, label: ev.agent, ok: ev.status === "ok" }); }
-      log(ev, "k-sub", `sub-agent ${ev.agent} ${ev.status} · ${(ev.duration || 0).toFixed(1)}s`);
-      fx && fx.subEnd(ev);
+      const s = S.subagents.get(agent);
+      endLlm(agent, ev.t, false);
+      if (s) { s.active = false; s.status = ev.status || ""; s.end = ev.t;
+        pushSpan({ lane: 2, agent, start: s.start, end: ev.t, label: agent, ok: ev.status === "ok" }); }
+      log(ev, ev.status === "ok" ? "k-sub" : "k-err", `sub-agent ${agent} ${ev.status} · ${fmtDur(ev.duration || 0)} · ${ev.tool_calls || 0} tool calls`);
       break;
     }
     case "todos":
       S.todos = ev.items || [];
       break;
-    case "hook":
-      S.hooks++;
+    case "hook": {
+      S.hookRuns++;
+      const hk = (ev.event || "") + "|" + (ev.command || "");
+      const u = S.hookUse.get(hk) || { runs: 0, last: "" }; u.runs++; u.last = ev.outcome || ""; S.hookUse.set(hk, u); S.extVer++;
       log(ev, ev.outcome === "blocked" ? "k-err" : "k-hook",
-        `hook ${ev.event}${ev.tool ? " (" + ev.tool + ")" : ""} · ${ev.outcome} · ${ev.command || ""}`);
+        `hook ${ev.event}${ev.tool ? " (" + ev.tool + ")" : ""} · ${ev.outcome} · ${fmtDur(ev.duration || 0)} · ${ev.command || ""}`);
       if (ev.outcome === "blocked") S.caption = `A ${ev.event} hook blocked this step`;
       fx && fx.hook(ev);
       break;
+    }
   }
 }
 
-function closeLlm(ev, failed) {
-  if (!S.llmActive) return;
-  S.spans.push({ lane: 0, start: S.llmActive.start, end: ev.t, label: "model", ok: !failed });
-  if (S.spans.length > 2000) S.spans.splice(0, S.spans.length - 2000);
-  S.llmActive = null;
-}
-function closeTool(ev, key, interrupted) {
-  const t = S.tools.get(key);
-  if (!t) return;
-  S.spans.push({ lane: 1, start: t.start, end: ev.t, label: t.name, ok: !interrupted });
-  S.tools.delete(key);
-}
+// ------------------------------------------------------------------ scene (canvas): nodes + cards for real objects
 
-// ------------------------------------------------------------------ scene (canvas)
+const scene = $("scene"), g = scene.getContext("2d");
+let W = 0, H = 0, DPR = 1, NARROW = false, CW = 168, CH = 40;
+const N = {};
+let cards = new Map();   // key -> card on screen (one per real object)
+let pulses = [];
+let snap = true;         // next sync places cards where they are without animating (after seek / catch-up)
+let seq = 0;
 
-const scene = $("scene"), sctx = scene.getContext("2d");
-let W = 0, H = 0, DPR = 1;
-const nodes = {};
-const particles = [];
-const pulses = [];
-let satellites = new Map();   // tool name -> {x, y, glow}
-let subNodes = new Map();     // sub-agent name -> {x, y, alpha}
-let mcpNodes = new Map();     // MCP server name -> {x, y, glow}
-let modelSpin = 0, compactFlash = 0;
-
+const NODE_DEF = {
+  you: ["You", C.text, .8], context: ["Context", C.teal, 1], model: ["Model", C.cyan, 1.2], tools: ["Tools", C.amber, .85],
+  lessons: ["Lessons", C.violet, .58], hooks: ["Hooks", C.orange, .58], skills: ["Skills", C.violet, .6],
+  agents: ["Sub-agents", C.violet, .64], mcp: ["MCP", C.pink, .64],
+};
 function layout() {
   const r = scene.getBoundingClientRect();
   DPR = window.devicePixelRatio || 1;
   W = r.width; H = r.height;
   scene.width = Math.round(W * DPR); scene.height = Math.round(H * DPR);
-  const narrow = W < 560;
-  const R = clamp(Math.min(W, H) * 0.075, 22, 42);
-  Object.assign(nodes, {
-    you:     { x: W * (narrow ? .12 : .1),  y: H * .5,  r: R * .85, label: "You",     color: C.text },
-    context: { x: W * (narrow ? .36 : .32), y: H * .5,  r: R,       label: "Context", color: C.teal },
-    model:   { x: W * (narrow ? .62 : .57), y: H * .5,  r: R * 1.2, label: "Model",   color: C.cyan },
-    tools:   { x: W * (narrow ? .84 : .8),  y: H * (narrow ? .24 : .5), r: R * .8, label: "Tools", color: C.amber },
-    lessons: { x: W * (narrow ? .36 : .32), y: H * .17, r: R * .6,  label: "Lessons", color: C.violet },
-    agents:  { x: W * (narrow ? .62 : .57), y: H * .84, r: R * .6,  label: "Sub-agents", color: C.violet },
-    mcp:     { x: W * (narrow ? .3 : .8),   y: H * (narrow ? .84 : .84), r: R * .6, label: "MCP", color: C.pink },
-    hooks:   { x: W * .1,                   y: H * .17, r: R * .5,  label: "Hooks",   color: C.orange },
-  });
-  placeMcp();
-  placeSatellites();
-  placeSubNodes();
+  NARROW = W < 560;
+  CW = NARROW ? clamp(W * .31, 100, 128) : clamp(W * .17, 142, 184);
+  CH = NARROW ? 34 : 40;
+  const R = clamp(Math.min(W, H) * .07, 20, 40);
+  const P = NARROW
+    ? { you: [.12, .38], context: [.37, .38], model: [.63, .38], tools: [.88, .38],
+        lessons: [.1, .79], hooks: [.3, .79], agents: [.5, .79], skills: [.7, .79], mcp: [.9, .79] }
+    : { you: [.08, .46], context: [.28, .46], model: [.5, .46], tools: [.8, .3],
+        lessons: [.28, .13], hooks: [.08, .13], skills: [.64, .12], agents: [.5, .84], mcp: [.8, .8] };
+  for (const [k, [label, color, size]] of Object.entries(NODE_DEF)) {
+    const small = NARROW && P[k][1] > .5;
+    N[k] = { key: k, x: W * P[k][0], y: H * P[k][1], r: R * size * (small ? .8 : 1), label, color };
+  }
 }
 
-function placeSatellites() {
-  const hub = nodes.tools, names = S.toolNames, n = names.length;
-  const radius = clamp(Math.min(W, H) * .2, 60, 150);
-  const old = satellites; satellites = new Map();
-  if (W < 560) {   // narrow: a column of tools under the hub, labels on the left
-    const top = hub.y + hub.r + 30, step = n ? Math.min(20, (H * .96 - top) / n) : 0;
-    names.forEach((name, i) => {
-      const s = old.get(name) || { glow: 0 };
-      Object.assign(s, { x: W - 18, y: top + i * step, labelLeft: true });
-      satellites.set(name, s);
-    });
-    return;
+function visible() {
+  const mcpBusy = [...S.tools.values()].some((t) => t.kind === "mcp");
+  return {
+    you: true, context: true, model: true, tools: true,
+    lessons: S.lessonsSeen, hooks: S.inv.hooks.length > 0 || S.hookRuns > 0,
+    mcp: S.inv.mcp.length > 0 || S.mcpUse.size > 0 || mcpBusy,
+    skills: S.skillUse.size > 0 || [...S.tools.values()].some((t) => t.kind === "skill"),
+    agents: S.subagents.size > 0 || [...S.tools.values()].some((t) => t.kind === "agent"),
+  };
+}
+function subNode(name) {
+  const names = [...S.subagents.keys()], i = names.indexOf(name);
+  if (i < 0) return null;
+  const hub = N.agents;
+  if (NARROW) return { x: clamp(hub.x + (i - (names.length - 1) / 2) * 64, 24, W - 24), y: hub.y + hub.r + 38, r: 9 };
+  return { x: Math.min(hub.x + hub.r + 44 + i * 86, W - 30), y: hub.y, r: 10 };
+}
+function anchor(name) {
+  if (name.startsWith("sub:")) return subNode(name.slice(4)) || N.agents;
+  return N[name] || N.model;
+}
+
+// docks: where cards wait at a node. [node, direction]
+function dockGeom(name) {
+  if (name.startsWith("sub:")) return { a: anchor(name), dir: "up" };
+  const d = {
+    model: ["model", "up"], tools: ["tools", "down"], mcp: ["mcp", NARROW ? "up" : "left"],
+    skills: ["skills", NARROW ? "up" : "down"], agents: ["agents", NARROW ? "up" : "left"],
+  }[name];
+  return d ? { a: N[d[0]], dir: d[1] } : null;
+}
+function slot(geom, i, h) {
+  const { a, dir } = geom, gap = 6;
+  let x = a.x, y;
+  if (dir === "down") y = a.y + a.r + 28 + h / 2 + i * (h + gap);
+  else if (dir === "up") y = a.y - a.r - 10 - h / 2 - i * (h + gap);
+  else { x = a.x - a.r - 14 - CW / 2; y = a.y - i * (h + gap); }
+  return { x: clamp(x, CW / 2 + 6, W - CW / 2 - 6), y: clamp(y, h / 2 + 4, H - h / 2 - 28) };
+}
+function destDock(t) {
+  return t.kind === "mcp" ? "mcp" : t.kind === "skill" ? "skills" : t.kind === "agent" ? "agents" : "tools";
+}
+function originDock(t) { return t.agent === "main" ? "model" : "sub:" + t.agent; }
+
+const ease = (u) => u < .5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+function newCard(key, x, y, now, instant) {
+  return { key, fx: x, fy: y, tx: x, ty: y, t0: now, dur: 1, bend: 0, born: instant ? now - 1e4 : now,
+    transient: false, fadeAt: Infinity, removeAt: Infinity, spec: null, tool: null };
+}
+function posAt(c, now) {
+  if (now <= c.t0) return { x: c.fx, y: c.fy };
+  const u = (now - c.t0) / c.dur;
+  if (u >= 1) return { x: c.tx, y: c.ty };
+  const e = ease(u), dx = c.tx - c.fx, dy = c.ty - c.fy, len = Math.hypot(dx, dy) || 1;
+  const cx = (c.fx + c.tx) / 2 - dy / len * c.bend, cy = (c.fy + c.ty) / 2 + dx / len * c.bend, v = 1 - e;
+  return { x: v * v * c.fx + 2 * v * e * cx + e * e * c.tx, y: v * v * c.fy + 2 * v * e * cy + e * e * c.ty };
+}
+function moveTo(c, x, y, now, delay) {
+  if (Math.abs(x - c.tx) < .5 && Math.abs(y - c.ty) < .5) return;
+  const p = posAt(c, now), d = Math.hypot(x - p.x, y - p.y);
+  Object.assign(c, { fx: p.x, fy: p.y, tx: x, ty: y, t0: now + (delay || 0),
+    dur: d < 70 ? 450 : clamp(600 + d * .45, 600, 900), bend: d < 70 ? 0 : d * .1 });
+}
+function arrival(c) { return c.t0 + c.dur; }
+function retire(c, now) {   // the object is gone from the live state: the card leaves the stage
+  cards.delete(c.key); c.key = c.key + "#" + (++seq); cards.set(c.key, c);
+  c.transient = true;
+  if (c.fadeAt === Infinity) { c.fadeAt = now; c.removeAt = now + 450; }
+}
+function landing(node) {   // results pile briefly just above the node they return to, in the lowest free slot
+  const taken = new Set([...cards.values()].filter((c) => c.transient && c.landOn === node).map((c) => c.landSlot));
+  let k = 0;
+  while (taken.has(k) && k < 3) k++;
+  const n = anchor(node);
+  return { slot: k % 3, x: clamp(n.x, CW / 2 + 6, W - CW / 2 - 6), y: Math.max(CH / 2 + 4, n.y - n.r - 8 - CH / 2 - (k % 3) * (CH + 4)) };
+}
+function land(c, node, now, delay) {
+  const p = landing(node);
+  c.landOn = node; c.landSlot = p.slot;
+  moveTo(c, p.x, p.y, now, delay);
+}
+
+const fx = {
+  turn(ev) {
+    const now = performance.now(), c = newCard("msg" + (++seq), N.you.x, N.you.y, now);
+    c.spec = { icon: "msg", label: oneLine(ev.prompt) || "(empty prompt)", sub: "your prompt", color: C.text, kcolor: C.text };
+    land(c, "context", now); c.transient = true; c.fadeAt = arrival(c) + 900; c.removeAt = c.fadeAt + 500;
+    cards.set(c.key, c); pulse(N.you, C.text);
+  },
+  request(ev, tokens) {
+    const now = performance.now(), sub = ev.agent && ev.agent !== "main";
+    const from = sub ? (subNode(ev.agent) || N.agents) : N.context;
+    const c = newCard("req" + (++seq), from.x, from.y, now);
+    c.spec = { icon: "layers", label: tokens ? `~${fmtNum(tokens)} tokens` : "request",
+      sub: (sub ? ev.agent + " · " : "") + "request sent", color: C.cyan, kcolor: C.cyan };
+    moveTo(c, N.model.x, N.model.y, now); c.transient = true;
+    c.fadeAt = arrival(c) - 180; c.removeAt = arrival(c) + 220;
+    cards.set(c.key, c);
+  },
+  toolEnd(t) {
+    const now = performance.now(), key = "tool:" + t.key;
+    let c = cards.get(key);
+    if (!c || c.transient) {   // it happened between two frames: start where it really was last
+      const p = anchor(t.ran ? destDock(t) : originDock(t));
+      c = newCard(key, p.x, p.y, now); cards.set(key, c);
+    }
+    c.tool = t;
+    const home = t.agent === "main" ? "context" : "sub:" + t.agent;
+    retire(c, now); c.fadeAt = Infinity;
+    land(c, home, now, 380);
+    c.fadeAt = arrival(c) + 1000; c.removeAt = c.fadeAt + 500;
+    if (!t.ok) pulse(anchor(t.ran ? destDock(t) : originDock(t)), C.rose);
+  },
+  toolGone(t) { const c = cards.get("tool:" + t.key); if (c) retire(c, performance.now()); },
+  answer() { pulse(N.you, C.green); },
+  compact() { pulse(N.context, C.violet); },
+  modelError() { pulse(N.model, C.rose); },
+  lessons(ev) {
+    const n = (ev.items || []).length, now = performance.now(), c = newCard("les" + (++seq), N.lessons.x, N.lessons.y, now);
+    c.spec = { icon: "bulb", label: `${n} lesson${n === 1 ? "" : "s"}`, sub: "recalled into context", color: C.violet, kcolor: C.violet };
+    land(c, "context", now); c.transient = true; c.fadeAt = arrival(c) + 700; c.removeAt = c.fadeAt + 500;
+    cards.set(c.key, c);
+  },
+  hook(ev) {
+    const now = performance.now(), a = N.hooks;
+    const p = { x: clamp(a.x, CW / 2 + 6, W - CW / 2 - 6),
+      y: NARROW ? a.y - a.r - 10 - CH / 2 : a.y + a.r + 28 + CH / 2 };
+    const c = newCard("hook" + (++seq), p.x, p.y, now);
+    const col = ev.outcome === "blocked" ? C.rose : ev.outcome === "warning" ? C.amber : C.orange;
+    c.spec = { icon: "hook", label: (ev.event || "hook") + (ev.tool ? " · " + ev.tool : ""),
+      sub: `${ev.outcome || "?"} · ${fmtDur(ev.duration || 0)}`, color: col, kcolor: C.orange,
+      badge: ev.outcome === "blocked" ? "cross" : ev.outcome === "ok" ? "check" : "" };
+    c.transient = true; c.fadeAt = now + 1800; c.removeAt = c.fadeAt + 500;
+    cards.set(c.key, c); pulse(a, col);
+  },
+};
+function pulse(node, color) { if (node) pulses.push({ node, color, t: 0 }); }
+
+function relax(targets) {   // push cards of different docks apart so they never sit on top of each other
+  for (let pass = 0; pass < 3; pass++) {
+    for (let i = 0; i < targets.length; i++) for (let j = i + 1; j < targets.length; j++) {
+      const a = targets[i], b = targets[j];
+      if (a.dock === b.dock) continue;
+      const ox = (a.w + b.w) / 2 + 4 - Math.abs(a.x - b.x), oy = (a.h + b.h) / 2 + 4 - Math.abs(a.y - b.y);
+      if (ox <= 0 || oy <= 0) continue;
+      const m = b.dir === "down" ? oy : -oy;
+      b.y = clamp(b.y + m, b.h / 2 + 4, H - b.h / 2 - 28);
+    }
   }
-  names.forEach((name, i) => {
-    const a = -Math.PI / 2.3 + (n === 1 ? Math.PI / 2.3 : (i / (n - 1)) * (Math.PI / 1.15));
-    const s = old.get(name) || { glow: 0 };
-    s.x = Math.min(hub.x + Math.cos(a) * radius * .55, W - 16); s.y = hub.y + Math.sin(a) * radius;
-    s.labelLeft = W - s.x < 12 + name.length * 7.5;   // no room on the right: label goes left of the dot
-    satellites.set(name, s);
-  });
 }
-function placeMcp() {
-  const hub = nodes.mcp, names = [...S.mcp.keys()], n = names.length;
-  const old = mcpNodes; mcpNodes = new Map();
-  names.forEach((name, i) => {
-    const s = old.get(name) || { glow: 0 };
-    const a = Math.PI + (n === 1 ? Math.PI / 2 : (i / (n - 1)) * Math.PI);   // a fan above the hub
-    const rad = hub.r * 2.4;
-    s.x = clamp(hub.x + Math.cos(a) * rad, 20, W - 20); s.y = hub.y + Math.sin(a) * rad * .8;
-    s.labelLeft = s.x > hub.x;
-    mcpNodes.set(name, s);
+
+function answerSize() { return { w: NARROW ? clamp(W * .44, 140, 180) : clamp(W * .21, 170, 240), h: NARROW ? 58 : 70 }; }
+
+function syncCards(now) {
+  const docks = new Map();
+  const add = (dock, item) => { if (!docks.has(dock)) docks.set(dock, []); docks.get(dock).push(item); };
+  [...S.tools.values()].sort((a, b) => a.reqAt - b.reqAt || a.id - b.id).forEach((t) => {
+    const origin = originDock(t);
+    add(t.state === "running" ? destDock(t) : origin, { key: "tool:" + t.key, tool: t, spawn: origin });
   });
+  const max = NARROW ? 2 : 3, targets = [];
+  for (const [dock, items] of docks) {
+    const geom = dockGeom(dock);
+    if (!geom) continue;
+    let shown = items;
+    if (items.length > max) {
+      shown = items.slice(0, max - 1);
+      shown.push({ key: "more:" + dock, spec: { more: true, label: `+${items.length - max + 1} more` }, spawn: dock });
+    }
+    shown.forEach((it, i) => { const p = slot(geom, i, CH); targets.push({ ...it, dock, dir: geom.dir, x: p.x, y: p.y, w: it.spec ? CW * .6 : CW, h: CH }); });
+  }
+  if (S.answer && S.answer.text.trim()) {
+    const { w, h } = answerSize(), a = N.you;
+    targets.push({ key: "answer", spec: { answer: true }, spawn: "you", dock: "answer", dir: "down",
+      x: clamp(a.x, w / 2 + 6, W - w / 2 - 6), y: clamp(a.y + a.r + 30 + h / 2, h / 2 + 4, H - h / 2 - 28), w, h });
+  }
+  relax(targets);
+  const seen = new Set();
+  for (const tg of targets) {
+    let c = cards.get(tg.key);
+    if (!c) {
+      const sp = anchor(tg.spawn);
+      c = snap ? newCard(tg.key, tg.x, tg.y, now, true) : newCard(tg.key, sp.x, sp.y, now);
+      cards.set(tg.key, c);
+    }
+    c.tool = tg.tool || null; c.spec = tg.spec || null;
+    moveTo(c, tg.x, tg.y, now);
+    seen.add(tg.key);
+  }
+  for (const c of [...cards.values()]) {
+    if (!c.transient && !seen.has(c.key)) retire(c, now);
+    if (c.transient && now >= c.removeAt) cards.delete(c.key);
+  }
+  snap = false;
 }
-function placeSubNodes() {
-  const hub = nodes.agents, names = [...S.subagents.keys()];
-  const old = subNodes; subNodes = new Map();
-  names.forEach((name, i) => {
-    const s = old.get(name) || { alpha: 0 };
-    const off = (i - (names.length - 1) / 2) * 90;
-    s.x = clamp(hub.x + off + 70, 40, W - 40); s.y = hub.y + 4;
-    subNodes.set(name, s);
-  });
+
+// ---- drawing
+
+function rr(x, y, w, h, r) {
+  g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+}
+function drawIcon(name, x, y, s, color) {
+  g.save(); g.translate(x, y); g.scale(s, s);
+  g.lineWidth = 1.5 / s; g.strokeStyle = color; g.fillStyle = color; g.lineCap = "round"; g.lineJoin = "round";
+  const line = (...p) => { g.beginPath(); g.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) g.lineTo(p[i], p[i + 1]); g.stroke(); };
+  const circle = (cx, cy, r, fill) => { g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); fill ? g.fill() : g.stroke(); };
+  const box = (bx, by, bw, bh, br, fill) => { g.beginPath(); g.moveTo(bx + br, by); g.arcTo(bx + bw, by, bx + bw, by + bh, br);
+    g.arcTo(bx + bw, by + bh, bx, by + bh, br); g.arcTo(bx, by + bh, bx, by, br); g.arcTo(bx, by, bx + bw, by, br); g.closePath(); fill ? g.fill() : g.stroke(); };
+  switch (name) {
+    case "doc": line(.22, .06, .62, .06, .82, .26, .82, .94, .22, .94, .22, .06); line(.62, .06, .62, .26, .82, .26);
+      line(.34, .48, .7, .48); line(.34, .63, .7, .63); line(.34, .78, .56, .78); break;
+    case "term": box(.04, .14, .92, .72, .12); line(.2, .36, .38, .5, .2, .64); line(.46, .66, .72, .66); break;
+    case "globe": circle(.5, .5, .42); g.beginPath(); g.ellipse(.5, .5, .18, .42, 0, 0, Math.PI * 2); g.stroke(); line(.08, .5, .92, .5); break;
+    case "plug": line(.37, .06, .37, .3); line(.63, .06, .63, .3); box(.2, .3, .6, .32, .1);
+      g.beginPath(); g.moveTo(.5, .62); g.lineTo(.5, .76); g.quadraticCurveTo(.5, .94, .72, .94); g.stroke(); break;
+    case "sparkle": g.beginPath(); g.moveTo(.5, .04); g.quadraticCurveTo(.56, .44, .96, .5); g.quadraticCurveTo(.56, .56, .5, .96);
+      g.quadraticCurveTo(.44, .56, .04, .5); g.quadraticCurveTo(.44, .44, .5, .04); g.fill(); break;
+    case "robot": box(.16, .3, .68, .52, .12); circle(.36, .54, .07, true); circle(.64, .54, .07, true); line(.5, .3, .5, .14);
+      circle(.5, .1, .05, true); line(.38, .7, .62, .7); break;
+    case "check": box(.08, .14, .26, .26, .05); line(.13, .27, .2, .34, .3, .2); line(.44, .27, .92, .27);
+      box(.08, .6, .26, .26, .05); line(.44, .73, .92, .73); break;
+    case "cog": circle(.5, .5, .2);
+      for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; line(.5 + Math.cos(a) * .3, .5 + Math.sin(a) * .3, .5 + Math.cos(a) * .42, .5 + Math.sin(a) * .42); } break;
+    case "msg": box(.06, .12, .88, .58, .14); line(.28, .7, .22, .9, .46, .7); line(.22, .34, .78, .34); line(.22, .5, .6, .5); break;
+    case "layers": line(.1, .3, .5, .12, .9, .3, .5, .48, .1, .3); line(.1, .5, .5, .68, .9, .5); line(.1, .7, .5, .88, .9, .7); break;
+    case "search": circle(.42, .42, .28); line(.63, .63, .9, .9); break;
+    case "hook": g.beginPath(); g.moveTo(.62, .06); g.lineTo(.62, .6); g.arc(.44, .6, .18, 0, Math.PI); g.lineTo(.26, .46); g.stroke(); break;
+    case "bulb": circle(.5, .4, .28); line(.4, .76, .6, .76); line(.43, .9, .57, .9); break;
+    case "lock": g.beginPath(); g.moveTo(.3, .48); g.lineTo(.3, .34); g.arc(.5, .34, .2, Math.PI, 0); g.lineTo(.7, .48); g.stroke();
+      box(.16, .46, .68, .48, .08, true); break;
+    case "ok": line(.15, .52, .4, .76, .86, .24); break;
+    case "cross": line(.22, .22, .78, .78); line(.78, .22, .22, .78); break;
+  }
+  g.restore();
+}
+
+const fitCache = new Map();
+function fit(text, maxW, font) {
+  const k = font + "|" + maxW + "|" + text;
+  let v = fitCache.get(k);
+  if (v !== undefined) return v;
+  g.font = font; v = text;
+  if (g.measureText(text).width > maxW) {
+    let lo = 0, hi = text.length;
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (g.measureText(text.slice(0, mid) + "…").width <= maxW) lo = mid; else hi = mid - 1; }
+    v = text.slice(0, lo) + "…";
+  }
+  if (fitCache.size > 4000) fitCache.clear();
+  fitCache.set(k, v);
+  return v;
+}
+
+function toolStateText(t) {
+  switch (t.state) {
+    case "requested": return "requested · not started";
+    case "asking": return "awaiting approval " + since(t.askAt);
+    case "approved": return "approved · starting";
+    case "denied": return "denied";
+    case "running": return "running " + since(t.startAt);
+    default:
+      if (!t.ran) return t.summary ? "not run · " + oneLine(t.summary) : "not run";
+      if (t.kind === "cmd" && t.exit != null) return `exit ${t.exit} · ${fmtDur(t.dur || 0)}`;
+      if (t.added != null || t.removed != null) return `+${t.added || 0} −${t.removed || 0}` + (t.ok ? "" : " · failed");
+      return oneLine(t.summary) || (t.ok ? "done" : "failed");
+  }
+}
+function toolSpec(t) {
+  const kc = KIND_COLOR[t.kind];
+  const color = t.state === "done" ? (t.ok ? C.green : C.rose) : t.state === "asking" || t.state === "approved" ? C.amber
+    : t.state === "denied" ? C.rose : t.state === "running" ? kc : C.dim;
+  const badge = t.state === "running" ? "spin" : t.state === "asking" ? "lock" : t.state === "done" ? (t.ok ? "ok" : "cross")
+    : t.state === "denied" ? "cross" : "queued";
+  return { icon: KIND_ICON[t.kind], label: toolLabel(t), sub: toolVerb(t) + (t.agent !== "main" ? " (" + t.agent + ")" : "") + " · " + toolStateText(t),
+    color, kcolor: t.state === "requested" ? C.dim : kc, badge, dim: t.state === "requested" };
+}
+
+function drawCard(c, now) {
+  const p = posAt(c, now);
+  let a = Math.min(1, (now - c.born) / 260);
+  if (now > c.fadeAt) a = Math.min(a, 1 - (now - c.fadeAt) / Math.max(1, c.removeAt - c.fadeAt));
+  if (a <= 0) return;
+  g.globalAlpha = a;
+  if (c.spec && c.spec.answer) { drawAnswer(p); g.globalAlpha = 1; return; }
+  if (c.spec && c.spec.more) {
+    const w = CW * .6, h = 24; rr(p.x - w / 2, p.y - h / 2, w, h, 12);
+    g.fillStyle = "rgba(9,24,27,.94)"; g.fill(); g.strokeStyle = C.faint; g.lineWidth = 1; g.stroke();
+    g.fillStyle = C.dim; g.font = `11px ${MONO}`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(c.spec.label, p.x, p.y);
+    g.globalAlpha = 1; return;
+  }
+  const s = c.tool ? toolSpec(c.tool) : c.spec;
+  const w = CW, h = CH, x = p.x - w / 2, y = p.y - h / 2;
+  rr(x, y, w, h, 8); g.fillStyle = s.dim ? "rgba(9,24,27,.82)" : "rgba(9,24,27,.95)"; g.fill();
+  if (s.badge === "lock") { g.shadowColor = C.amber; g.shadowBlur = 10 + Math.sin(now / 260) * 5; }
+  g.lineWidth = s.badge === "spin" || s.badge === "lock" ? 1.8 : 1.2; g.strokeStyle = s.color;
+  if (s.dim) g.setLineDash([4, 3]);
+  g.stroke(); g.setLineDash([]); g.shadowBlur = 0;
+  const is = h - (NARROW ? 18 : 20);
+  drawIcon(s.icon, x + 8, y + (h - is) / 2, is, s.kcolor || s.color);
+  const tx = x + 14 + is, badgeW = s.badge ? 18 : 4, tw = w - (tx - x) - badgeW - 4;
+  const f1 = `600 ${NARROW ? 11 : 12}px ${MONO}`, f2 = `${NARROW ? 9.5 : 10.5}px ${SANS}`;
+  g.textAlign = "left"; g.textBaseline = "middle";
+  g.font = f1; g.fillStyle = s.dim ? C.dim : C.text; g.fillText(fit(s.label, tw, f1), tx, y + h * .35);
+  g.font = f2; g.fillStyle = s.badge === "lock" ? C.amber : s.badge === "cross" ? C.rose : C.dim;
+  g.fillText(fit(s.sub, tw, f2), tx, y + h * .72);
+  const bx = x + w - 13, by = y + h / 2;
+  if (s.badge === "spin") {
+    const r = 6, a0 = now / 180;
+    g.beginPath(); g.arc(bx, by, r, 0, Math.PI * 2); g.strokeStyle = s.color + "33"; g.lineWidth = 2; g.stroke();
+    g.beginPath(); g.arc(bx, by, r, a0, a0 + Math.PI * .8); g.strokeStyle = s.color; g.lineCap = "round"; g.stroke(); g.lineCap = "butt";
+  } else if (s.badge === "lock") drawIcon("lock", bx - 6, by - 7, 13, C.amber);
+  else if (s.badge === "ok") drawIcon("ok", bx - 6, by - 6, 12, C.green);
+  else if (s.badge === "cross") drawIcon("cross", bx - 5, by - 5, 10, C.rose);
+  else if (s.badge === "check") drawIcon("ok", bx - 6, by - 6, 12, s.color);
+  else if (s.badge === "queued") { g.beginPath(); g.arc(bx, by, 4, 0, Math.PI * 2); g.strokeStyle = C.dim; g.lineWidth = 1.4; g.stroke(); }
+  g.globalAlpha = 1;
+}
+
+function wrapTail(text, maxW, lines, font) {   // the last `lines` lines of text that fit maxW
+  g.font = font;
+  const words = oneLine(text.slice(-600)).split(" ");
+  const out = [];
+  let cur = "";
+  for (let i = words.length - 1; i >= 0 && out.length < lines; i--) {
+    const tryS = cur ? words[i] + " " + cur : words[i];
+    if (g.measureText(tryS).width <= maxW || !cur) cur = tryS;
+    else { out.unshift(cur); cur = words[i]; }
+  }
+  if (cur && out.length < lines) out.unshift(cur);
+  return out.map((l) => fit(l, maxW, font));
+}
+function drawAnswer(p) {
+  const { w, h } = answerSize(), x = p.x - w / 2, y = p.y - h / 2;
+  const live = S.answer && !S.answer.done;
+  rr(x, y, w, h, 9); g.fillStyle = "rgba(9,24,27,.95)"; g.fill();
+  g.strokeStyle = live ? C.cyan : C.green; g.lineWidth = 1.3; g.stroke();
+  drawIcon("msg", x + 8, y + 6, 13, live ? C.cyan : C.green);
+  g.font = `600 10.5px ${SANS}`; g.fillStyle = C.dim; g.textAlign = "left"; g.textBaseline = "middle";
+  g.fillText(live ? "answer · streaming" : "answer", x + 27, y + 13);
+  const font = `${NARROW ? 10.5 : 11.5}px ${MONO}`, lh = NARROW ? 13 : 15, n = NARROW ? 2 : 3;
+  const lines = wrapTail(S.answer ? S.answer.text : "", w - 18, n, font);
+  g.font = font; g.fillStyle = C.text;
+  lines.forEach((l, i) => g.fillText(l, x + 9, y + 28 + i * lh + (n - lines.length) * 0));
+  if (live && lines.length) {
+    const last = lines[lines.length - 1], lx = x + 9 + g.measureText(last).width + 2, ly = y + 28 + (lines.length - 1) * lh;
+    if (lx < x + w - 8 && Math.floor(performance.now() / 500) % 2) { g.fillStyle = C.cyan; g.fillRect(lx, ly - 6, 6, 12); }
+  }
 }
 
 function curve(a, b, bend) {
-  const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-  const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
+  const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
   return { a, b, c: { x: mx - dy / len * bend, y: my + dx / len * bend } };
 }
-function at(cv, t) {
-  const u = 1 - t;
-  return { x: u * u * cv.a.x + 2 * u * t * cv.c.x + t * t * cv.b.x, y: u * u * cv.a.y + 2 * u * t * cv.c.y + t * t * cv.b.y };
-}
-function edges() {
-  const n = nodes, bend = Math.min(W, H) * .16;
-  return {
-    youCtx: curve(n.you, n.context, 0), ctxModel: curve(n.context, n.model, 0), modelTools: curve(n.model, n.tools, 0),
-    toolsCtx: curve(n.tools, n.context, -bend * 1.2), modelYou: curve(n.model, n.you, bend * 1.25),
-    lessonsCtx: curve(n.lessons, n.context, 0), modelAgents: curve(n.model, n.agents, 0),
-    modelMcp: curve(n.model, n.mcp, bend * .3), mcpCtx: curve(n.mcp, n.context, -bend * .9),
-    hooksCtx: curve(n.hooks, n.context, 0),
-  };
-}
-
-function spawn(cv, color, count, opts = {}) {
-  for (let i = 0; i < count; i++) {
-    particles.push({ cv, t: -(opts.stagger ?? 0.06) * i, speed: (opts.speed || .9) * (0.85 + Math.random() * .3),
-      color, size: opts.size || 2.4, jitter: (Math.random() - .5) * (opts.spread ?? 10) });
-  }
-  if (particles.length > 900) particles.splice(0, particles.length - 900);
-}
-function pulse(node, color) { pulses.push({ node, color, t: 0 }); }
-
-const fx = {
-  turn() { const e = edges(); pulse(nodes.you, C.text); spawn(e.youCtx, C.text, 10); setTimeout(() => spawn(edges().ctxModel, C.teal, 10), 450); },
-  answer() { pulse(nodes.you, C.green); },
-  think(ev) { const e = edges(); const from = isSub(ev) && subNodes.get(ev.agent);
-    if (from) spawn(curve(nodes.agents, from, 12), C.violet, 5); else spawn(e.ctxModel, C.teal, 6, { speed: 1.2 }); },
-  tokens(ev) { const n = clamp(Math.round((ev.chars || 0) / 30), 1, 6);
-    if (isSub(ev)) { const s = subNodes.get(ev.agent); if (s) s.alpha = 1; return; }
-    spawn(edges().modelYou, C.cyan, n, { size: 2, speed: 1.1, stagger: .04, spread: 16 }); },
-  toolStart(ev) {
-    const mcp = mcpParts(ev.name);
-    if (mcp) {
-      placeMcp();
-      const srv = mcpNodes.get(mcp.server), src = isSub(ev) ? subNodes.get(ev.agent) : null;
-      spawn(src ? curve(src, nodes.mcp, 20) : edges().modelMcp, C.pink, 6, { speed: 1.4 });
-      pulse(nodes.mcp, C.pink);
-      if (srv) { srv.glow = 1; setTimeout(() => spawn(curve(nodes.mcp, srv, 0), C.pink, 3, { speed: 2 }), 250); }
-      return;
-    }
-    placeSatellites();
-    const sat = satellites.get(ev.name); const e = edges();
-    const src = isSub(ev) ? subNodes.get(ev.agent) : null;
-    if (src) spawn(curve(src, nodes.tools, 30), C.violet, 5); else spawn(e.modelTools, C.amber, 6, { speed: 1.4 });
-    if (sat) { sat.glow = 1; setTimeout(() => spawn(curve(nodes.tools, sat, 0), C.amber, 3, { speed: 2 }), 250); }
-  },
-  toolEnd(ev) {
-    const mcp = mcpParts(ev.name);
-    if (mcp) {
-      const srv = mcpNodes.get(mcp.server), col = ev.ok ? C.green : C.rose;
-      if (srv) { srv.glow = Math.max(srv.glow, .6); spawn(curve(srv, nodes.mcp, 0), col, 3, { speed: 2 }); }
-      if (!isSub(ev)) setTimeout(() => spawn(edges().mcpCtx, col, 7, { speed: .9 }), 200);
-      if (!ev.ok) pulse(nodes.mcp, C.rose);
-      return;
-    }
-    const sat = satellites.get(ev.name); const col = ev.ok ? C.green : C.rose;
-    if (sat) { sat.glow = Math.max(sat.glow, .6); spawn(curve(sat, nodes.tools, 0), col, 3, { speed: 2 }); }
-    if (!isSub(ev)) setTimeout(() => spawn(edges().toolsCtx, col, 7, { speed: .9 }), 200);
-    if (!ev.ok) pulse(nodes.tools, C.rose);
-  },
-  compact() { compactFlash = 1; pulse(nodes.context, C.violet); },
-  modelError() { pulse(nodes.model, C.rose); },
-  hook(ev) {
-    const col = ev.outcome === "blocked" ? C.rose : ev.outcome === "warning" ? C.amber : C.orange;
-    pulse(nodes.hooks, col); spawn(edges().hooksCtx, col, 5, { speed: 1.3 });
-  },
-  lessons() { pulse(nodes.lessons, C.violet); spawn(edges().lessonsCtx, C.violet, 8); },
-  subStart(ev) { placeSubNodes(); pulse(nodes.agents, C.violet); spawn(edges().modelAgents, C.violet, 8); },
-  subEnd(ev) { spawn(curve(nodes.agents, nodes.model, 0), ev.status === "ok" ? C.green : C.rose, 6); },
-};
-
 function drawEdge(cv, active, color) {
-  sctx.beginPath(); sctx.moveTo(cv.a.x, cv.a.y); sctx.quadraticCurveTo(cv.c.x, cv.c.y, cv.b.x, cv.b.y);
-  sctx.strokeStyle = active ? color + "66" : "rgba(94,234,212,.13)"; sctx.lineWidth = active ? 1.8 : 1.2;
-  sctx.setLineDash(active ? [] : [4, 6]); sctx.stroke(); sctx.setLineDash([]);
+  g.beginPath(); g.moveTo(cv.a.x, cv.a.y); g.quadraticCurveTo(cv.c.x, cv.c.y, cv.b.x, cv.b.y);
+  g.strokeStyle = active ? color + "88" : "rgba(94,234,212,.12)"; g.lineWidth = active ? 1.8 : 1.1;
+  g.setLineDash(active ? [] : [4, 6]); g.stroke(); g.setLineDash([]);
 }
 
-function drawNode(n, glow, sub) {
-  const g = sctx.createRadialGradient(n.x, n.y, n.r * .2, n.x, n.y, n.r * (2.2 + glow));
-  g.addColorStop(0, n.color + (glow > .05 ? "55" : "22")); g.addColorStop(1, n.color + "00");
-  sctx.fillStyle = g; sctx.beginPath(); sctx.arc(n.x, n.y, n.r * (2.2 + glow), 0, Math.PI * 2); sctx.fill();
-  sctx.beginPath(); sctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-  sctx.fillStyle = "#0b1d20"; sctx.fill();
-  sctx.lineWidth = 1.6 + glow * 1.5; sctx.strokeStyle = n.color; sctx.globalAlpha = .55 + glow * .45; sctx.stroke();
-  sctx.globalAlpha = 1;
-  sctx.fillStyle = C.text; sctx.font = `600 ${clamp(n.r * .38, 10, 14)}px ${getComputedStyle(document.body).fontFamily}`;
-  sctx.textAlign = "center"; sctx.textBaseline = "middle"; sctx.fillText(n.label, n.x, n.y);
-  if (sub) { sctx.fillStyle = C.dim; sctx.font = `11px ui-monospace, Consolas, monospace`; sctx.fillText(sub, n.x, n.y + n.r + 14); }
+function drawNode(n, glow, sub, subColor) {
+  const gr = g.createRadialGradient(n.x, n.y, n.r * .2, n.x, n.y, n.r * (2 + glow));
+  gr.addColorStop(0, n.color + (glow > .05 ? "44" : "1a")); gr.addColorStop(1, n.color + "00");
+  g.fillStyle = gr; g.beginPath(); g.arc(n.x, n.y, n.r * (2 + glow), 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.arc(n.x, n.y, n.r, 0, Math.PI * 2); g.fillStyle = "#0b1d20"; g.fill();
+  g.lineWidth = 1.6 + glow * 1.2; g.strokeStyle = n.color; g.globalAlpha = .55 + glow * .45; g.stroke(); g.globalAlpha = 1;
+  g.fillStyle = C.text; g.font = `600 ${clamp(n.r * .36, 9.5, 14)}px ${SANS}`;
+  g.textAlign = "center"; g.textBaseline = "middle";
+  g.fillText(n.label, n.x, n.y);
+  if (sub) {
+    const f = `${NARROW ? 10 : 11}px ${MONO}`, maxW = NARROW ? (n.y > H * .5 ? 76 : 96) : 210;
+    g.fillStyle = subColor || C.dim; g.font = f; g.fillText(fit(sub, maxW, f), clamp(n.x, maxW / 2, W - maxW / 2), n.y + n.r + 13);
+  }
 }
 
-function drawRingArc(n, frac, color, width, pad) {
-  if (frac <= 0) return;
-  sctx.beginPath(); sctx.arc(n.x, n.y, n.r + pad, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * clamp(frac, 0, 1));
-  sctx.strokeStyle = color; sctx.lineWidth = width; sctx.lineCap = "round"; sctx.stroke(); sctx.lineCap = "butt";
+function llmNow() {
+  const rank = { streaming: 3, sent: 2, preparing: 1 };
+  let best = null;
+  S.llm.forEach((c) => { if (!best || rank[c.state] > rank[best.state] || (rank[c.state] === rank[best.state] && c.start > best.start)) best = c; });
+  return best;
+}
+function llmText(c, short) {
+  if (c.state === "preparing") return "preparing request";
+  if (c.state === "sent") return (short ? "sent · waiting " : "sent · waiting for reply ") + since(c.sentAt);
+  const el = clock() - c.firstAt;
+  if (c.chars < 12 || el < .3) return "streaming";
+  return `streaming ~${Math.round(c.chars / 4 / el)} tok/s`;
 }
 
-let lastFrame = performance.now();
+let lastFrame = performance.now(), spin = 0;
 function frame(now) {
   const dt = Math.min(.05, (now - lastFrame) / 1000); lastFrame = now;
   tick(dt);
-  sctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-  sctx.clearRect(0, 0, W, H);
-  const e = edges(), n = nodes;
-  const llm = !!S.llmActive, toolsBusy = S.tools.size > 0;
+  g.setTransform(DPR, 0, 0, DPR, 0, 0);
+  g.clearRect(0, 0, W, H);
+  const v = visible(), n = N, bend = Math.min(W, H) * .16;
+  const tools = [...S.tools.values()];
+  const running = (k) => tools.filter((t) => t.state === "running" && destDock(t) === k).length;
+  const mainLlm = S.llm.get("main"), anyLlm = llmNow();
   const anySub = [...S.subagents.values()].some((s) => s.active);
-  drawEdge(e.youCtx, false, C.text); drawEdge(e.ctxModel, llm, C.teal); drawEdge(e.modelTools, toolsBusy, C.amber);
-  drawEdge(e.toolsCtx, toolsBusy, C.green); drawEdge(e.modelYou, llm, C.cyan);
-  drawEdge(e.lessonsCtx, S.lessons.length > 0, C.violet); drawEdge(e.modelAgents, anySub, C.violet);
-  const mcpBusy = [...S.tools.values()].some((t) => t.mcp);
-  if (S.mcp.size) { drawEdge(e.modelMcp, mcpBusy, C.pink); drawEdge(e.mcpCtx, mcpBusy, C.green); }
-  if (S.hooks) drawEdge(e.hooksCtx, false, C.orange);
-  mcpNodes.forEach((s) => { drawEdge(curve(n.mcp, s, 0), s.glow > .1, C.pink); });
-  satellites.forEach((s) => { drawEdge(curve(n.tools, s, 0), s.glow > .1, C.amber); });
 
-  // particles
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const p = particles[i];
-    p.t += dt * p.speed;
-    if (p.t >= 1) { particles.splice(i, 1); continue; }
-    if (p.t < 0) continue;
-    const pt = at(p.cv, p.t); const dx = p.cv.b.x - p.cv.a.x, dy = p.cv.b.y - p.cv.a.y, len = Math.hypot(dx, dy) || 1;
-    const off = Math.sin(p.t * Math.PI) * p.jitter;
-    const x = pt.x - dy / len * off, y = pt.y + dx / len * off;
-    sctx.globalAlpha = Math.sin(p.t * Math.PI) * .9 + .1;
-    sctx.fillStyle = p.color; sctx.shadowColor = p.color; sctx.shadowBlur = 8;
-    sctx.beginPath(); sctx.arc(x, y, p.size, 0, Math.PI * 2); sctx.fill();
-  }
-  sctx.shadowBlur = 0; sctx.globalAlpha = 1;
+  drawEdge(curve(n.you, n.context, 0), !!S.turn, C.text);
+  drawEdge(curve(n.context, n.model, 0), !!mainLlm && mainLlm.state !== "preparing", C.teal);
+  drawEdge(curve(n.model, n.tools, 0), running("tools") > 0, C.amber);
+  drawEdge(curve(n.tools, n.context, -bend * (NARROW ? .5 : 1.1)), false, C.green);
+  drawEdge(curve(n.model, n.you, bend * (NARROW ? .6 : 1.2)), !!(mainLlm && mainLlm.state === "streaming" && S.answer && S.answer.text), C.cyan);
+  if (v.lessons) drawEdge(curve(n.lessons, n.context, 0), S.lessons.length > 0, C.violet);
+  if (v.hooks) drawEdge(curve(n.hooks, n.context, 0), false, C.orange);
+  if (v.mcp) drawEdge(curve(n.model, n.mcp, bend * .25), running("mcp") > 0, C.pink);
+  if (v.skills) drawEdge(curve(n.model, n.skills, 0), running("skills") > 0, C.violet);
+  if (v.agents) drawEdge(curve(n.model, n.agents, 0), anySub || running("agents") > 0, C.violet);
+  S.subagents.forEach((s, name) => { const p = subNode(name); if (p) drawEdge(curve(n.agents, p, 0), s.active, C.violet); });
 
-  // context node: its size follows how full the window is
+  // nodes, each labelled with its real current state
+  drawNode(n.you, S.turn ? .35 : 0, S.turn ? "turn · " + since(S.turn.start) : S.sessionSeen ? "idle" : "", S.turn ? C.teal : C.dim);
   const frac = S.ctx.usable ? S.ctx.used / S.ctx.usable : 0;
-  const base = n.context.r;
-  n.context.r = base * (0.85 + .35 * clamp(frac, 0, 1));
-  drawNode(n.you, pulses.some((q) => q.node === n.you) ? .6 : 0);
-  drawNode(n.context, compactFlash, S.ctx.usable ? `${fmtNum(S.ctx.used)} / ${fmtNum(S.ctx.usable)}` : "");
+  drawNode(n.context, 0, S.ctx.usable ? `${fmtNum(S.ctx.used)} / ${fmtNum(S.ctx.usable)} · ${Math.round(frac * 100)}%` : "");
   let a0 = 0;
   for (const k of ["system", "conversation", "tools"]) {
-    const v = (S.ctx.parts[k] || 0) / (S.ctx.usable || 1);
-    if (v > 0) { sctx.beginPath(); sctx.arc(n.context.x, n.context.y, n.context.r + 6, -Math.PI / 2 + a0 * Math.PI * 2,
-      -Math.PI / 2 + (a0 + v) * Math.PI * 2); sctx.strokeStyle = PART_COLORS[k]; sctx.lineWidth = 4; sctx.stroke(); }
-    a0 += v;
+    const f = (S.ctx.parts[k] || 0) / (S.ctx.usable || 1);
+    if (f > 0) { g.beginPath(); g.arc(n.context.x, n.context.y, n.context.r + 5, -Math.PI / 2 + a0 * Math.PI * 2,
+      -Math.PI / 2 + (a0 + Math.max(f, .004)) * Math.PI * 2); g.strokeStyle = PART_COLORS[k]; g.lineWidth = 3.5; g.stroke(); }
+    a0 += f;
   }
-  n.context.r = base;
 
-  drawNode(n.model, llm ? .7 + Math.sin(now / 180) * .25 : 0, S.model ? S.model.slice(0, 28) : "");
-  if (llm) {
-    modelSpin += dt * 3.2;
-    sctx.beginPath(); sctx.arc(n.model.x, n.model.y, n.model.r + 8, modelSpin, modelSpin + Math.PI * .7);
-    sctx.strokeStyle = C.cyan; sctx.lineWidth = 2.5; sctx.lineCap = "round"; sctx.stroke();
-    sctx.beginPath(); sctx.arc(n.model.x, n.model.y, n.model.r + 13, -modelSpin * .7, -modelSpin * .7 + Math.PI * .4);
-    sctx.strokeStyle = C.teal + "99"; sctx.lineWidth = 1.5; sctx.stroke(); sctx.lineCap = "butt";
+  let modelSub = "idle", modelColor = C.dim, glow = 0;
+  if (anyLlm) {
+    modelSub = (anyLlm.agent !== "main" ? anyLlm.agent + ": " : "") + llmText(anyLlm, NARROW);
+    modelColor = anyLlm.state === "streaming" ? C.cyan : anyLlm.state === "sent" ? C.text : C.dim;
+    glow = anyLlm.state === "streaming" ? .6 + Math.sin(now / 200) * .2 : anyLlm.state === "sent" ? .25 : .1;
+  } else if (S.llmFailed) { modelSub = "failed"; modelColor = C.rose; }
+  drawNode(n.model, glow, modelSub, modelColor);
+  const M = n.model;
+  if (anyLlm && anyLlm.state === "streaming") {
+    spin += dt * 3.2;
+    g.beginPath(); g.arc(M.x, M.y, M.r + 7, spin, spin + Math.PI * .7); g.strokeStyle = C.cyan; g.lineWidth = 2.5; g.lineCap = "round"; g.stroke();
+    g.beginPath(); g.arc(M.x, M.y, M.r + 12, -spin * .7, -spin * .7 + Math.PI * .4); g.strokeStyle = C.teal + "99"; g.lineWidth = 1.5; g.stroke(); g.lineCap = "butt";
+  } else if (anyLlm) {   // preparing: still dashes; sent: dashes turning slowly while it waits
+    if (anyLlm.state === "sent") spin += dt * .6;
+    g.save(); g.translate(M.x, M.y); g.rotate(anyLlm.state === "sent" ? spin : 0);
+    g.beginPath(); g.arc(0, 0, M.r + 7, 0, Math.PI * 2); g.setLineDash([3, 7]);
+    g.strokeStyle = anyLlm.state === "sent" ? C.cyan + "aa" : C.faint; g.lineWidth = 2; g.stroke(); g.setLineDash([]); g.restore();
+  } else if (S.llmFailed) { g.beginPath(); g.arc(M.x, M.y, M.r + 6, 0, Math.PI * 2); g.strokeStyle = C.rose; g.lineWidth = 2; g.stroke(); }
+
+  const nRun = running("tools"), nAsk = tools.filter((t) => t.state === "asking").length;
+  const toolSub = nRun || nAsk ? [nRun ? nRun + " running" : "", nAsk ? nAsk + " awaiting approval" : ""].filter(Boolean).join(" · ")
+    : S.toolCalls ? `idle · ${S.toolCalls} calls` : "idle";
+  drawNode(n.tools, nRun ? .5 : 0, toolSub, nRun ? C.amber : nAsk ? C.amber : C.dim);
+  if (v.lessons) drawNode(n.lessons, S.lessons.length ? .3 : 0, S.lessons.length ? `${S.lessons.length} recalled` : "none this turn");
+  if (v.hooks) drawNode(n.hooks, 0, S.hookRuns ? `${S.hookRuns} run${S.hookRuns === 1 ? "" : "s"}` : `${S.inv.hooks.length} configured`);
+  if (v.mcp) {
+    const r = running("mcp"), bad = S.inv.mcp.filter((m) => !/^connected/i.test(m.status || "")).length;
+    drawNode(n.mcp, r ? .5 : 0, r ? `${r} running` : `${S.inv.mcp.length} server${S.inv.mcp.length === 1 ? "" : "s"}` + (bad ? ` · ${bad} down` : ""),
+      r ? C.pink : bad ? C.rose : C.dim);
   }
-  drawNode(n.tools, toolsBusy ? .6 : 0, S.toolCalls ? `${S.toolCalls} calls` : "");
-  drawNode(n.lessons, S.lessons.length ? .4 : 0, S.lessons.length ? `${S.lessons.length} recalled` : "");
-  drawNode(n.agents, anySub ? .5 : 0, "");
-  if (S.mcp.size) drawNode(n.mcp, mcpBusy ? .6 : 0, "");
-  if (S.hooks) drawNode(n.hooks, pulses.some((q) => q.node === n.hooks) ? .6 : 0, `${S.hooks} run${S.hooks === 1 ? "" : "s"}`);
-  mcpNodes.forEach((s, name) => {
-    const busy = [...S.tools.values()].some((t) => t.mcp && t.mcp.server === name);
-    const info = S.mcp.get(name) || {};
-    const failed = /fail/i.test(info.status || "");
-    if (busy) s.glow = 1;
-    sctx.beginPath(); sctx.arc(s.x, s.y, 5 + s.glow * 3, 0, Math.PI * 2);
-    sctx.fillStyle = failed ? C.rose : busy ? C.pink : C.pink + "66"; sctx.shadowColor = C.pink; sctx.shadowBlur = s.glow * 14;
-    sctx.fill(); sctx.shadowBlur = 0;
-    sctx.fillStyle = busy ? C.text : C.dim; sctx.font = "11px ui-monospace, Consolas, monospace"; sctx.textBaseline = "middle";
-    sctx.textAlign = s.labelLeft ? "left" : "right";
-    sctx.fillText(name + (info.calls ? ` ·${info.calls}` : ""), s.labelLeft ? s.x + 10 : s.x - 10, s.y);
-    s.glow = Math.max(0, s.glow - dt * .8);
-  });
-
-  satellites.forEach((s, name) => {
-    const busy = [...S.tools.values()].some((t) => t.name === name);
-    if (busy) s.glow = 1;
-    sctx.beginPath(); sctx.arc(s.x, s.y, 5 + s.glow * 3, 0, Math.PI * 2);
-    sctx.fillStyle = busy ? C.amber : C.amber + "55"; sctx.shadowColor = C.amber; sctx.shadowBlur = s.glow * 14; sctx.fill();
-    sctx.shadowBlur = 0;
-    sctx.fillStyle = busy ? C.text : C.dim; sctx.font = "11px ui-monospace, Consolas, monospace";
-    sctx.textAlign = s.labelLeft ? "right" : "left"; sctx.textBaseline = "middle";
-    sctx.fillText(name, s.labelLeft ? s.x - 12 : s.x + 12, s.y);
-  });
-  subNodes.forEach((s, name) => {
-    const st = S.subagents.get(name); const active = st && st.active;
-    s.alpha = active ? 1 : Math.max(.35, s.alpha - dt * .4);
-    sctx.globalAlpha = s.alpha;
-    sctx.beginPath(); sctx.arc(s.x, s.y, 9, 0, Math.PI * 2); sctx.fillStyle = "#0b1d20"; sctx.fill();
-    sctx.strokeStyle = C.violet; sctx.lineWidth = active ? 2.2 : 1.2; sctx.stroke();
-    sctx.fillStyle = C.violet; sctx.font = "11px ui-monospace, Consolas, monospace"; sctx.textAlign = "center";
-    sctx.fillText(name, s.x, s.y + 22); sctx.globalAlpha = 1;
+  if (v.skills) { const r = running("skills"); let used = 0; S.skillUse.forEach((x) => { used += x; });
+    drawNode(n.skills, r ? .5 : 0, r ? "loading" : `${used} used`, r ? C.violet : C.dim); }
+  if (v.agents) {
+    const act = [...S.subagents.entries()].filter(([, s]) => s.active);
+    drawNode(n.agents, act.length ? .5 : 0, act.length ? `${act.length} running` : `${S.subagents.size} ran`, act.length ? C.violet : C.dim);
+  }
+  S.subagents.forEach((s, name) => {
+    const p = subNode(name); if (!p) return;
+    g.globalAlpha = s.active ? 1 : .5;
+    g.beginPath(); g.arc(p.x, p.y, p.r, 0, Math.PI * 2); g.fillStyle = "#0b1d20"; g.fill();
+    g.strokeStyle = s.active ? C.violet : s.status && s.status !== "ok" ? C.rose : C.violet; g.lineWidth = s.active ? 2 : 1.2; g.stroke();
+    drawIcon("robot", p.x - 6, p.y - 6, 12, C.violet);
+    const f = `10.5px ${MONO}`; g.font = f; g.fillStyle = s.active ? C.text : C.dim; g.textAlign = "center"; g.textBaseline = "middle";
+    const txt = name + " · " + (s.active ? since(s.start) : s.status || "done");
+    if (NARROW) { g.textAlign = "left"; g.fillText(fit(txt, 90, f), p.x + p.r + 4, p.y); }
+    else g.fillText(fit(txt, 110, f), p.x, p.y + p.r + 12);
+    g.globalAlpha = 1;
   });
 
   for (let i = pulses.length - 1; i >= 0; i--) {
-    const q = pulses[i]; q.t += dt * 1.4;
+    const q = pulses[i]; q.t += dt * 1.2;
     if (q.t >= 1) { pulses.splice(i, 1); continue; }
-    sctx.beginPath(); sctx.arc(q.node.x, q.node.y, q.node.r * (1 + q.t * 1.3), 0, Math.PI * 2);
-    sctx.strokeStyle = q.color; sctx.globalAlpha = 1 - q.t; sctx.lineWidth = 2; sctx.stroke(); sctx.globalAlpha = 1;
+    g.beginPath(); g.arc(q.node.x, q.node.y, q.node.r * (1 + q.t * .9), 0, Math.PI * 2);
+    g.strokeStyle = q.color; g.globalAlpha = (1 - q.t) * .8; g.lineWidth = 2; g.stroke(); g.globalAlpha = 1;
   }
-  satellites.forEach((s) => { s.glow = Math.max(0, s.glow - dt * .8); });
-  compactFlash = Math.max(0, compactFlash - dt * .7);
+
+  syncCards(now);
+  const order = [...cards.values()].sort((a, b) => (a.transient ? 1 : 0) - (b.transient ? 1 : 0));
+  for (const c of order) drawCard(c, now);
 
   drawTimeline();
   requestAnimationFrame(frame);
@@ -633,16 +1100,129 @@ function drawRing() {
     rctx.beginPath(); rctx.arc(cx, cx, r, a, b); rctx.strokeStyle = PART_COLORS[k]; rctx.lineWidth = 18; rctx.stroke(); a = b;
   }
   const pct = S.ctx.usable ? Math.round(100 * S.ctx.used / S.ctx.usable) : 0;
-  rctx.fillStyle = C.text; rctx.font = "600 38px ui-monospace, Consolas, monospace"; rctx.textAlign = "center";
+  rctx.fillStyle = C.text; rctx.font = `600 36px ${MONO}`; rctx.textAlign = "center";
   rctx.textBaseline = "middle"; rctx.fillText(pct + "%", cx, cx - 6);
-  rctx.fillStyle = C.dim; rctx.font = "20px ui-monospace, Consolas, monospace"; rctx.fillText("used", cx, cx + 26);
+  rctx.fillStyle = C.dim; rctx.font = `19px ${MONO}`; rctx.fillText("used", cx, cx + 25);
 }
 
-let lastPanel = "";
+function renderCommands() {
+  const box = $("cmds");
+  const n = S.commands.length;
+  $("cmd-count").textContent = n ? String(n) : "";
+  if (!n) { box.innerHTML = '<div class="empty">No commands run yet</div>'; return; }
+  const html = [];
+  for (let i = n - 1; i >= 0 && i >= n - 60; i--) {
+    const c = S.commands[i];
+    const cls = "c-" + c.state;
+    let meta;
+    if (c.state === "running") meta = `<span class="cm" data-since="${c.startAt}" data-pre="running "></span>`;
+    else if (c.state === "asking") meta = '<span class="cm c-asking">awaiting approval</span>';
+    else if (c.state === "requested") meta = '<span class="cm">requested</span>';
+    else if (c.state === "approved") meta = '<span class="cm c-approved">approved</span>';
+    else if (c.state === "denied") meta = '<span class="cm c-denied">not run</span>';
+    else meta = `<span class="cm ${cls}">${c.exit != null ? "exit " + esc(c.exit) : c.state === "ok" ? "ok" : "failed"}${c.dur != null ? " · " + fmtDur(c.dur) : ""}</span>`;
+    const dot = `<span class="dot ${c.state === "requested" ? "hollow" : c.state === "running" ? "spin" : ""} ${cls}"></span>`;
+    const tag = c.agent !== "main" ? `<span class="tag">${esc(c.agent)}</span>` : "";
+    const head = `${dot}<code title="${esc(c.label)}">${esc(c.label)}</code>${tag}${meta}`;
+    const out = (c.output || (c.state === "denied" ? c.summary : "") || "").replace(/\r/g, "");
+    if (out) html.push(`<details class="cmd" data-key="${esc(c.key)}"${openCmds.has(c.key) ? " open" : ""}><summary>${head}</summary><pre>${esc(out)}</pre></details>`);
+    else html.push(`<div class="cmd"><div class="row">${head}</div></div>`);
+  }
+  box.innerHTML = html.join("");
+  updateTimers(box);
+}
+const openCmds = new Set();
+$("cmds").addEventListener("toggle", (e) => {
+  const d = e.target; if (!d.dataset || !d.dataset.key) return;
+  if (d.open) openCmds.add(d.dataset.key); else openCmds.delete(d.dataset.key);
+}, true);
+
+function renderToolStats() {
+  const box = $("toolstats");
+  const rows = [...S.toolStats.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  let total = 0; rows.forEach((r) => { total += r.count; });
+  $("tool-count").textContent = total ? `${total} requested` : "";
+  const html = [];
+  if (!rows.length) html.push('<div class="empty">No tools used yet</div>');
+  const max = rows.length ? rows[0].count : 1;
+  for (const r of rows) {
+    const col = KIND_COLOR[r.kind] || C.other, okW = (r.count - r.errors) / max * 100, errW = r.errors / max * 100;
+    html.push(`<div class="tstat"><span class="tn" style="color:${col}" title="${esc(r.name)}">${esc(r.name)}</span>`
+      + `<span class="bar"><i style="width:${okW}%;background:${col}"></i><i style="width:${errW}%;background:${C.rose}"></i></span>`
+      + `<span class="tv">${r.count}×${r.errors ? ` · <span class="c-fail">${r.errors} ✗</span>` : ""} · ${fmtDur(r.time)}</span></div>`);
+  }
+  const used = new Set(); S.toolStats.forEach((r) => used.add(r.name));
+  S.toolStats.forEach((r) => { if (r.kind === "mcp") used.add("mcp__" + r.name.replace(" · ", "__")); });
+  S.tools.forEach((t) => used.add(t.name));
+  const avail = S.inv.tools.filter((t) => !used.has(t));
+  if (avail.length) html.push(`<div class="avail">Available, not used yet: ${esc(avail.map((t) => { const m = mcpParts(t); return m ? m.server + "·" + m.tool : t; }).join(", "))}</div>`);
+  box.innerHTML = html.join("");
+}
+
+function renderExt() {
+  const box = $("ext"), inv = S.inv, html = [];
+  if (!S.sessionSeen) { box.innerHTML = '<div class="empty">Waiting for the session inventory</div>'; return; }
+  // skills
+  const skills = inv.skills.map((s) => s.name), extraSkills = [...S.skillUse.keys()].filter((n) => !skills.includes(n));
+  const skillUsed = [...S.skillUse.values()].reduce((a, b) => a + b, 0);
+  html.push(`<h4>Skills <small>${inv.skills.length} available${skillUsed ? " · " + skillUsed + " used" : ""}</small></h4><div class="chips">`);
+  if (!inv.skills.length && !extraSkills.length) html.push('<span class="empty">none</span>');
+  for (const s of [...inv.skills, ...extraSkills.map((name) => ({ name, description: "" }))]) {
+    const u = S.skillUse.get(s.name) || 0;
+    html.push(`<span class="chip${u ? " used" : ""}" style="${u ? "color:" + C.violet : ""}" title="${esc(s.description || s.name)}${s.source ? " (" + esc(s.source) + ")" : ""}">${esc(s.name)}${u ? `<b>${u}×</b>` : ""}</span>`);
+  }
+  html.push("</div>");
+  // sub-agent types
+  const agents = inv.agents.map((a) => a.name), extraAgents = [...S.agentUse.keys()].filter((n) => !agents.includes(n));
+  html.push(`<h4>Sub-agents <small>${inv.agents.length} types</small></h4><div class="chips">`);
+  if (!inv.agents.length && !extraAgents.length) html.push('<span class="empty">none</span>');
+  for (const a of [...inv.agents, ...extraAgents.map((name) => ({ name, description: "" }))]) {
+    const u = S.agentUse.get(a.name) || 0, act = S.subagents.get(a.name);
+    html.push(`<span class="chip${u ? " used" : ""}" style="${u ? "color:" + C.violet : ""}" title="${esc(a.description || a.name)}">${act && act.active ? "● " : ""}${esc(a.name)}${u ? `<b>${u}×</b>` : ""}</span>`);
+  }
+  html.push("</div>");
+  // MCP servers with their tools
+  const servers = inv.mcp.map((m) => m.name), extraSrv = [...S.mcpUse.keys()].filter((n) => !servers.includes(n));
+  html.push(`<h4>MCP servers <small>${inv.mcp.length} configured</small></h4>`);
+  if (!inv.mcp.length && !extraSrv.length) html.push('<div class="empty">none configured</div>');
+  for (const m of [...inv.mcp, ...extraSrv.map((name) => ({ name, status: "", tools: [] }))]) {
+    const u = S.mcpUse.get(m.name), st = m.status || "";
+    const col = /^connected/i.test(st) ? C.green : /fail|error|disconn/i.test(st) ? C.rose : C.dim;
+    html.push(`<div class="srv"><div class="sh"><span class="dot" style="color:${col}"></span><span style="color:${u ? C.pink : C.text}">${esc(m.name)}</span>`
+      + `<span>${esc(st || "status unknown")}${u ? ` · ${u.calls} call${u.calls === 1 ? "" : "s"}` : ""}</span></div><div class="chips">`);
+    const tools = [...(m.tools || [])]; if (u) u.tools.forEach((_, k) => { if (!tools.includes(k)) tools.push(k); });
+    if (!tools.length) html.push('<span class="empty">no tools listed</span>');
+    for (const t of tools) {
+      const tu = u && u.tools.get(t);
+      html.push(`<span class="chip${tu ? " used" : ""}${tu && tu.errors ? " err" : ""}" style="${tu ? "color:" + C.pink : ""}">${esc(t)}${tu ? `<b>${tu.calls}×${tu.errors ? " " + tu.errors + "✗" : ""}</b>` : ""}</span>`);
+    }
+    html.push("</div></div>");
+  }
+  // hooks
+  html.push(`<h4>Hooks <small>${inv.hooks.length} configured${S.hookRuns ? " · " + S.hookRuns + " runs" : ""}</small></h4>`);
+  if (!inv.hooks.length && !S.hookUse.size) html.push('<div class="empty">none configured</div>');
+  const seenHooks = new Set();
+  for (const h of inv.hooks) {
+    const k = h.event + "|" + h.command, u = S.hookUse.get(k); seenHooks.add(k);
+    html.push(`<div class="hk${u ? " used" : ""}"><span class="he">${esc(h.event)}·${esc(h.matcher || "*")}</span><span class="hc" title="${esc(h.command)}">${esc(h.command)}</span>`
+      + `<span class="${u && u.last === "blocked" ? "c-fail" : u && u.last === "warning" ? "c-asking" : ""}">${u ? `${u.runs}× ${esc(u.last)}` : "not run"}</span></div>`);
+  }
+  S.hookUse.forEach((u, k) => {
+    if (seenHooks.has(k)) return;
+    const [ev, cmd] = k.split("|");
+    html.push(`<div class="hk used"><span class="he">${esc(ev)}</span><span class="hc" title="${esc(cmd)}">${esc(cmd)}</span><span>${u.runs}× ${esc(u.last)}</span></div>`);
+  });
+  box.innerHTML = html.join("");
+}
+
+const last = { panel: -1, cmd: -1, stat: -1, ext: -1 };
 function renderPanels(force) {
-  const key = [S.log.length, S.log.length && S.log[S.log.length - 1].t, S.turns, S.calls, S.toolCalls, S.tokIn, S.ctx.used,
-    S.todos.length, JSON.stringify(S.todos), S.lessons.length, S.caption, S.model, S.mode].join("|");
-  if (!force && key === lastPanel) return; lastPanel = key;
+  if (force || last.cmd !== S.cmdVer) { last.cmd = S.cmdVer; renderCommands(); }
+  if (force || last.stat !== S.statVer || last.ext !== S.extVer) { renderToolStats(); }
+  if (force || last.ext !== S.extVer) { last.ext = S.extVer; renderExt(); }
+  last.stat = S.statVer;
+  if (!force && last.panel === S.ver) return;
+  last.panel = S.ver;
   $("m-model").textContent = "model " + (S.model || "–");
   $("m-provider").textContent = S.provider || "provider –";
   $("m-mode").textContent = "mode " + (S.mode || "–");
@@ -682,32 +1262,49 @@ function renderPanels(force) {
     d.append(tm, sp); box.append(d);
   }
   if (stick) box.scrollTop = box.scrollHeight;
+  renderNow();
 }
 
-function secs(start) { return Math.max(0, clock() - start).toFixed(1) + "s"; }
-let lastNow = 0;
+function updateTimers(root) {
+  for (const el of (root || document).querySelectorAll("[data-since]")) {
+    const t = Number(el.dataset.since);
+    if (Number.isFinite(t)) el.textContent = (el.dataset.pre || "") + since(t);
+  }
+}
+
 function renderNow() {
   const rows = [];
-  if (S.llmActive) rows.push({ mark: "◐", color: C.cyan,
-    what: `${isSub(S.llmActive) ? "[" + S.llmActive.agent + "] " : ""}Model ${S.llmActive.chars ? "writing" : "thinking"}`
-      + (S.llmActive.chars ? ` · ${fmtNum(S.llmActive.chars)} chars` : ""), start: S.llmActive.start });
-  S.tools.forEach((t) => rows.push({ mark: "●", color: t.mcp ? C.pink : C.amber,
-    what: `${isSub(t) ? "[" + t.agent + "] " : ""}${t.mcp ? "MCP " + t.mcp.server + " · " + t.mcp.tool : t.title || t.name}`,
-    start: t.start }));
-  S.subagents.forEach((s, name) => { if (s.active) rows.push({ mark: "◆", color: C.violet, what: `Sub-agent ${name}`, start: s.start }); });
+  if (S.turn) rows.push({ dot: "", color: C.teal, what: "Turn · " + S.turn.prompt, st: "running", since: S.turn.start });
+  S.llm.forEach((c) => {
+    const who = c.agent === "main" ? "Model" : `[${c.agent}] model`;
+    const st = c.state === "preparing" ? "preparing request" : c.state === "sent" ? "sent · waiting for reply" : "streaming";
+    rows.push({ dot: c.state === "streaming" ? "spin" : "hollow", color: c.state === "preparing" ? C.dim : C.cyan,
+      what: who + (c.state === "streaming" && c.chars ? ` · ${fmtNum(c.chars)} chars` : c.state === "sent" ? ` · ~${fmtNum(S.ctxUsed[c.agent] || 0)} tokens` : ""),
+      st, since: c.state === "sent" ? c.sentAt : c.state === "streaming" ? c.firstAt : c.start });
+  });
+  [...S.tools.values()].sort((a, b) => a.reqAt - b.reqAt).forEach((t) => {
+    const st = { requested: "requested", asking: "awaiting approval", approved: "approved", denied: "denied", running: "running" }[t.state] || t.state;
+    const color = t.state === "asking" || t.state === "approved" ? C.amber : t.state === "denied" ? C.rose : t.state === "running" ? KIND_COLOR[t.kind] : C.dim;
+    rows.push({ dot: t.state === "running" ? "spin" : t.state === "requested" ? "hollow" : "", color,
+      what: (t.agent !== "main" ? `[${t.agent}] ` : "") + toolVerb(t) + " · " + toolLabel(t), st,
+      since: t.state === "running" ? t.startAt : t.state === "asking" ? t.askAt : t.reqAt });
+  });
+  S.subagents.forEach((s, name) => { if (s.active) rows.push({ dot: "spin", color: C.violet, what: "Sub-agent " + name + " · " + s.prompt, st: "running", since: s.start }); });
   const box = $("now"); box.replaceChildren();
   if (!rows.length) {
     const li = document.createElement("li"); li.className = "empty";
-    li.textContent = S.sessionSeen ? "Idle · waiting for your next prompt" : "Waiting for a session";
+    li.textContent = S.llmFailed ? "Idle · the last model request failed" : S.sessionSeen ? "Idle · waiting for your next prompt" : "Waiting for a session";
     box.append(li);
   }
   for (const r of rows) {
     const li = document.createElement("li");
-    const m = document.createElement("span"); m.className = "mark"; m.textContent = r.mark; m.style.color = r.color;
+    const d = document.createElement("span"); d.className = "dot " + r.dot; d.style.color = r.color;
     const w = document.createElement("span"); w.className = "what"; w.textContent = r.what; w.title = r.what;
-    const t = document.createElement("span"); t.className = "secs"; t.textContent = secs(r.start);
-    li.append(m, w, t); box.append(li);
+    const st = document.createElement("span"); st.className = "st"; st.textContent = r.st; st.style.color = r.color;
+    const t = document.createElement("span"); t.className = "secs"; t.dataset.since = String(r.since);
+    li.append(d, w, st, t); box.append(li);
   }
+  updateTimers(box);
   const st = $("stream"); st.replaceChildren();
   if (S.stream && (S.stream.text || S.stream.thinking)) {
     const inner = document.createElement("div");
@@ -716,33 +1313,82 @@ function renderNow() {
       inner.append(th);
     }
     if (S.stream.text) inner.append(document.createTextNode(S.stream.text.slice(-900)));
-    if (S.llmActive) { const c = document.createElement("span"); c.className = "cursor"; inner.append(c); }
+    if (S.llm.get(S.stream.agent)) { const c = document.createElement("span"); c.className = "cursor"; inner.append(c); }
     st.append(inner);
   }
 }
 
+// ------------------------------------------------------------------ timeline
+
 const tl = $("timeline"), tctx = tl.getContext("2d");
+let hatch = null;
+function hatchPattern() {
+  if (hatch) return hatch;
+  const p = document.createElement("canvas"); p.width = 8; p.height = 8;
+  const pc = p.getContext("2d"); pc.fillStyle = "rgba(251,191,36,.18)"; pc.fillRect(0, 0, 8, 8);
+  pc.strokeStyle = C.amber; pc.lineWidth = 2; pc.beginPath(); pc.moveTo(-2, 10); pc.lineTo(10, -2); pc.moveTo(6, 10); pc.lineTo(10, 6);
+  pc.moveTo(-2, 2); pc.lineTo(2, -2); pc.stroke();
+  hatch = tctx.createPattern(p, "repeat");
+  return hatch;
+}
 function drawTimeline() {
   const r = tl.getBoundingClientRect(); const w = r.width, h = r.height;
-  if (tl.width !== Math.round(w * DPR)) { tl.width = Math.round(w * DPR); tl.height = Math.round(h * DPR); }
+  if (tl.width !== Math.round(w * DPR) || tl.height !== Math.round(h * DPR)) { tl.width = Math.round(w * DPR); tl.height = Math.round(h * DPR); }
   tctx.setTransform(DPR, 0, 0, DPR, 0, 0); tctx.clearRect(0, 0, w, h);
   const now = clock(); const span = Math.max(30, Math.min(now, 120)); const t0 = Math.max(0, now - span);
-  const left = 78, x = (t) => left + (t - t0) / span * (w - left - 8);
-  const lanes = ["model", "tools", "sub-agents"], colors = [C.cyan, C.amber, C.violet], lh = (h - 16) / 3;
-  tctx.font = "11px ui-monospace, Consolas, monospace"; tctx.textBaseline = "middle";
-  lanes.forEach((name, i) => { tctx.fillStyle = C.dim; tctx.textAlign = "left"; tctx.fillText(name, 0, 6 + lh * i + lh / 2);
-    tctx.fillStyle = "rgba(94,234,212,.05)"; tctx.fillRect(left, 4 + lh * i, w - left - 8, lh - 4); });
-  const bar = (lane, s, e, ok, label, mcp) => {
-    if (e < t0) return; const x1 = x(Math.max(s, t0)), x2 = Math.max(x1 + 2, x(e));
-    tctx.fillStyle = !ok ? C.rose : (mcp ? C.pink : colors[lane]) + "cc"; tctx.fillRect(x1, 7 + lh * lane, x2 - x1, lh - 10);
-    if (x2 - x1 > 46 && label) { tctx.fillStyle = "#06201e"; tctx.textAlign = "left"; tctx.fillText(label, x1 + 4, 6 + lh * lane + lh / 2); }
+  const left = w < 480 ? 62 : 78, x = (t) => left + (t - t0) / span * (w - left - 8);
+  const lanes = [{ name: "model", y: 4, h: 24 }, { name: "tools", y: 32, h: 44 }, { name: "sub-agents", y: 80, h: 18 }];
+  tctx.font = `11px ${MONO}`; tctx.textBaseline = "middle";
+  lanes.forEach((l) => { tctx.fillStyle = C.dim; tctx.textAlign = "left"; tctx.fillText(l.name, 0, l.y + l.h / 2);
+    tctx.fillStyle = "rgba(94,234,212,.05)"; tctx.fillRect(left, l.y, w - left - 8, l.h); });
+  const box = (s, e, y, hh, fill, minW) => {
+    if (e < t0 || s == null) return null;
+    const x1 = x(Math.max(s, t0)), x2 = Math.max(x1 + (minW || 2), x(e));
+    tctx.fillStyle = fill; tctx.fillRect(x1, y, x2 - x1, hh); return [x1, x2];
   };
-  for (const sp of S.spans) bar(sp.lane, sp.start, sp.end, sp.ok, sp.label, sp.mcp);
-  if (S.llmActive) bar(0, S.llmActive.start, now, true, "thinking");
-  S.tools.forEach((t) => bar(1, t.start, now, true, t.mcp ? t.mcp.server : t.name, !!t.mcp));
-  S.subagents.forEach((s, n) => { if (s.active) bar(2, s.start, now, true, n); });
-  tctx.fillStyle = C.faint; tctx.textAlign = "right"; tctx.fillText(fmtTime(now), w - 8, h - 5);
-  tctx.textAlign = "left"; tctx.fillText(fmtTime(t0), left, h - 5);
+  const label = (xs, y, hh, text, color) => {
+    if (!xs || xs[1] - xs[0] < 40 || !text) return;
+    tctx.save(); tctx.beginPath(); tctx.rect(xs[0], y, xs[1] - xs[0], hh); tctx.clip();
+    tctx.fillStyle = color || "#06201e"; tctx.textAlign = "left"; tctx.font = `10.5px ${MONO}`; tctx.fillText(text, xs[0] + 4, y + hh / 2 + .5);
+    tctx.restore();
+  };
+  // model: preparing / waiting drawn light, streaming solid
+  const model = (sp, end) => {
+    const L = lanes[0], y = L.y + 3, hh = L.h - 6, bad = sp.ok === false;
+    const first = sp.first != null ? sp.first : end, sent = sp.sent != null ? sp.sent : first;
+    box(sp.start, sent, y, hh, bad ? C.rose + "44" : "rgba(103,232,249,.12)");
+    box(sent, first, y, hh, bad ? C.rose + "66" : "rgba(103,232,249,.3)");
+    if (sp.first != null) box(sp.first, end, y, hh, bad ? C.rose : C.cyan + "dd");
+    if (bad) box(sp.start, end, y, 2, C.rose);
+  };
+  for (const sp of S.spans) if (sp.lane === 0) model(sp, sp.end);
+  S.llm.forEach((c) => model({ start: c.start, sent: c.sentAt, first: c.firstAt, ok: true }, now));
+  // tools: greedy rows so parallel calls do not hide each other
+  const tools = S.spans.filter((sp) => sp.lane === 1 && sp.end >= t0);
+  S.tools.forEach((t) => { if (t.state === "running" || t.askAt != null) tools.push({ lane: 1, agent: t.agent, kind: t.kind, label: toolLabel(t),
+    req: t.reqAt, ask: t.askAt, askEnd: t.askAt != null ? (t.askEnd ?? now) : null, start: t.startAt, end: now, ok: null, live: true }); });
+  tools.sort((a, b) => (a.ask ?? a.start ?? a.end) - (b.ask ?? b.start ?? b.end));
+  const L = lanes[1], rowsN = 3, rh = (L.h - 4) / rowsN, rowEnd = new Array(rowsN).fill(-1e9);
+  for (const sp of tools) {
+    const s = sp.ask ?? sp.start ?? sp.end, x1 = x(Math.max(s, t0)), x2 = Math.max(x1 + 2, x(sp.end));
+    let row = rowEnd.findIndex((e) => e <= x1);
+    if (row < 0) row = rowEnd.indexOf(Math.min(...rowEnd));
+    rowEnd[row] = x2 + 1;
+    const y = L.y + 2 + row * rh, hh = rh - 2;
+    if (sp.ask != null) box(sp.ask, sp.askEnd ?? sp.end, y, hh, hatchPattern());
+    const col = KIND_COLOR[sp.kind] || C.other;
+    if (sp.start != null) {
+      const xs = box(sp.start, sp.end, y, hh, sp.ok === false ? C.rose : col + (sp.live ? "ff" : "cc"));
+      label(xs, y, hh, sp.agent !== "main" ? sp.agent + ": " + sp.label : sp.label);
+    } else if (sp.ok === false) box(sp.end, sp.end, y, hh, C.rose, 3);   // never ran (denied / rejected)
+    if (sp.agent !== "main" && sp.start != null) box(sp.start, sp.end, y, 1.5, C.violet);
+  }
+  // sub-agents
+  const SL = lanes[2];
+  for (const sp of S.spans) if (sp.lane === 2) label(box(sp.start, sp.end, SL.y + 2, SL.h - 4, sp.ok ? C.violet + "cc" : C.rose), SL.y + 2, SL.h - 4, sp.label);
+  S.subagents.forEach((s, n) => { if (s.active) label(box(s.start, now, SL.y + 2, SL.h - 4, C.violet), SL.y + 2, SL.h - 4, n); });
+  tctx.fillStyle = C.faint; tctx.textAlign = "right"; tctx.font = `11px ${MONO}`; tctx.fillText(fmtTime(now), w - 8, h - 6);
+  tctx.textAlign = "left"; tctx.fillText(fmtTime(t0), left, h - 6);
 }
 
 // ------------------------------------------------------------------ live + replay
@@ -756,6 +1402,7 @@ function clock() {
   if (!liveBase) return S.now;
   return liveBase.t + (performance.now() - liveBase.at) / 1000;
 }
+let lastTimers = 0;
 function tick(dt) {
   if (mode === "replay" && playing && adjusted.length) {
     replayClock += dt * Number($("speed").value);
@@ -767,7 +1414,7 @@ function tick(dt) {
   }
   renderPanels(false);
   const t = performance.now();
-  if (t - lastNow > 200) { lastNow = t; renderNow(); }
+  if (t - lastTimers > 200) { lastTimers = t; updateTimers(); }
 }
 
 function compressGaps(events) {
@@ -781,15 +1428,15 @@ function compressGaps(events) {
 }
 
 function resetScene() {
-  S = freshState(); particles.length = 0; pulses.length = 0;
-  satellites = new Map(); subNodes = new Map(); mcpNodes = new Map();
+  S = freshState(); cards = new Map(); pulses = []; snap = true;
 }
 
 function seekTo(target) {
   resetScene();
   replayPos = 0; replayClock = target;
   while (replayPos < adjusted.length && adjusted[replayPos].t <= target) apply(adjusted[replayPos++], null);
-  placeSatellites(); placeSubNodes(); placeMcp(); renderPanels(true);
+  snap = true; renderPanels(true);
+  if (adjusted.length) $("clock").textContent = `${fmtTime(target)} / ${fmtTime(adjusted[adjusted.length - 1].t)}`;
 }
 
 function setStatus(text, cls) { const s = $("status"); s.textContent = text; s.className = "badge " + (cls || ""); }
@@ -812,17 +1459,13 @@ function connect() {
     if (ev.type === "reset") {   // a newer session started in the followed folder
       resetScene(); liveBase = null;
       S.caption = "New session " + (ev.session_id || "") + " started";
-      placeSatellites(); placeSubNodes(); placeMcp(); renderPanels(true);
+      renderPanels(true);
       return;
     }
     liveBase = { t: ev.t || 0, at: performance.now() };
     apply(ev, catching ? null : fx);
-    if (ev.type === "session") placeMcp();
-    if (!catching && (ev.type === "tool_start" || ev.type === "subagent_start")) { placeSatellites(); placeSubNodes(); }
   };
-  es.addEventListener("caughtup", () => {
-    catching = false; placeSatellites(); placeSubNodes(); placeMcp(); renderPanels(true);
-  });
+  es.addEventListener("caughtup", () => { catching = false; snap = true; renderPanels(true); });
   es.addEventListener("end", () => {
     es.close();
     adjusted = compressGaps(recorded);
@@ -844,11 +1487,11 @@ $("seek").oninput = (e) => {
   seekTo(adjusted[adjusted.length - 1].t * Number(e.target.value) / 1000);
 };
 document.addEventListener("keydown", (e) => {
-  if (e.code === "Space" && mode === "replay" && e.target.tagName !== "SELECT") { e.preventDefault(); $("play").click(); }
+  if (e.code === "Space" && mode === "replay" && e.target.tagName !== "SELECT" && e.target.tagName !== "SUMMARY") { e.preventDefault(); $("play").click(); }
 });
 if (params.get("speed")) $("speed").value = params.get("speed");
 
-window.addEventListener("resize", layout);
+window.addEventListener("resize", () => { layout(); fitCache.clear(); });
 layout(); renderPanels(true); connect(); requestAnimationFrame(frame);
 </script>
 </body>

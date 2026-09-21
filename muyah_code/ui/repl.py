@@ -17,14 +17,14 @@ from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.styles import Style
 from rich.markup import escape
-from rich.rule import Rule
 from rich.text import Text
 
 from muyah_code import __version__
 from muyah_code.tools.search import list_files
+from muyah_code.ui import blocks
 from muyah_code.ui.commands import EXIT, CommandRouter
 from muyah_code.ui.select import Prompter
-from muyah_code.ui.terminal import ReplayConsole, TerminalUI
+from muyah_code.ui.terminal import TerminalUI
 from muyah_code.ui.theme import theme
 
 MODE_LABEL = {
@@ -98,6 +98,7 @@ class Repl:
         self.console = ui.console
         self.prompter = prompter or Prompter()
         self.ui.prompter = self.prompter
+        self.ui.cwd = app.cwd
         self.router = CommandRouter(self)
         self._last_interrupt = 0.0
         self._layout_width: int | None = None   # width the transcript was last laid out at
@@ -136,7 +137,7 @@ class Repl:
         })
         self.session = _CompactPromptSession(history=history, completer=_Completer(self), key_bindings=kb,
                                      complete_while_typing=True, bottom_toolbar=self._toolbar, style=style,
-                                     reserve_space_for_menu=0, **session_kwargs)
+                                     reserve_space_for_menu=0, erase_when_done=True, **session_kwargs)
 
     def ask(self, message: str, password: bool = False) -> str:
         return self.prompter.ask(message, password=password)
@@ -273,10 +274,10 @@ class Repl:
             if line is _RESIZED:
                 self._redraw()
                 continue
-            # what prompt_toolkit left on screen (rule + ❯ line), so a later redraw shows it too
-            if isinstance(self.console, ReplayConsole):
-                self.console.remember(Rule(style="bright_black"))
-                self.console.remember(Text("❯ ", style=theme().accent) + Text(line))
+            # the input area is erased when you press Enter; your message is shown as a highlighted block
+            if line.strip():
+                self.console.print(blocks.user_prompt(line))
+                self.ui.mark_prompt()
             return line
 
     def run(self, initial_prompt: str | None = None) -> int:
@@ -313,7 +314,6 @@ class Repl:
                     line = out[1]
                 else:
                     continue
-            self.console.print()
             self.ui.context_pct = self._ctx_pct()
             result = self.app.run_prompt(line)
             self.ui.turn_footer(result.status, result.duration, result.tool_calls, self._files_changed(),
