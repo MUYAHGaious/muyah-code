@@ -64,6 +64,16 @@ def test_header_is_compact(project):
     assert "███" not in out
 
 
+def test_header_never_wraps_on_long_paths(tmp_path):
+    deep = tmp_path.joinpath(*["a-very-long-folder-name"] * 8, "my-project")
+    deep.mkdir(parents=True)
+    (deep / ".muyah").mkdir()
+    code, out, app = run_session(deep, ["/exit"], [])
+    header = out.split("Bye.")[0].strip().splitlines()
+    assert len(header) == 3 and all(len(line) <= 100 for line in header)
+    assert header[1].rstrip().endswith("my-project")  # the part of the path that matters is kept
+
+
 def test_input_field_has_rule_with_folder_and_status_line(project):
     """Render the real prompt into an 80-column fake terminal and read the screen."""
     import re

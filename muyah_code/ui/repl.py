@@ -174,13 +174,19 @@ class Repl:
         home = str(Path.home())
         if cwd.lower().startswith(home.lower()):
             cwd = "~" + cwd[len(home):]
+        width = self.console.width
+        room = width - len(a.llm.model) - 6
+        if len(cwd) > room:  # keep the end of the path (the folder you are in), never wrap
+            cwd = "…" + cwd[-max(8, room - 1):]
         line = Text()
         line.append("✻ ", style=t.accent)
         line.append("MUYAH-CODE", style=f"bold {t.accent}")
         line.append(f" v{__version__}", style=t.dim)
-        self.console.print(line)
-        self.console.print(Text(f"  {a.llm.model} · {cwd}", style=t.dim))
-        self.console.print(Text("  / for commands · /provider to switch model · Ctrl+C twice to exit", style=t.dim))
+        for text in (line, Text(f"  {a.llm.model} · {cwd}", style=t.dim),
+                     Text("  / for commands · /provider to switch model · Ctrl+C twice to exit", style=t.dim)):
+            text.no_wrap = True
+            text.overflow = "ellipsis"
+            self.console.print(text)
         if a.mcp:
             for name, status in a.mcp.status.items():
                 if status.startswith("failed"):
