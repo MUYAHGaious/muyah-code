@@ -155,14 +155,28 @@ class App:
     def session_id(self) -> str:
         return self.session.id if self.session else ""
 
+    def _mcp_inventory(self) -> list[dict]:
+        if not self.mcp:
+            return []
+        return [{"name": name, "status": status,
+                 "tools": [t.get("name") for t in (self.mcp.clients[name].tools if name in self.mcp.clients else [])]}
+                for name, status in self.mcp.status.items()]
+
     def emit_session(self) -> None:
         from muyah_code.providers import BY_ID
 
         prov = BY_ID.get(self.cfg.get("provider") or "")
         self.events.emit("session", model=self.llm.model, provider=prov.name if prov else self.llm.base_url,
                          window=self.window, cwd=str(self.cwd), mode=self.permissions.mode,
-                         session_id=self.session_id, tools=self.registry.names(),
-                         mcp=[{"name": n, "status": st} for n, st in (self.mcp.status.items() if self.mcp else [])])
+                         session_id=self.session_id, tools=self.registry.names(), mcp=self._mcp_inventory(),
+                         skills=[{"name": s.name, "description": s.description[:160], "source": s.source}
+                                 for s in self.skills.all()],
+                         agents=[{"name": d.name, "description": d.description[:160]}
+                                 for d in self.agent_defs.values()],
+                         hooks=[{"event": event, "matcher": group.get("matcher") or "*",
+                                 "command": str(h.get("command", ""))[:160]}
+                                for event, groups in (self.hooks.config or {}).items()
+                                for group in groups or [] for h in group.get("hooks") or []])
         self.agent.emit_context()
 
     def _make_ctx(self, ui: UI, depth: int) -> ToolContext:
