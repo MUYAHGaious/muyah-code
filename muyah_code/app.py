@@ -139,12 +139,16 @@ class App:
         for rule in disallowed_tools or []:
             self.permissions.add("deny", rule)
         self.hooks = HookRunner(cfg.get("hooks") or {}, self.cwd, cfg.get("shell", "auto"))
+        self.hooks.llm = self.summarizer
         self.skills = SkillRegistry.load(self.root, self.home, bool(cfg.get("compat.claude_skills", True)))
         self.agent_defs, self.agent_def_errors = load_agent_defs(self.root, self.home,
                                                                  bool(cfg.get("compat.claude_skills", True)))
         if not cfg.get("models.edit") and self.agent_defs.get("editor") and self.agent_defs["editor"].source == "bundled":
             del self.agent_defs["editor"]      # only useful with a cheaper "edit" model to hand work to
         self.instructions = load_instructions(self.root, self.cwd, self.home, bool(cfg.get("compat.claude_md", True)))
+        from muyah_code.memory import NestedInstructions
+
+        self.nested = NestedInstructions(self.root, self.instructions, bool(cfg.get("compat.claude_md", True)))
         self.shell = detect_shell(cfg.get("shell", "auto"))
         self.git_status = git_snapshot(self.cwd)
         self.jobs = JobManager()
@@ -165,7 +169,8 @@ class App:
             from muyah_code.mcp.browser import wanted
             from muyah_code.mcp.client import MCPManager, load_server_configs
 
-            configs = load_server_configs(self.root, self.home)
+            scope = str(cfg.get("mcp.claude_code", "project") or "project")                 if cfg.get("compat.claude_skills", True) else "off"
+            configs = load_server_configs(self.root, self.home, scope, list(cfg.get("mcp.disabled") or []))
             self._browser_offered = wanted(cfg, configs)
             if configs:
                 self.mcp = MCPManager(configs, self.home / "logs")
@@ -269,6 +274,37 @@ class App:
                 continue
             found.append((media, b64, describe(m.group(1), data)))
         return found
+
+    def mcp_set(self, name: str, action: str) -> str:
+        """/mcp enable|disable|reconnect <name>: change a server now; enable/disable is remembered for this project."""
+        from muyah_code.tools.base import ToolError
+
+        if self.mcp is None or name not in self.mcp.configs:
+            known = ", ".join(self.mcp.configs) if self.mcp else "none"
+            raise ToolError(f"No MCP server named '{name}' (configured: {known})")
+        prefix = f"mcp__{name}__"
+        registries = {id(r): r for r in (self.registry, self.agent.registry)}.values()
+        for registry in registries:
+            for tool in [n for n in registry.names() if n.startswith(prefix)]:
+                registry.unregister(tool)
+        self.mcp_tools = [t for t in self.mcp_tools if not t.name.startswith(prefix)]
+        disabled = [n for n in (self.cfg.get("mcp.disabled") or []) if n != name]
+        if action == "disable":
+            self.mcp.disconnect(name)
+            self.mcp.configs[name].disabled = True
+            self.mcp.status[name] = "disabled"
+            self.cfg.persist("mcp.disabled", disabled + [name], scope="local")
+            self.emit_session()
+            return f"{name}: disabled (its tools are gone; /mcp enable {name} brings it back)"
+        tools = self.mcp.reconnect(name)
+        self.mcp_tools.extend(tools)
+        for registry in registries:
+            for tool in tools:
+                registry.register(tool)
+        if action == "enable":
+            self.cfg.persist("mcp.disabled", disabled, scope="local")
+        self.emit_session()
+        return f"{name}: {self.mcp.status[name]}"
 
     def _start_browser(self) -> list[str]:
         """The Browser tool's first call: start the Playwright MCP server and swap in its real tools."""
@@ -375,7 +411,8 @@ class App:
         ctx = ToolContext(cwd=self.cwd, project_root=self.root, config=self.cfg, depth=depth, headless=self.headless)
         ctx.services.update({
             "ui": ui, "llm": self.summarizer, "skills": self.skills, "jobs": self.jobs, "budget": self.budget,
-            "models": self.models, "vision": self.sees_images,
+            "models": self.models, "vision": self.sees_images, "permissions": self.permissions,
+            "nested_instructions": self.nested,
             "checkpoints": self.rewind, "rewind": self.rewind, "context_window": self.window, "events": self.events,
         })
         return ctx

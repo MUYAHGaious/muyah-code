@@ -18,6 +18,9 @@ def isolated_home(tmp_path, monkeypatch):
     import muyah_code.config as config
 
     monkeypatch.setattr(config, "LEGACY_CONFIG", tmp_path / "no-legacy.json")
+    import muyah_code.mcp.client as mcp_client
+
+    monkeypatch.setattr(mcp_client, "CLAUDE_JSON", tmp_path / "no-claude.json")   # never your real Claude Code setup
     return home
 
 

@@ -5,6 +5,38 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **Images end to end.**
+  - **How images get in:** Read on an image, MCP tools that return screenshots, `@image.png` in your prompt, and images dragged into the terminal all reach models that can see.
+  - **Claude** gets native image blocks.
+  - **Everyone else:** models without vision get a short note, and `"vision"` overrides the detection.
+  - **In the context:** images cost a fixed token estimate and are the first thing pruned.
+- **Built-in browser:**
+  - Microsoft's Playwright MCP, started only when the agent first calls `Browser`. No Node process or delay until then.
+  - Its snapshots and screenshots go to `~/.muyah/browser`, never your project.
+  - A new `ui-check` skill, and `/verify e2e` points at it.
+- **`/btw`** side questions are answered from the conversation and never added to it.
+  - They reuse the prompt cache: same system prompt and tools, `tool_choice` none.
+  - They work mid-turn and run on the `btw` model role.
+- **The queue works like Claude Code's:**
+  - one grey block with one hint;
+  - "Press up to edit queued messages";
+  - ↑ picks, Enter edits, Delete removes;
+  - Esc runs queued messages one at a time in order, and each Esc moves to the next.
+- **Fixes:**
+  - The input box disappeared while the answer streamed.
+  - Typed text took the prompt's teal colour.
+- **Worktrees:** `--worktree NAME`, `.worktreeinclude`, `.muyah/worktree-setup`, and sub-agents with `isolation: worktree`.
+  - On exit, a clean worktree is removed and one with work is kept, with the commands to merge or remove it.
+- **Notifications** when a turn ends or needs you while the terminal is unfocused. Focus comes from Windows console focus events or `CSI ?1004h`.
+  - OSC 9/777/99, Windows toast, macOS notification or bell.
+  - A new `Notification` hook event.
+- **Nested `AGENTS.md`/`CLAUDE.md`/`MUYAH.md`** in subfolders load the first time the agent works on a file there. The text goes into that tool result, so the system prompt stays cache-stable.
+- **Skills' `allowed-tools`** now take effect: they run without asking once the skill is loaded. Fixed: `Bash(echo *)` was split into two broken rules.
+- **Prompt hooks** (`"type": "prompt"`): a model checks an event against your rule and can block it, e.g. "run the tests before stopping".
+- **`/mcp enable | disable | reconnect <name>`**, remembered per project.
+  - Claude Code's MCP servers for this folder (`~/.claude.json`) are used too.
+  - User-wide ones only with `"mcp": {"claude_code": "all"}`, so they don't start in every session.
+- **Fix: compaction could make the context bigger** (11,289 → 11,499 tokens) and then run on every step. That happened when the current turn's big file reads were most of a small window. Those outputs are now shortened too, and a compaction never grows the context.
 - **Models working together.**
   - **Roles** (`models`: explore, edit, summarize, verify, btw, strong). The explore sub-agent, the new editor sub-agent, and compaction/learning/web summaries run on their own models.
   - **What a model can be:** a profile, `provider:model` (that provider's key only), or a bare model id.

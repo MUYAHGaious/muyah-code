@@ -829,6 +829,11 @@ class Agent:
             if seen.get(sig, 0) >= REPEAT_WARN and result.status != "loop":
                 res.content += (f"\n\n[Note: you have made this exact {tool.name} call {seen[sig]} times and the "
                                 "result will not change. Try a different approach.]")
+            nested = self.ctx.service("nested_instructions")
+            if nested is not None and not res.is_error and args.get("file_path"):
+                extra = nested.for_path(self.ctx.resolve(str(args["file_path"])))
+                if extra:
+                    res.content += extra
             self._track_signal(tool, args, res, result, failures)
             self.escalation.tool_result(tool.name, args, res.is_error)
         return [o if o is not None else ToolResult.error("Error: no result") for o in outputs]

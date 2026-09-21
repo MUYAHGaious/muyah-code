@@ -135,4 +135,12 @@ class SkillTool(Tool):
             raise ToolError(f"Unknown skill '{args['skill']}'. Available: {', '.join(skills.names()) or 'none'}")
         if skill.disable_model_invocation:
             raise ToolError(f"Skill '{skill.name}' can only be started by the user (/{skill.name}).")
-        return ToolResult(skill.render(args.get("args", "")), summary=f"Loaded skill {skill.name}")
+        text = skill.render(args.get("args", ""))
+        perms = ctx.service("permissions")
+        if skill.allowed_tools and perms is not None:
+            # like Claude Code: a skill's allowed-tools run without asking while you use it (this session)
+            for rule in skill.allowed_tools:
+                perms.add("allow", rule)
+            text += ("\n\n(Allowed without asking for this session, from this skill: "
+                     + ", ".join(skill.allowed_tools) + ")")
+        return ToolResult(text, summary=f"Loaded skill {skill.name}")

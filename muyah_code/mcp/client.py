@@ -291,8 +291,34 @@ class MCPTool(Tool):
         return ToolResult(text, is_error=is_error, summary=summary, images=images)
 
 
-def load_server_configs(project_root: Path, home: Path) -> dict[str, ServerConfig]:
+CLAUDE_JSON = Path.home() / ".claude.json"
+
+
+def _claude_code_servers(project_root: Path, scope: str = "project") -> dict:
+    """MCP servers you set up for Claude Code in ~/.claude.json. scope "project" (default): the ones for this
+    folder; "all": also the user-wide ones (they would start in every session); "off": none."""
+    if scope == "off":
+        return {}
+    try:
+        data = json.loads(CLAUDE_JSON.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    servers = dict(data.get("mcpServers") or {}) if scope == "all" else {}
+    projects = data.get("projects") or {}
+    for key in (str(project_root), project_root.as_posix(), str(project_root).replace("\\", "/")):
+        servers.update((projects.get(key) or {}).get("mcpServers") or {})
+    return servers
+
+
+def load_server_configs(project_root: Path, home: Path, claude_scope: str = "project",
+                        disabled: list[str] | None = None) -> dict[str, ServerConfig]:
+    """User (~/.muyah/mcp.json, Claude Code's ~/.claude.json), then project (.mcp.json, .muyah/mcp.json);
+    later ones win. Names in `disabled` (setting mcp.disabled) are kept but not started."""
     configs: dict[str, ServerConfig] = {}
+    if claude_scope != "off":
+        for name, d in _claude_code_servers(project_root, claude_scope).items():
+            if isinstance(d, dict):
+                configs[name] = ServerConfig.from_dict(name, d)
     for path in (home / "mcp.json", project_root / ".mcp.json", project_root / ".muyah" / "mcp.json"):
         if not path.is_file():
             continue
@@ -303,6 +329,9 @@ def load_server_configs(project_root: Path, home: Path) -> dict[str, ServerConfi
         for name, d in (data.get("mcpServers") or {}).items():
             if isinstance(d, dict):
                 configs[name] = ServerConfig.from_dict(name, d)
+    for name in disabled or []:
+        if name in configs:
+            configs[name].disabled = True
     return configs
 
 
@@ -339,6 +368,20 @@ class MCPManager:
                 self.status[name] = f"connected ({len(client.tools)} tools)"
                 tools.extend(MCPTool(client, spec) for spec in client.tools if spec.get("name"))
         return tools
+
+    def disconnect(self, name: str) -> None:
+        client = self.clients.pop(name, None)
+        if client is not None:
+            client.close()
+
+    def reconnect(self, name: str) -> list[Tool]:
+        """Stop the server (if running) and start it again. Raises on failure."""
+        cfg = self.configs.get(name)
+        if cfg is None:
+            raise KeyError(name)
+        self.disconnect(name)
+        cfg.disabled = False
+        return self.add(cfg)
 
     def add(self, cfg: ServerConfig) -> list[Tool]:
         """Connect one more server now (e.g. the built-in browser, on first use). Raises on failure."""

@@ -180,6 +180,8 @@ muyah --resume                          # pick an earlier conversation from a li
 | `/undo`, `/rewind` (Esc Esc) | go back to before the last turn, or any earlier one: code, conversation or both (commands' changes included) |
 | `/verify [quick\|full\|e2e]` | check the last changes only when you ask: lint + the changed files' tests, the whole suite, or run the app end to end |
 | `/mic` (Ctrl+Space) | talk instead of typing (Windows voice typing) |
+| `/btw <question>` | a side question, answered now and never added to the conversation (also while it works) |
+| `/mcp [enable\|disable\|reconnect <name>]` | MCP servers: status, or switch one off/on (remembered per project) |
 | `/compact [focus]`, `/context` | context management |
 | `/skills`, `/<skill> [args]`, `/agents` | workflows and sub-agents |
 | `/lessons`, `/good [note]`, `/bad [what was wrong]`, `/learn on\|off` | the learning system |
@@ -189,6 +191,45 @@ muyah --resume                          # pick an earlier conversation from a li
 | `/theme [teal\|muyah\|ocean\|forest\|mono\|light]` | color theme (saved; default: light teal) |
 | `/usage [--all]` (or `muyah usage`) | cost, tokens, cache hits, where the tokens went, the context, today and 7 days, your provider's limits |
 | `/status`, `/doctor`, `/config`, `/permissions`, `/tools`, `/mcp` | inspection |
+
+### While it works
+
+- **Type while it works.** What you type goes into the queue, shown as one grey block under the spinner.
+  - Queued messages go in at the agent's next step.
+  - **↑** picks a queued message; then **Enter** edits it and **Delete** removes it.
+  - **Esc** stops the current step. Your queued messages then run one at a time, oldest first, and each
+    Esc moves on to the next.
+- **`/btw …`** typed there is answered on the side, without stopping or changing the turn.
+- **Notifications.** When a turn finishes or needs your approval while you are in another window,
+  MUYAH-CODE notifies you:
+  - OSC 9/777/99 on iTerm2, WezTerm, Ghostty, kitty and VTE terminals;
+  - a toast on Windows;
+  - a notification on macOS;
+  - otherwise the terminal bell.
+
+  `"notify": "off"` turns this off, and a `Notification` hook runs your own command.
+
+### Worktrees
+
+`muyah --worktree fix-login` works in `.muyah/worktrees/fix-login` on branch `muyah/fix-login`, so
+parallel sessions never touch each other's files.
+- **When it's created:** files listed in `.worktreeinclude` (such as `.env`) are copied in, and
+  `.muyah/worktree-setup` runs.
+- **On exit:** a worktree with no changes is removed. One with changes is kept, and you get the commands
+  to merge it or remove it.
+- **Sub-agents** with `isolation: worktree` get one of their own.
+
+### Images and the browser
+
+- **How images get in:**
+  - `@screenshot.png` in your prompt;
+  - dragging an image into the terminal;
+  - Read on an image;
+  - an MCP tool that returns a screenshot.
+- **Models that can't see images** get a note instead. `"vision": true/false` overrides the detection.
+- **The built-in browser** (Playwright MCP, Node 18+) starts the first time the agent calls `Browser`, so
+  it costs nothing until then. The `ui-check` skill and `/verify e2e` use it to check web UIs like a
+  user would. `"mcp": {"browser": false}` turns it off.
 
 ### Permission modes
 

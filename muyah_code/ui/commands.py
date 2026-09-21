@@ -86,7 +86,8 @@ class CommandRouter:
                     self.verify, "[quick|full|e2e]"),
             Command("permissions", "Show permission rules", self.permissions),
             Command("tools", "List available tools", self.tools),
-            Command("mcp", "Show MCP server status", self.mcp),
+            Command("mcp", "MCP servers: status, or enable | disable | reconnect <name>", self.mcp,
+                    "[enable|disable|reconnect <name>]"),
             Command("resume", "Resume an earlier conversation (pick from a list)", self.resume, "[id]"),
             Command("sessions", "List recent sessions for this project", self.sessions),
             Command("export", "Export the conversation to a markdown file", self.export, "[file]"),
@@ -493,11 +494,31 @@ class CommandRouter:
             self.console.print(f"  [bold]{escape(t.name)}[/] [dim]{t.kind}[/]")
 
     def mcp(self, arg):
+        action, _, name = arg.partition(" ")
+        if action in ("enable", "disable", "reconnect"):
+            if not name.strip():
+                self.console.print(f"Usage: /mcp {action} <server name>")
+                return
+            from muyah_code.tools.base import ToolError
+
+            try:
+                with self.console.status(f"[dim]{action} {escape(name.strip())}…[/]", spinner="dots"):
+                    msg = self.app.mcp_set(name.strip(), action)
+            except (ToolError, OSError, RuntimeError, ValueError) as e:
+                self.console.print(f"[red]{escape(str(e))}[/]")
+                return
+            except Exception as e:     # an MCP server that fails to start: say why, keep the session
+                self.console.print(f"[red]{escape(name.strip())} did not start: {escape(str(e))}[/]")
+                return
+            self.console.print(escape(msg))
+            return
         if not self.app.mcp:
-            self.console.print("No MCP servers configured (.mcp.json or ~/.muyah/mcp.json).")
+            self.console.print("No MCP servers configured (.mcp.json, ~/.muyah/mcp.json, or Claude Code's "
+                               "~/.claude.json). The built-in browser starts when the agent first needs it.")
             return
         for name, status in self.app.mcp.status.items():
             self.console.print(f"  [bold]{escape(name)}[/]: {escape(status)}")
+        self.console.print("[dim]/mcp enable | disable | reconnect <name>[/]")
 
     def resume(self, arg):
         sdir = sessions_dir(self.app.home, self.app.root)

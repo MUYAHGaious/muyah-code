@@ -54,6 +54,7 @@ class HookRunner:
         self.shell_pref = shell_pref
         self.errors: list[str] = []
         self.events = None  # EventBus: each hook run is shown in the live view
+        self.llm = None     # a model client for "type": "prompt" hooks (the app sets the summarize model)
         for event in self.config:
             if event not in EVENTS:
                 self.errors.append(f"Unknown hook event '{event}' (known: {', '.join(EVENTS)})")
@@ -73,7 +74,8 @@ class HookRunner:
                     if matcher != tool_name:
                         continue
             for h in group.get("hooks") or []:
-                if h.get("type", "command") == "command" and h.get("command"):
+                kind = h.get("type", "command")
+                if (kind == "command" and h.get("command")) or (kind == "prompt" and h.get("prompt")):
                     out.append(h)
         return out
 
@@ -86,11 +88,15 @@ class HookRunner:
         shell = detect_shell(self.shell_pref)
         for h in hooks:
             started, warnings_before = time.time(), len(outcome.warnings)
-            self._run_one(event, h, data, shell, outcome)
+            if h.get("type") == "prompt":
+                self._run_prompt(event, h, data, outcome)
+            else:
+                self._run_one(event, h, data, shell, outcome)
             if self.events is not None:
                 result = ("blocked" if outcome.blocked else "warning" if len(outcome.warnings) > warnings_before
                           else "ok")
-                self.events.emit("hook", event=event, tool=tool_name, command=h["command"][:160], outcome=result,
+                label = h.get("command") or "prompt: " + h.get("prompt", "")
+                self.events.emit("hook", event=event, tool=tool_name, command=label[:160], outcome=result,
                                  duration=round(time.time() - started, 3))
             if outcome.blocked:
                 return outcome
@@ -122,6 +128,35 @@ class HookRunner:
             outcome.warnings.append(f"{event} hook exited {proc.returncode}: {(stderr or stdout)[:300]}")
             return
         self._apply_stdout(event, stdout, outcome)
+
+    PROMPT_SYSTEM = ("You check one step of a coding agent against a rule the user wrote. You get the rule and the "
+                     "event as JSON. Reply with JSON only: {\"ok\": true} when the step is fine, or {\"ok\": false, "
+                     "\"reason\": \"what is wrong, in one sentence, addressed to the agent\"} when it is not.")
+
+    def _run_prompt(self, event: str, h: dict, data: str, outcome: HookOutcome) -> None:
+        """A "type": "prompt" hook: a model judges the event against the hook's rule (like Claude Code's)."""
+        if self.llm is None:
+            outcome.warnings.append(f"{event} prompt hook skipped: no model available")
+            return
+        rule = h["prompt"].replace("$ARGUMENTS", data)
+        messages = [{"role": "system", "content": self.PROMPT_SYSTEM},
+                    {"role": "user", "content": f"Rule:\n{rule}\n\nEvent:\n{data[:12000]}"}]
+        try:
+            reply = self.llm.chat(messages, max_tokens=300, temperature=0, purpose="hook")
+        except Exception as e:     # a failing judge must not block the agent: say so and go on
+            outcome.warnings.append(f"{event} prompt hook failed: {e}")
+            return
+        text = (reply.content or "").strip()
+        m = re.search(r"\{.*\}", text, re.DOTALL)
+        try:
+            verdict = json.loads(m.group(0)) if m else {}
+        except json.JSONDecodeError:
+            verdict = {}
+        if verdict.get("ok") is False:
+            outcome.blocked = True
+            outcome.reason = str(verdict.get("reason") or f"blocked by {event} prompt hook")
+        elif verdict.get("ok") is not True:
+            outcome.warnings.append(f"{event} prompt hook gave no clear verdict: {text[:200]}")
 
     @staticmethod
     def _apply_stdout(event: str, stdout: str, outcome: HookOutcome) -> None:

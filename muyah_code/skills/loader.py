@@ -42,7 +42,19 @@ def _as_list(val) -> list[str]:
     if not val:
         return []
     if isinstance(val, str):
-        return [v for v in val.replace(",", " ").split() if v]
+        # "Read, Bash(git add:*) Bash(npm test)": commas or spaces separate items, but not inside (...)
+        items, cur, depth = [], "", 0
+        for ch in val:
+            depth += (ch == "(") - (ch == ")")
+            if ch in ", " and depth == 0:
+                if cur.strip():
+                    items.append(cur.strip())
+                cur = ""
+            else:
+                cur += ch
+        if cur.strip():
+            items.append(cur.strip())
+        return items
     return [str(v) for v in val]
 
 

@@ -116,3 +116,50 @@ def load_instructions(project_root: Path, cwd: Path, home: Path, claude_compat: 
         total += len(text)
         files.append(InstructionFile(rp, text))
     return files
+
+
+class NestedInstructions:
+    """AGENTS.md / CLAUDE.md / MUYAH.md in subfolders, loaded the first time the agent works on a file there
+    (like Codex's nested AGENTS.md): big repos keep per-package rules without paying for all of them upfront.
+    The text goes into that tool result, so the system prompt stays the same (prompt caching)."""
+
+    NAMES = ("MUYAH.md", "AGENTS.md", "CLAUDE.md")
+    CAP = 8000
+
+    def __init__(self, project_root: Path, already: list[InstructionFile], claude_compat: bool = True):
+        self.root = project_root.resolve()
+        self.names = self.NAMES if claude_compat else self.NAMES[:2]
+        self.seen: set[Path] = set()
+        for f in already:
+            try:
+                self.seen.add(Path(f.path).resolve())
+            except (OSError, TypeError, ValueError):
+                continue
+
+    def for_path(self, path: Path) -> str:
+        """Instructions not loaded yet from the folders between the project root and this file."""
+        try:
+            folder = path.resolve().parent
+            rel = folder.relative_to(self.root)
+        except (OSError, ValueError):
+            return ""
+        blocks = []
+        cur = self.root
+        for part in rel.parts:
+            cur = cur / part
+            for name in self.names:
+                p = cur / name
+                if p in self.seen or not p.is_file():
+                    continue
+                self.seen.add(p)
+                try:
+                    text = p.read_text(encoding="utf-8", errors="replace").strip()
+                except OSError:
+                    continue
+                if text:
+                    rel_p = p.relative_to(self.root).as_posix()
+                    blocks.append(f'<instructions path="{rel_p}">\n{text[:self.CAP]}\n</instructions>')
+        if not blocks:
+            return ""
+        return ("\n\nInstructions for this part of the project (follow them for files here):\n"
+                + "\n".join(blocks))
