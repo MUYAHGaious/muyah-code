@@ -100,6 +100,7 @@ class Repl:
         self.ui.prompter = self.prompter
         self.ui.cwd = app.cwd
         self.ui.events = app.events
+        self.ui.model_name = getattr(app.llm, "model", "")
         self.router = CommandRouter(self)
         self._last_interrupt = 0.0
         self._layout_width: int | None = None   # width the transcript was last laid out at

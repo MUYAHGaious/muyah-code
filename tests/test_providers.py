@@ -309,3 +309,38 @@ def test_private_keys_never_reach_openai_compatible_servers(project):
                                               {"role": "user", "content": "again"}])
         sent = json.dumps(srv.requests[0]["messages"])
     assert RAW_KEY not in sent
+
+
+def test_free_tier_rate_limit_is_explained_as_a_rate_limit_not_missing_credits():
+    from muyah_code.llm.client import LLMClient
+
+    client = LLMClient("https://generativelanguage.googleapis.com/v1beta/openai/", "gemini-3.6-flash", "k")
+    err = Exception("Error code: 429 - [{'error': {'code': 429, 'message': 'You exceeded your current quota, "
+                    "please check your plan and billing details.', 'status': 'RESOURCE_EXHAUSTED', 'details': "
+                    "[{'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/"
+                    "generate_content_free_tier_requests'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', "
+                    "'retryDelay': '43s'}]}}]")
+    msg = client._billing_message(err)
+    assert "free tier" in msg and "43s" in msg and "no credits" not in msg
+    plain = client._billing_message(Exception("Your credit balance is too low"))
+    assert "no credits" in plain
+
+
+def test_spinner_says_it_is_waiting_for_the_provider_until_the_first_byte():
+    import io
+
+    from rich.console import Console
+
+    from muyah_code.ui.terminal import TerminalUI
+
+    ui = TerminalUI(Console(file=io.StringIO(), width=120, color_system=None), animate=False)
+    ui.model_name = "gemini-3.6-flash"
+    ui.assistant_start()
+    ui.model_status("sent")
+    out = io.StringIO()
+    Console(file=out, width=120, color_system=None).print(ui._stats_line())
+    assert "Waiting for gemini-3.6-flash" in out.getvalue() and "sent" in out.getvalue()
+    ui.model_status("first_token")
+    out = io.StringIO()
+    Console(file=out, width=120, color_system=None).print(ui._stats_line())
+    assert "Thinking" in out.getvalue()

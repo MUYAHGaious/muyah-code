@@ -467,7 +467,10 @@ class Agent:
             started = time.time()
             previous_status = getattr(self.llm, "on_status", None)
             if meter is not None and hasattr(self.llm, "on_status"):
-                self.llm.on_status = lambda state: self._emit("llm_status", state=state)
+                def on_status(state, _ui=self.ui):
+                    self._emit("llm_status", state=state)
+                    _ui.model_status(state)
+                self.llm.on_status = on_status
             try:
                 resp = interruptible_call(self.llm.chat, self.messages, tools=tools, on_text=on_text,
                                           on_reasoning=on_reasoning, max_tokens=max_tokens)

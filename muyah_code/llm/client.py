@@ -483,6 +483,14 @@ class LLMClient:
         return prefix + detail[:800]
 
     def _billing_message(self, e: Exception) -> str:
+        text = str(e)
+        low = text.lower()
+        if any(s in low for s in ("free_tier", "free tier", "retrydelay", "per minute", "perminute", "per day")):
+            m = re.search(r"retry(?:delay)?['\": ]+(\d+(?:\.\d+)?)s", text, re.IGNORECASE)
+            wait = f" Try again in about {float(m.group(1)):.0f}s," if m else " Wait a minute and try again,"
+            return (f"Rate limit reached for {self.model}: this key is on a free tier with a small number of "
+                    f"requests per minute/day, and they are used up.{wait} use a different model or key, or "
+                    f"enable billing in the provider's console. (The key itself works.)")
         return (f"The account behind this API key has no credits or quota left ({self.base_url}). The key itself "
                 f"is fine: add credits / a payment method in the provider's console, then retry. "
                 f"Details: {self._describe(e)[:200]}")

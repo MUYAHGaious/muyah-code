@@ -222,6 +222,8 @@ class TerminalUI(UI):
         self._reader = None
         self._turn_active = False
         self.events = None       # EventBus (set by the REPL): the live view shows the queue
+        self.model_name = ""     # shown while waiting for the provider (set by the REPL)
+        self._sent_at = 0.0      # when the current request left; 0 once its first byte arrived
 
     # ------------------------------------------------------------------ live status
 
@@ -242,7 +244,11 @@ class TerminalUI(UI):
                 return Group(spin, step)
             return spin
         parts = [f"{elapsed:.0f}s"]
-        if self._phase == "thinking":
+        if self._phase == "thinking" and self._sent_at:
+            # the request is out and nothing has come back yet: say so (slow providers queue requests)
+            label = f"Waiting for {self.model_name or 'the model'}"
+            parts = [f"sent {time.monotonic() - self._sent_at:.0f}s ago"]
+        elif self._phase == "thinking":
             label = "Thinking"
             if self._reasoning_chars:
                 parts.append(f"{int(self._reasoning_chars / 3.5):,} reasoning tokens")
@@ -384,8 +390,15 @@ class TerminalUI(UI):
 
     # ------------------------------------------------------------------ assistant text
 
+    def model_status(self, state: str) -> None:
+        if state == "sent":
+            self._sent_at = time.monotonic()
+        elif state == "first_token":
+            self._sent_at = 0.0
+
     def assistant_start(self) -> None:
         self._tool = None
+        self._sent_at = 0.0
         self._chars = 0
         self._reasoning_chars = 0
         self._stream = None
