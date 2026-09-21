@@ -214,5 +214,20 @@ def user_prompt(text: str):
     return grid
 
 
+def queued_prompts(messages: list[str], selected: int | None = None):
+    """Messages typed while it works: one grey block, like sent prompts but dimmed (not sent yet).
+    The one picked with ↑ is shown brighter."""
+    t = theme()
+    grid = Table.grid(padding=0, expand=True)
+    grid.add_column(width=2, no_wrap=True)
+    grid.add_column(ratio=1, overflow="fold")
+    for i, msg in enumerate(messages):
+        picked = i == selected
+        grid.add_row(Text("› ", style=f"bold {t.accent}" if picked else t.dim),
+                     Text(msg.rstrip(), style="bold" if picked else t.dim),
+                     style=f"on {t.user_bg}")
+    return grid
+
+
 def blank() -> Group:
     return Group(Text(""))

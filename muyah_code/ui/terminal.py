@@ -171,10 +171,13 @@ class PrefixedMarkdown:
 class _MarkdownStream:
     """Render streaming markdown: print settled lines permanently, keep the tail live."""
 
-    def __init__(self, console: Console, live: Live, stats):
+    def __init__(self, console: Console, live: Live, stats, set_tail=None):
         self.console = console
         self.live = live
         self.stats = stats
+        # set_tail(renderable | None): hand the live tail to the UI's live area, which draws it above the
+        # status line and keeps the input box under both (without it the box vanished while text streamed)
+        self.set_tail = set_tail
         self.text = ""
         self.printed = 0
         self._last_render = 0.0
@@ -217,7 +220,11 @@ class _MarkdownStream:
         for i in range(self.printed, len(lines)):
             tail.append_text(self._prefix(i) + Text.from_ansi(lines[i]))
             tail.append("\n")
-        self.live.update(Group(tail, self.stats()) if not final else Text(""))
+        if self.set_tail is not None:
+            self.set_tail(None if final else tail)
+            self.live.refresh()
+        else:
+            self.live.update(Group(tail, self.stats()) if not final else Text(""))
 
 
 class TerminalUI(UI):
@@ -229,6 +236,7 @@ class TerminalUI(UI):
         # spinners/live markdown only on a real terminal; plain output when piped or recorded
         self.animate = self.console.is_terminal if animate is None else animate
         self._live: Live | None = None
+        self._stream_tail = None   # the answer's last lines while it streams (drawn in the live area)
         self._stream: _MarkdownStream | None = None
         self._phase = ""
         self._t0 = 0.0
@@ -247,6 +255,8 @@ class TerminalUI(UI):
         self._draft = ""
         self._queued: list[str] = []
         self._selected: int | None = None   # a queued message picked with ↑ (enter: edit it, delete: drop it)
+        # True while carried-over messages wait for their own turn (they are not fed into the running one)
+        self._hold_queue = False
         self.on_btw = None         # (question) -> None: answer a /btw side question now (set by the REPL)
         self.focused: bool | None = None   # the terminal window has focus (None: it never said)
         self.on_attention = None   # (message) -> None: it needs you (an approval, a question); set by the REPL
@@ -320,28 +330,25 @@ class TerminalUI(UI):
         width = max(20, self.console.width - 1)
         rows = [renderable, Text("")]
         selected = self._selected
-        for i, msg in enumerate(queued):
-            if i == selected:
-                line = Text("› ", style=f"bold {t.accent}")
-                line.append(msg, style="reverse")
-                line.append("  · enter: edit · delete: remove · ↑↓: move", style=f"italic {t.accent}")
-            else:
-                line = Text("› ", style=t.dim)
-                line.append(msg, style=t.dim)
-                line.append("  · queued: goes in at the next step (esc: send now · ↑: edit)", style=f"italic {t.dim}")
-            line.no_wrap, line.overflow = True, "ellipsis"
-            rows.append(line)
+        if queued:
+            # like Claude Code: the queued messages as one block, then a single hint under it
+            rows.append(blocks.queued_prompts(queued, selected))
+            hint = ("  enter: edit · delete: remove · ↑↓: choose · esc: back" if selected is not None else
+                    "  queued: goes in at the next step · esc: send now")
+            rows.append(Text(hint, style=t.dim))
         if self._reader is None:
             return Group(*rows)
         label, what, color = self.input_status() if self.input_status else ("", "", t.accent)
         rows.append(Text("─" * width, style="bright_black"))
-        field = Text("❯ ", style=f"bold {color}")
+        field = Text()
+        field.append("❯ ", style=f"bold {color}")   # only the arrow is colored: what you type stays plain
         if draft:
             field.append(draft)
             field.append("▌", style=color)
+        elif queued:
+            field.append("Press up to edit queued messages", style=t.dim)
         else:
-            field.append("type to queue a message · enter: queue · esc: send now · /btw: ask on the side",
-                         style=t.dim)
+            field.append("type to queue a message · esc: interrupt · /btw: ask on the side", style=t.dim)
         field.no_wrap, field.overflow = True, "ellipsis"
         rows.append(field)
         rows.append(Text("─" * width, style="bright_black"))
@@ -355,11 +362,16 @@ class TerminalUI(UI):
 
     # ------------------------------------------------------------------ typing while it works
 
-    def begin_typing(self) -> None:
-        """A turn is starting: listen for keys (if this is a real terminal)."""
+    def begin_typing(self, carried: list[str] | None = None) -> None:
+        """A turn is starting: listen for keys (if this is a real terminal). `carried`: messages still queued
+        from before (they wait their turn, one per turn, and stay visible)."""
         from muyah_code.ui.typeahead import KeyReader
 
         self._turn_active = True
+        if carried:
+            with self._keys:
+                self._queued = list(carried) + self._queued
+                self._hold_queue = True
         if self.animate and KeyReader.available():
             self._reader = KeyReader(self._on_key)
             self._reader.start()
@@ -373,12 +385,15 @@ class TerminalUI(UI):
             self._reader = None
         with self._keys:
             queued, draft = self._queued, self._draft
-            self._queued, self._draft, self._selected = [], "", None
+            self._queued, self._draft, self._selected, self._hold_queue = [], "", None, False
         return queued, draft
 
     def take_queued(self) -> list[str]:
-        """Messages you queued while it worked: the agent takes them at its next step."""
+        """Messages you queued while it worked: the agent takes them at its next step. Not while earlier
+        messages are lined up to run one by one (after Esc): those each get their own turn, in order."""
         with self._keys:
+            if self._hold_queue:
+                return []
             queued, self._queued, self._selected = self._queued, [], None
         if queued:
             self._emit_queue()
@@ -484,9 +499,12 @@ class TerminalUI(UI):
             self.ui = ui
 
         def __rich__(self):
-            return self.ui._with_typing(self.ui._stats_line())
+            body = self.ui._stats_line()
+            tail = self.ui._stream_tail
+            return self.ui._with_typing(Group(tail, body) if tail is not None else body)
 
     def _stop_live(self) -> None:
+        self._stream_tail = None
         if self._live is not None:
             self._live.stop()
             self._live = None
@@ -523,7 +541,8 @@ class TerminalUI(UI):
             self._phase = "writing"
             self._first_token = time.monotonic()
             self._space("block")
-            self._stream = _MarkdownStream(self.console, self._live, self._stats_line)
+            self._stream = _MarkdownStream(self.console, self._live, self._stats_line,
+                                           set_tail=lambda tail: setattr(self, "_stream_tail", tail))
             chunk = chunk.lstrip("\n")
         self._chars += len(chunk)
         self._stream.update(chunk)

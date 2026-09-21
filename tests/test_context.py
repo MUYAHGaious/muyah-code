@@ -107,3 +107,26 @@ def test_known_windows_and_overflow_detection():
 
 def test_mechanical_digest_mentions_requests():
     assert "request 0" in mechanical_digest(convo(2)[1:])
+
+
+def test_compaction_never_grows_the_context_when_the_current_turn_is_the_big_part():
+    """A small window where the latest turn's file reads are most of it: summarizing the 2 older messages
+    used to make it bigger (11,289 -> 11,499) and compaction ran again on every step."""
+    class Summarizer:
+        def chat(self, messages, **kw):
+            class R:
+                content = "Summary: the user wants a notes CLI; cli.py and storage.py exist. " * 8
+            return R()
+
+    ctx = ContextManager(16384, 4096)
+    msgs = [{"role": "system", "content": "s" * 12000}, {"role": "user", "content": "build a notes cli"},
+            {"role": "assistant", "content": "ok"}, {"role": "user", "content": "review it"}]
+    for i in range(3):
+        msgs.append({"role": "assistant", "content": "", "tool_calls": [
+            {"id": f"c{i}", "type": "function", "function": {"name": "Read", "arguments": "{}"}}]})
+        msgs.append({"role": "tool", "tool_call_id": f"c{i}", "content": "x" * 9000})
+    before = ctx.count(msgs)
+    new, desc = ctx.compact(msgs, Summarizer())
+    assert ctx.count(new) < before * 0.9, desc
+    assert "shortened large tool outputs" in desc
+    assert [m["role"] for m in new if m["role"] == "tool"]              # every tool result still answered

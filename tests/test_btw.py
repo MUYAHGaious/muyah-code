@@ -77,3 +77,43 @@ def test_btw_typed_while_it_works_is_answered_not_queued():
     ui.on_btw = asked.append
     keys(ui, "/btw what model is this?", "enter")
     assert asked == ["what model is this?"] and ui._queued == []
+
+
+def test_after_esc_queued_messages_run_one_at_a_time_in_order(project, monkeypatch):
+    """Esc stops the running turn; the queued messages then run as separate turns, oldest first, and the ones
+    still waiting stay queued (not fed into the running turn), so each Esc moves on to the next."""
+    real_end = TerminalUI.end_typing
+    calls = {"n": 0}
+
+    def end_typing(self):
+        queued, draft = real_end(self)
+        calls["n"] += 1
+        if calls["n"] == 1:                 # as if "second" and "third" were typed during the first turn
+            return ["second", "third"], draft
+        return queued, draft
+
+    monkeypatch.setattr(TerminalUI, "end_typing", end_typing)
+    script = [reply("one"), reply("two"), reply("three")]
+    code, out, app = run_session(project, ["first", "/exit"], script)
+    prompts = [m["content"].split("\n\n")[0] for m in app.agent.messages if m["role"] == "user"]
+    assert prompts == ["first", "second", "third"]            # three separate turns, in order
+
+
+def test_carried_messages_wait_for_their_own_turn():
+    ui = TerminalUI(Console(file=io.StringIO(), width=100))
+    ui.begin_typing(carried=["third"])
+    assert ui._queued == ["third"] and ui.take_queued() == []   # visible, but not injected into this turn
+    assert ui.end_typing() == (["third"], "")
+
+
+def test_the_input_box_stays_while_the_answer_streams():
+    from rich.text import Text
+
+    ui = TerminalUI(Console(file=io.StringIO(), width=100))
+    ui._reader = object()                       # listening for keys, as during a turn
+    ui._queued = ["next question"]
+    ui._stream_tail = Text("● the answer so far")
+    shown = io.StringIO()
+    Console(file=shown, width=100, color_system=None).print(ui._StatsRenderable(ui))
+    screen = shown.getvalue()
+    assert screen.index("the answer so far") < screen.index("next question") < screen.index("❯ Press up")

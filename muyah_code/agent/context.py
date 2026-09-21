@@ -170,7 +170,19 @@ class ContextManager:
         ]
         after = self.count(new, tools)
         how = "mechanical digest" if mechanical else "LLM summary"
-        return new, f"compacted {len(head)} messages into a {how} ({before} -> {after} tokens)"
+        desc = f"compacted {len(head)} messages into a {how}"
+        if after > target:
+            # the kept (current) turn is itself too big, e.g. a few large file reads in a small window:
+            # shrink its tool outputs too, or the next step compacts again and gets nowhere
+            if self.prune(new, keep_recent=1 if emergency else 2, max_chars=1000 if emergency else 1500):
+                desc += " and shortened large tool outputs in the current turn"
+            after = self.count(new, tools)
+        if after >= before:
+            # summarizing cost more than it saved: keep the conversation, with its tool outputs shortened
+            self.prune(work, keep_recent=1, max_chars=1000)
+            new, desc = work, "shortened large tool outputs (a summary would not have been smaller)"
+            after = self.count(new, tools)
+        return new, f"{desc} ({before} -> {after} tokens)"
 
     def _summarize(self, head: list[dict], llm, focus: str) -> str | None:
         if llm is None:

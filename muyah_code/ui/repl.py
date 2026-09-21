@@ -183,6 +183,7 @@ class Repl:
 
     _turn_started = 0.0
     _notifier = None
+    _carry: list = []          # queued messages still waiting after the one now running
 
     @property
     def notifier(self):
@@ -483,7 +484,8 @@ class Repl:
             self.ui.on_btw = self._btw_async
             self.ui.on_attention = self._attention
             self._turn_started = time.monotonic()
-            self.ui.begin_typing()
+            self.ui.begin_typing(carried=self._carry)
+            self._carry = []
             cost_before = self.app.ledger.cost
             try:
                 result = self.app.run_prompt(line)
@@ -505,8 +507,10 @@ class Repl:
                     self.console.print()
                 except KeyboardInterrupt:
                     self.console.print("[dim]Verification stopped.[/]")
-            if queued:  # typed while it worked but not yet delivered: send it now
-                pending = "\n\n".join(queued)
+            if queued:
+                # typed while it worked and not delivered yet (Esc, or the turn ended first): they run one at a
+                # time, oldest first; the rest stay queued, and each Esc stops the current one and moves on
+                pending, self._carry = queued[0], queued[1:]
                 self.console.print(blocks.user_prompt(pending))
                 self.ui.mark_prompt()
                 continue
