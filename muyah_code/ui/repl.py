@@ -181,6 +181,52 @@ class Repl:
         used, usable = self.app.context_usage()
         return min(100, int(100 * used / max(1, usable)))
 
+    _turn_started = 0.0
+    _notifier = None
+
+    @property
+    def notifier(self):
+        if self._notifier is None:
+            import sys
+
+            from muyah_code.notify import Notifier
+
+            def write(seq: str) -> None:
+                out = getattr(self.console, "file", None) or sys.stdout
+                out.write(seq)
+                out.flush()
+
+            self._notifier = Notifier(self.app.cfg, write, hooks=self.app.hooks)
+        return self._notifier
+
+    def _attention(self, message: str) -> None:
+        if self.notifier.should(self.ui.focused, time.monotonic() - self._turn_started):
+            self.notifier.notify("attention", message)
+
+    def _notify_done(self, result) -> None:
+        if result.status == "interrupted" or not self.notifier.should(self.ui.focused, result.duration):
+            return
+        first = " ".join((result.text or "").split())[:100]
+        if result.status == "ok":
+            self.notifier.notify("done", f"Done in {result.duration:.0f}s" + (f": {first}" if first else ""))
+        else:
+            what = "budget reached" if result.status == "budget" else f"stopped ({result.status})"
+            self.notifier.notify("budget" if result.status == "budget" else "attention",
+                                 f"{what}: {result.error or first}"[:160])
+
+    def _btw_async(self, question: str) -> None:
+        """/btw typed while it works: answered in parallel, shown as soon as it is ready."""
+        import threading
+
+        def run():
+            try:
+                answer = self.app.btw(question)
+            except Exception as e:   # a failed side question must never disturb the running turn
+                answer = f"(The side question failed: {e})"
+            self.ui.side_answer(question, answer)
+
+        threading.Thread(target=run, name="muyah-btw", daemon=True).start()
+
     def _spent(self) -> str:
         """"$0.42" (or "$0.42 of $5.00" with a session budget) once this session has cost something."""
         ledger, budget = getattr(self.app, "ledger", None), getattr(self.app, "budget", None)
@@ -434,6 +480,9 @@ class Repl:
                 else:
                     continue
             self.ui.context_pct = self._ctx_pct()
+            self.ui.on_btw = self._btw_async
+            self.ui.on_attention = self._attention
+            self._turn_started = time.monotonic()
             self.ui.begin_typing()
             cost_before = self.app.ledger.cost
             try:
@@ -448,6 +497,7 @@ class Repl:
                 self.console.print()
             except KeyboardInterrupt:  # an Esc that arrived just as the turn ended
                 pass
+            self._notify_done(result)
             auto = str(self.app.cfg.get("verify.auto", "off") or "off").lower()
             if auto in ("quick", "full") and changes and result.status == "ok" and not queued:
                 try:

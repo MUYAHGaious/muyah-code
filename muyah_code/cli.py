@@ -75,6 +75,8 @@ def _parser() -> argparse.ArgumentParser:
                    help="Deny rules")
     p.add_argument("--max-steps", "--max-turns", dest="max_steps", type=int,
                    help="Max model steps per turn (--max-turns is the Claude Code spelling)")
+    p.add_argument("-w", "--worktree", metavar="NAME",
+                   help="Work in git worktree .muyah/worktrees/NAME on branch muyah/NAME (created or reused)")
     p.add_argument("--max-cost", type=float, help="Stop when this session has cost this many dollars")
     p.add_argument("--tool-mode", choices=["auto", "native", "text"], help="Tool calling protocol")
     p.add_argument("--settings", help="Extra settings JSON file")
@@ -114,6 +116,16 @@ def _main(argv: list[str]) -> int:
     if not cwd.is_dir():
         print(f"error: --cwd {cwd} is not a directory", file=sys.stderr)
         return 2
+    worktree = None
+    if args.worktree:
+        from muyah_code.worktree import WorktreeError, create
+
+        try:
+            path, created = create(cwd, args.worktree)
+        except WorktreeError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        worktree, cwd = (path, args.worktree, created), path
     overrides = {"model": args.model, "base_url": args.base_url, "api_key": args.api_key, "profile": args.profile,
                  "context_window": args.context_window, "max_steps": args.max_steps, "tool_mode": args.tool_mode}
     try:
@@ -125,6 +137,36 @@ def _main(argv: list[str]) -> int:
         return 2
     if args.no_learn:
         cfg.set("learning.enabled", False)
+    if worktree is not None:
+        return _in_worktree(cfg, cwd, args, worktree)
+    return _run(cfg, cwd, args)
+
+
+def _in_worktree(cfg, cwd, args, worktree) -> int:
+    """Run the session inside the worktree; at exit, remove it if nothing would be lost."""
+    from muyah_code.tools.shell import detect_shell
+    from muyah_code.worktree import WorktreeError, finish, main_root, run_setup, setup_script
+
+    path, name, created = worktree
+    out = sys.stderr if args.headless else sys.stdout
+    print(f"Worktree {name}: {path} (branch muyah/{name}{', new' if created else ''})", file=out)
+    root = main_root(path)
+    if created and setup_script(root):
+        print("Running .muyah/worktree-setup ...", file=out)
+        code, output = run_setup(root, path, detect_shell(cfg.get("shell", "auto")))
+        tail = "\n".join(output.strip().splitlines()[-8:])
+        print((tail + "\n" if tail else "") + ("setup done" if code == 0 else f"setup failed (exit {code}); "
+                                                 "continuing anyway"), file=out)
+    try:
+        return _run(cfg, cwd, args)
+    finally:
+        try:
+            print(finish(path, name), file=out)
+        except WorktreeError as e:
+            print(f"Worktree {name} left in place: {e}", file=out)
+
+
+def _run(cfg, cwd, args) -> int:
 
     prompt = " ".join(args.prompt).strip()
     if not sys.stdin.isatty() and args.headless:

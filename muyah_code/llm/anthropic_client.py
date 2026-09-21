@@ -215,10 +215,12 @@ class AnthropicClient:
     def chat(self, messages: list[dict], tools: list[dict] | None = None,
              on_text: Callable[[str], None] | None = None, on_reasoning: Callable[[str], None] | None = None,
              max_tokens: int | None = None, temperature: float | None = None,
-             purpose: str = "main") -> AssistantMessage:
+             purpose: str = "main", tool_choice: str | None = None) -> AssistantMessage:
         started = time.monotonic()
         a = self._anthropic
         params = self._params(messages, tools, max_tokens)
+        if tools and tool_choice == "none":
+            params["tool_choice"] = {"type": "none"}
         use_fallbacks = self.fallbacks and self.model.startswith(FALLBACK_MODELS)
         try:
             if use_fallbacks:

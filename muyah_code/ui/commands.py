@@ -80,6 +80,8 @@ class CommandRouter:
             Command("memory", "Show instruction files; '/memory add <text>' appends to MUYAH.md", self.memory,
                     "[add <text>]"),
             Command("init", "Generate a MUYAH.md for this project", self.init),
+            Command("btw", "Ask a side question: answered now, not added to the conversation (works mid-turn)",
+                    self.btw, "<question>"),
             Command("verify", "Check the last changes: quick (changed files) | full (all tests, lint) | e2e (run it)",
                     self.verify, "[quick|full|e2e]"),
             Command("permissions", "Show permission rules", self.permissions),
@@ -399,6 +401,15 @@ class CommandRouter:
         listing = "\n".join(f"- {c.kind}: {c.command}" for c in found)
         return ("prompt", INIT_PROMPT + "\n\nMUYAH-CODE detected these check commands from the config files "
                 "(confirm they work before listing them):\n" + listing)
+
+    def btw(self, arg):
+        if not arg.strip():
+            self.console.print("Usage: /btw <question>  (answered on the side; the conversation is not changed)")
+            return None
+        with self.console.status("[dim]Answering on the side…[/]", spinner="dots"):
+            answer = self.app.btw(arg.strip())
+        self.repl.ui.side_answer(arg.strip(), answer)
+        return None
 
     def verify(self, arg):
         from muyah_code import verify as v

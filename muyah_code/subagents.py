@@ -9,6 +9,7 @@ Definitions (Claude Code compatible) live in .muyah/agents/<name>.md or ~/.muyah
     tools: Read, Grep, Glob, Bash        # optional; default = all except Agent
     permissionMode: default              # optional
     max_steps: 30                        # optional
+    isolation: worktree                  # optional: work in a git worktree of its own (kept if it changed anything)
     model: explore                       # optional: a role from "models", a profile, provider:model, or
                                          # Claude Code's opus/sonnet/haiku/inherit
     ---
@@ -45,6 +46,7 @@ class AgentDef:
     max_steps: int = 40
     source: str = "bundled"
     model: str | None = None
+    isolation: str | None = None
 
 
 def _list(val) -> list[str] | None:
@@ -85,6 +87,7 @@ def load_agent_defs(project_root: Path, home: Path, claude_compat: bool = True) 
                 max_steps=int(meta.get("max_steps") or 40),
                 source=source,
                 model=str(meta["model"]).strip() if meta.get("model") else None,
+                isolation=str(meta["isolation"]).strip().lower() if meta.get("isolation") else None,
             )
     return defs, errors
 
@@ -136,8 +139,12 @@ class SubagentManager:
         task = (f"{prompt}\n\nWhen you are done, reply with a concise, self-contained report of your findings "
                 "or of what you changed (paths, line numbers, commands and results). The report is all the "
                 "caller will see.")
-        res = child.run(task)
-        text = res.text.strip()
+        try:
+            res = child.run(task)
+        finally:
+            done = getattr(child, "on_done", None)
+            note = done() if callable(done) else ""
+        text = res.text.strip() + (f"\n\n[{note}]" if note else "")
         if res.status not in ("ok",):
             text = (text + "\n\n" if text else "") + f"[sub-agent ended with status: {res.status}"
             text += f" - {res.error}]" if res.error else "]"

@@ -319,6 +319,7 @@ class LLMClient:
         max_tokens: int | None = None,
         temperature: float | None = None,
         purpose: str = "main",
+        tool_choice: str | None = None,
     ) -> AssistantMessage:
         """purpose says what the call is for (main, subagent:<type>, compact, reflect...) in the usage log."""
         started = time.monotonic()
@@ -331,7 +332,7 @@ class LLMClient:
         }
         if tools:
             kwargs["tools"] = tools
-            kwargs["tool_choice"] = "auto"
+            kwargs["tool_choice"] = tool_choice or "auto"
 
         attempt = 0
         shrunk = False

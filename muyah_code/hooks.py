@@ -29,7 +29,7 @@ from pathlib import Path
 from muyah_code.tools.shell import detect_shell, kill_tree, shell_env
 
 EVENTS = ("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
-          "Stop", "SubagentStop", "PreCompact", "SessionEnd")
+          "Stop", "SubagentStop", "PreCompact", "SessionEnd", "Notification")
 TOOL_EVENTS = {"PreToolUse", "PostToolUse", "PostToolUseFailure"}
 
 

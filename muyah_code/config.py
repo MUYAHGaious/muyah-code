@@ -67,6 +67,9 @@ DEFAULTS: dict[str, Any] = {
     "prompt_profile": "auto",
     # can the model look at images? auto = the price table's flag, else the model's name; true / false to decide
     "vision": "auto",
+    # when you are in another window: auto | osc9 | osc777 | osc99 | bell | native | off (see notify.py)
+    "notify": "auto",
+    "notify_after": 20,
     # model per role (see llm/pool.py): main, explore, edit, summarize, verify, btw, strong
     "models": {},
     # profiles or provider:model specs that answer when the main provider fails (rate limit, 5xx, network)

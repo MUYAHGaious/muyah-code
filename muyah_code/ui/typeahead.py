@@ -26,7 +26,8 @@ POLL = 0.02
 class KeyReader:
     """Reads single keys from the terminal in a background thread and hands them to `on_key`.
 
-    Keys are delivered as text; special keys as names: "enter", "backspace", "esc", "shift-tab"."""
+    Keys are delivered as text; special keys as names: "enter", "backspace", "esc", "shift-tab", "up", "down",
+    "delete", "mic"."""
 
     def __init__(self, on_key: Callable[[str], None]):
         self.on_key = on_key
@@ -115,6 +116,9 @@ class KeyReader:
         data = os.read(fd, 64)
         if data == b"\x1b[Z":
             return "shift-tab"
+        named = {b"\x1b[I": "focus-in", b"\x1b[O": "focus-out", b"\x1b[A": "up", b"\x1bOA": "up", b"\x1b[B": "down", b"\x1bOB": "down", b"\x1b[3~": "delete"}
+        if data in named:
+            return named[data]
         if data.startswith(b"\x1b") and len(data) > 1:
             return None               # an escape sequence (arrow keys...), not a bare Esc
         text = data.decode("utf-8", errors="ignore")
@@ -133,6 +137,8 @@ class KeyReader:
             if self._saved_tty is None:
                 self._saved_tty = termios.tcgetattr(fd)
             tty.setcbreak(fd)
+            sys.stdout.write("\x1b[?1004h")    # ask the terminal to report focus changes (for notifications)
+            sys.stdout.flush()
         except (ImportError, OSError, ValueError):
             self._saved_tty = None
 
@@ -142,6 +148,8 @@ class KeyReader:
         try:
             import termios
 
+            sys.stdout.write("\x1b[?1004l")
+            sys.stdout.flush()
             termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, self._saved_tty)
         except (ImportError, OSError, ValueError):
             pass
@@ -152,9 +160,10 @@ class _WindowsConsole:
     """Key presses from the Windows console input buffer (ReadConsoleInputW), with modifier state."""
 
     KEY_EVENT = 0x0001
+    FOCUS_EVENT = 0x0010
     SHIFT = 0x0010
     CTRL = 0x0004 | 0x0008   # left / right ctrl
-    VK = {0x09: "tab", 0x0D: "enter", 0x08: "backspace", 0x1B: "esc"}
+    VK = {0x09: "tab", 0x0D: "enter", 0x08: "backspace", 0x1B: "esc", 0x26: "up", 0x28: "down", 0x2E: "delete"}
 
     def __init__(self):
         self._api = None
@@ -188,6 +197,8 @@ class _WindowsConsole:
         record, read = InputRecord(), wintypes.DWORD(0)
         if not k32.ReadConsoleInputW(handle, ctypes.byref(record), 1, ctypes.byref(read)) or read.value == 0:
             return None
+        if record.EventType == self.FOCUS_EVENT:   # FOCUS_EVENT_RECORD.bSetFocus sits where bKeyDown does
+            return "focus-in" if record.Event.KeyEvent.bKeyDown else "focus-out"
         if record.EventType != self.KEY_EVENT or not record.Event.KeyEvent.bKeyDown:
             return None                  # key releases, mouse, focus and resize events
         key = record.Event.KeyEvent

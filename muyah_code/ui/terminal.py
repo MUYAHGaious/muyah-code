@@ -246,6 +246,10 @@ class TerminalUI(UI):
         # typing while it works (see ui/typeahead.py)
         self._draft = ""
         self._queued: list[str] = []
+        self._selected: int | None = None   # a queued message picked with ↑ (enter: edit it, delete: drop it)
+        self.on_btw = None         # (question) -> None: answer a /btw side question now (set by the REPL)
+        self.focused: bool | None = None   # the terminal window has focus (None: it never said)
+        self.on_attention = None   # (message) -> None: it needs you (an approval, a question); set by the REPL
         self._keys = threading.Lock()
         self._reader = None
         self._turn_active = False
@@ -315,10 +319,16 @@ class TerminalUI(UI):
         t = theme()
         width = max(20, self.console.width - 1)
         rows = [renderable, Text("")]
-        for msg in queued:
-            line = Text("› ", style=t.dim)
-            line.append(msg, style=t.dim)
-            line.append("  · queued: goes in at the next step (esc: send now)", style=f"italic {t.dim}")
+        selected = self._selected
+        for i, msg in enumerate(queued):
+            if i == selected:
+                line = Text("› ", style=f"bold {t.accent}")
+                line.append(msg, style="reverse")
+                line.append("  · enter: edit · delete: remove · ↑↓: move", style=f"italic {t.accent}")
+            else:
+                line = Text("› ", style=t.dim)
+                line.append(msg, style=t.dim)
+                line.append("  · queued: goes in at the next step (esc: send now · ↑: edit)", style=f"italic {t.dim}")
             line.no_wrap, line.overflow = True, "ellipsis"
             rows.append(line)
         if self._reader is None:
@@ -330,7 +340,8 @@ class TerminalUI(UI):
             field.append(draft)
             field.append("▌", style=color)
         else:
-            field.append("type to queue a message · enter: queue · esc: send now", style=t.dim)
+            field.append("type to queue a message · enter: queue · esc: send now · /btw: ask on the side",
+                         style=t.dim)
         field.no_wrap, field.overflow = True, "ellipsis"
         rows.append(field)
         rows.append(Text("─" * width, style="bright_black"))
@@ -362,13 +373,13 @@ class TerminalUI(UI):
             self._reader = None
         with self._keys:
             queued, draft = self._queued, self._draft
-            self._queued, self._draft = [], ""
+            self._queued, self._draft, self._selected = [], "", None
         return queued, draft
 
     def take_queued(self) -> list[str]:
         """Messages you queued while it worked: the agent takes them at its next step."""
         with self._keys:
-            queued, self._queued = self._queued, []
+            queued, self._queued, self._selected = self._queued, [], None
         if queued:
             self._emit_queue()
         for msg in queued:
@@ -384,34 +395,66 @@ class TerminalUI(UI):
             self.events.emit("queue", items=items)
 
     def _on_key(self, key: str) -> None:
+        if key in ("focus-in", "focus-out"):
+            self.focused = key == "focus-in"
+            return
         interrupt = False
-        before = len(self._queued)
+        btw = ""
+        before = list(self._queued)
         with self._keys:
-            if key == "enter":
-                if self._draft.strip():
-                    self._queued.append(self._draft.strip())
+            sel = self._selected if self._selected is not None and self._selected < len(self._queued) else None
+            if key == "up" and self._queued:
+                self._selected = len(self._queued) - 1 if sel is None else max(0, sel - 1)
+            elif key == "down" and sel is not None:
+                self._selected = sel + 1 if sel + 1 < len(self._queued) else None
+            elif key == "delete" and sel is not None:
+                self._queued.pop(sel)
+                self._selected = min(sel, len(self._queued) - 1) if self._queued else None
+            elif key == "enter" and sel is not None and not self._draft:
+                self._draft = self._queued.pop(sel)       # back into the box to edit, then enter queues it again
+                self._selected = None
+            elif key == "enter":
+                text = self._draft.strip()
+                if text.startswith("/btw ") and self.on_btw is not None:
+                    btw = text[5:].strip()
+                elif text:
+                    self._queued.append(text)
                 self._draft = ""
+                self._selected = None
             elif key == "backspace":
                 self._draft = self._draft[:-1]
             elif key in ("shift-tab", "mic"):
                 pass                       # handled below, outside the lock
+            elif key == "esc" and sel is not None:
+                self._selected = None      # leave the queue; esc again sends now
             elif key in ("esc", "ctrl-c"):
                 if self._draft.strip():
                     self._queued.append(self._draft.strip())
                 self._draft = ""
+                self._selected = None
                 interrupt = True
             elif len(key) == 1:
                 self._draft += key
+                self._selected = None
+        if btw:
+            self.on_btw(btw)
         if key == "shift-tab" and self.on_mode_cycle is not None:
             self.on_mode_cycle()           # takes effect from the agent's next action
         if key == "mic":
             from muyah_code.ui.voice import start_dictation
 
             start_dictation()              # Windows voice typing types into this box
-        if len(self._queued) != before:
+        if self._queued != before:
             self._emit_queue()
         if interrupt and self._turn_active:
             _thread.interrupt_main()   # same as Ctrl+C: the turn stops; the REPL sends what is queued
+
+    def side_answer(self, question: str, answer: str) -> None:
+        """A /btw answer: shown in its own panel, never added to the conversation."""
+        t = theme()
+        body = Group(Text(question, style=f"bold {t.dim}"), Text(""), Markdown(answer))
+        self.console.print(Panel(body, title=f"[{t.accent}]btw[/] [dim]· not added to the conversation[/]",
+                                 title_align="left", border_style=t.dim, padding=(0, 1)))
 
     def _keyboard_to_prompt(self):
         """Hand the keyboard to a menu/question for a moment."""
@@ -686,7 +729,12 @@ class TerminalUI(UI):
 
     # ------------------------------------------------------------------ interaction
 
+    def _attention(self, message: str) -> None:
+        if self.on_attention is not None:
+            self.on_attention(message)
+
     def ask_permission(self, req: PermissionRequest) -> PermissionReply:
+        self._attention(f"Waiting for your approval: {req.title}")
         t = theme()
         self._stop_live()
         heading = {"Bash": "Run command", "Edit": "Edit file", "Write": "Write file", "WebFetch": "Fetch web page",
@@ -785,6 +833,7 @@ class TerminalUI(UI):
         self._last = "block"
 
     def ask_user(self, question: str, options: list[str]) -> str:
+        self._attention(f"Question: {question[:120]}")
         with self._keyboard_to_prompt():
             return self._ask_user(question, options)
 

@@ -54,6 +54,24 @@ def resolve_context_window(cfg: Config, llm: LLMClient) -> tuple[int, str]:
     return DEFAULT_WINDOW, "default"
 
 
+BTW_NOTE = ("(A side question while you work. Answer briefly from what this conversation already shows. Do not "
+            "call tools. This exchange is not added to the conversation.)")
+
+
+def consistent_prefix(messages: list[dict]) -> list[dict]:
+    """The longest start of the history a provider accepts: no assistant tool calls without their results
+    (mid-turn, the newest calls may still be running)."""
+    good, pending = 0, set()
+    for i, m in enumerate(messages):
+        if m.get("role") == "assistant":
+            pending = {tc.get("id") for tc in m.get("tool_calls") or []}
+        elif m.get("role") == "tool":
+            pending.discard(m.get("tool_call_id"))
+        if not pending:
+            good = i + 1
+    return messages[:good]
+
+
 def describe_rewind(point, result: dict, rewind) -> str:
     """One readable summary of a rewind, for /undo and /rewind."""
     lines = [f"Rewound to before turn {point.turn}: {point.prompt[:80]}"]
@@ -109,6 +127,7 @@ class App:
 
         self.models = ModelPool(cfg, self.llm, watch=self._watch_calls)   # roles, escalation, fallback
         self.summarizer = RoleClient(self.models, "summarize", warn=ui.warn)
+        self.btw_model = RoleClient(self.models, "btw", warn=ui.warn)
         self.window, self.window_source = resolve_context_window(cfg, self.llm)
         self.context = ContextManager(self.window, int(cfg.get("max_tokens", 4096)),
                                       float(cfg.get("compact_threshold", 0.8)))
@@ -275,6 +294,16 @@ class App:
             self.emit_session()
             return [t.name for t in tools]
 
+    def btw(self, question: str) -> str:
+        """A side question: answered from the conversation so far, never added to it. Uses the same system
+        prompt and tools as the main agent (so the provider's prompt cache is reused) but no tool calls."""
+        messages = consistent_prefix(list(self.agent.messages))
+        messages.append({"role": "user", "content": f"{question}\n\n{BTW_NOTE}"})
+        tools = None if self.agent.text_mode else self.agent.registry.schemas()
+        resp = self.btw_model.chat(messages, tools=tools, tool_choice="none" if tools else None,
+                                   max_tokens=1500, purpose="btw")
+        return (resp.content or "").strip() or "(No answer without tools: ask it in the conversation instead.)"
+
     def _roles(self) -> list[str]:
         """Model roles a sub-agent can be run on (the ones set in settings, plus main)."""
         return ["main", *[r for r in self.models.configured() if r not in ("btw", "verify")]]
@@ -430,10 +459,29 @@ class App:
         ctx.headless = self.headless
         extra = (f"# Sub-agent role: {d.name}\n{d.prompt}\n\nYou are running as a sub-agent. Nobody can answer "
                  "questions; work autonomously and end with a concise report.")
+        worktree = None
+        if d.isolation == "worktree":
+            import uuid
+
+            from muyah_code.worktree import WorktreeError, create
+
+            name = f"agent-{d.name}-{uuid.uuid4().hex[:6]}"
+            try:
+                path, _ = create(self.cwd, name)
+                worktree = (path, name)
+                ctx.cwd = ctx.project_root = path
+                extra += (f"\n\nYou work in a separate git worktree: {path} (branch muyah/{name}). Your changes "
+                          "stay there; commit them there when you are done.")
+            except WorktreeError as e:
+                sub_ui.warn(f"no worktree ({e}); working in the project folder")
         client, context = self._subagent_client(d, model)
         agent = self._make_agent(registry, ctx, sub_ui, session=None, extra=extra, subagent=True,
                                  max_steps=d.max_steps, llm=client, context=context)
         agent.label = d.name
+        if worktree is not None:
+            from muyah_code.worktree import finish
+
+            agent.on_done = lambda: finish(*worktree)
         if d.permission_mode:
             # a read-only helper gets its own permission view without changing the parent's mode
             child_perms = PermissionManager(d.permission_mode, project_root=self.root)
