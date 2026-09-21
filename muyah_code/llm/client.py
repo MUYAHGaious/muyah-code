@@ -211,6 +211,8 @@ class LLMClient:
         self.stream = stream
         self.extra_headers = extra_headers or {}
         self.max_retries = max_retries
+        # called with "sent" when a request leaves and "first_token" when the reply starts (live view)
+        self.on_status: Callable[[str], None] | None = None
         # timeout <= 0 means "wait as long as it takes": huge models on CPU/NVMe streaming (e.g. colibri)
         # can spend many minutes on prefill before the first token arrives.
         http_timeout = httpx.Timeout(None, connect=30.0) if timeout <= 0 else httpx.Timeout(timeout, connect=30.0)
@@ -329,8 +331,22 @@ class LLMClient:
                     raise LLMError(f"HTTP error talking to {self.base_url}: {e}") from e
                 time.sleep(min(2 ** attempt, 20))
 
+    def _create(self, kwargs):
+        """chat.completions.create without the SDK's request "transform": it walks every message and
+        tool schema in pure Python on each request (about a second per request on a long conversation,
+        and it grows with every message). Our messages are already plain JSON, so they go in the body
+        as they are."""
+        kwargs = dict(kwargs)
+        body = dict(kwargs.pop("extra_body", None) or {})
+        body["messages"] = kwargs.pop("messages")
+        if "tools" in kwargs:
+            body["tools"] = kwargs.pop("tools")
+        if self.on_status:
+            self.on_status("sent")
+        return self._client.chat.completions.create(messages=[], extra_body=body, **kwargs)
+
     def _chat_once(self, kwargs, on_text, on_reasoning) -> AssistantMessage:
-        resp = self._client.chat.completions.create(**kwargs)
+        resp = self._create(kwargs)
         if not resp.choices:
             raise LLMError("Server returned no choices")
         choice = resp.choices[0]
@@ -356,11 +372,11 @@ class LLMClient:
     def _chat_stream(self, kwargs, on_text, on_reasoning) -> AssistantMessage:
         kwargs = {**kwargs, "stream": True, "stream_options": {"include_usage": True}}
         try:
-            stream = self._client.chat.completions.create(**kwargs)
+            stream = self._create(kwargs)
         except openai.BadRequestError as e:
             if "stream_options" in str(e):
                 kwargs.pop("stream_options")
-                stream = self._client.chat.completions.create(**kwargs)
+                stream = self._create(kwargs)
             else:
                 raise
         text_parts: list[str] = []
@@ -381,7 +397,11 @@ class LLMClient:
 
         filt = _ThinkFilter(rec_text, rec_reasoning)
         try:
+            first = True
             for chunk in stream:
+                if first and self.on_status:
+                    first = False
+                    self.on_status("first_token")
                 if getattr(chunk, "usage", None):
                     usage = chunk.usage.model_dump()
                 if not chunk.choices:

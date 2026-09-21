@@ -271,6 +271,8 @@ def test_pick_session_lists_recent_sessions_newest_first(tmp_path):
     old.log_message({"role": "user", "content": "first task"})
     new = Session(tmp_path, "20260102-000000-bbbbbb")
     new.log_message({"role": "user", "content": "second task"})
+    old.close()
+    new.close()                                            # writes are queued; finish them first
     os.utime(old.path, (time.time() - 7200, time.time() - 7200))
     user = Answers()
     assert pick_session(tmp_path, user) == new.id          # Enter = newest

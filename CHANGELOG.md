@@ -5,6 +5,12 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **Faster, smoother CLI** (measured in a real Windows pseudo-console, with a 2000-message conversation):
+  - Enter → request reaching the model: **~1.2 s → 77 ms**. Requests no longer pass through the OpenAI SDK's per-request walk over the whole conversation, which cost about a second and grew with every message.
+  - The input box no longer redraws itself twice a second while idle.
+  - Transcript and event writes moved to a background writer. Each file open cost ~60 ms on Windows and blocked the main thread mid-turn.
+  - Resuming a long conversation shows only its last 8 exchanges instead of reprinting everything (it took 7+ seconds).
+- **Web search** uses the maintained `ddgs` package. Before, it could return 0 results and print a deprecation warning into the conversation; library warnings no longer reach the screen.
 - **Live view follows your session.** `muyah viz` in a second terminal now follows the session running in the same folder, in real time. It switches to the next session when you start another. Replays moved to `muyah viz --replay [id]`.
 - The live view now also shows:
   - the model's answer and thinking as it streams

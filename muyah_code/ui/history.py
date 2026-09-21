@@ -60,12 +60,21 @@ def _tool_line(call: dict) -> Text:
     return line
 
 
-def print_history(console: Console, messages: list[dict]) -> None:
+SHOW_EXCHANGES = 8  # a resumed conversation shows its last few exchanges, not everything (fast on long ones)
+
+
+def print_history(console: Console, messages: list[dict], last: int = SHOW_EXCHANGES) -> None:
     """Show a resumed conversation the way it looked: your prompts, tool calls, and answers."""
     from muyah_code.ui.terminal import PrefixedMarkdown
 
     t = theme()
     shown = False
+    starts = [i for i, m in enumerate(messages) if is_real_user_message(m)]
+    if len(starts) > last:
+        hidden = len(starts) - last
+        console.print(Text(f"⋯ {hidden} earlier exchange{'s' if hidden != 1 else ''} not shown "
+                           "(the model still has them)", style=t.dim))
+        messages = messages[starts[-last]:]
     for m in messages:
         role = m.get("role")
         content = m.get("content") if isinstance(m.get("content"), str) else ""

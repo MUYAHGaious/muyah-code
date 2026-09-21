@@ -27,11 +27,14 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from muyah_code.appendlog import append_line, flush
+
 Listener = Callable[[dict], None]
 
 
 def _last_time(path: Path) -> float:
     """The "t" of the last event already recorded in a file (0 if none), read from the file's tail."""
+    flush(path)
     try:
         with open(path, "rb") as f:
             f.seek(0, 2)
@@ -73,12 +76,12 @@ class EventBus:
     def emit(self, type_: str, **data) -> dict:
         event = {"type": type_, "t": round(time.time() - self.started, 3), **data}
         if self.record_to is not None:
-            try:
-                with open(self.record_to, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(event, ensure_ascii=False, default=str) + "\n")
-            except OSError:
-                self.record_to = None  # never let recording break the session
+            append_line(self.record_to, json.dumps(event, ensure_ascii=False, default=str))
         return self.publish(event)
+
+    def close(self) -> None:
+        if self.record_to is not None:
+            flush(self.record_to, close=True)
 
     def publish(self, event: dict) -> dict:
         """Deliver an already-built event (keeps its "t"): used by followers that replay another process."""
@@ -128,6 +131,7 @@ class TokenMeter:
 
 
 def load_events(path: Path) -> list[dict]:
+    flush(path)
     events = []
     try:
         with open(path, encoding="utf-8") as f:

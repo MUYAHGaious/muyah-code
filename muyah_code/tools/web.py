@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import warnings
 from urllib.parse import urlparse
 
 import httpx
@@ -19,9 +20,6 @@ def _ddgs():
         from ddgs import DDGS  # type: ignore[import-not-found]
     except ImportError:
         try:
-            import warnings
-
-            warnings.filterwarnings("ignore", message=".*renamed to.*ddgs.*")
             from duckduckgo_search import DDGS  # type: ignore[import-not-found]
         except ImportError as e:
             raise ToolError("Web search needs the 'ddgs' or 'duckduckgo_search' package: pip install ddgs") from e
@@ -81,8 +79,10 @@ class WebSearchTool(Tool):
         n = min(max(int(args.get("max_results") or 6), 1), 15)
         DDGS = _ddgs()
         try:
-            with DDGS() as d:
-                results = list(d.text(query, max_results=n))
+            with warnings.catch_warnings():  # library deprecation notices must not print into the UI
+                warnings.simplefilter("ignore")
+                with DDGS() as d:
+                    results = list(d.text(query, max_results=n))
         except Exception as e:
             raise ToolError(f"Search failed: {e.__class__.__name__}: {e}") from e
         if not results:

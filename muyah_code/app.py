@@ -374,6 +374,9 @@ class App:
         return f"Undid changes from: {label}\n" + "\n".join(f"  {r}" for r in restored)
 
     def shutdown(self) -> None:
+        self.events.close()
+        if self.session is not None:
+            self.session.close()
         if self.viz is not None:
             self.viz.stop()
             self.viz = None

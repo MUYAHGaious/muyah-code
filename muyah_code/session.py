@@ -11,6 +11,8 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+from muyah_code.appendlog import append_line, flush
+
 
 def project_slug(root: Path) -> str:
     resolved = str(root.resolve())
@@ -41,8 +43,10 @@ class Session:
 
     def _append(self, event: dict) -> None:
         event["ts"] = time.time()
-        with open(self.path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(event, ensure_ascii=False, default=str) + "\n")
+        append_line(self.path, json.dumps(event, ensure_ascii=False, default=str))
+
+    def close(self) -> None:
+        flush(self.path, close=True)
 
     def start(self, meta: dict) -> None:
         if not self.path.exists():
@@ -65,6 +69,7 @@ class Session:
 
     @staticmethod
     def load(path: Path) -> tuple[list[dict], dict]:
+        flush(path)
         messages: list[dict] = []
         meta: dict = {}
         with open(path, encoding="utf-8") as f:
@@ -100,6 +105,7 @@ class Session:
 
     @staticmethod
     def list_sessions(directory: Path, limit: int = 20) -> list[SessionInfo]:
+        flush()
         if not directory.is_dir():
             return []
         out = []

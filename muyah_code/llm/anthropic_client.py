@@ -144,6 +144,7 @@ class AnthropicClient:
         self.effort = effort
         self.fallbacks = fallbacks
         self.stream = True
+        self.on_status: Callable[[str], None] | None = None  # "sent" / "first_token" (live view)
         self._client = anthropic.Anthropic(api_key=api_key, base_url=base_url, max_retries=max_retries,
                                            timeout=None if timeout <= 0 else timeout,
                                            default_headers={**(extra_headers or {})})
@@ -196,8 +197,14 @@ class AnthropicClient:
                 cm = self._client.beta.messages.stream(**params, betas=[FALLBACK_BETA], fallbacks="default")
             else:
                 cm = self._client.messages.stream(**params)
+            if self.on_status:
+                self.on_status("sent")
             with cm as stream:
+                first = True
                 for event in stream:
+                    if first and self.on_status:
+                        first = False
+                        self.on_status("first_token")
                     if event.type == "text" and on_text:
                         on_text(event.text)
                     elif (event.type == "content_block_delta" and on_reasoning

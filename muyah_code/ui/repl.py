@@ -133,7 +133,7 @@ class Repl:
         })
         self.session = _CompactPromptSession(history=history, completer=_Completer(self), key_bindings=kb,
                                      complete_while_typing=True, bottom_toolbar=self._toolbar, style=style,
-                                     reserve_space_for_menu=0, refresh_interval=0.5, **session_kwargs)
+                                     reserve_space_for_menu=0, **session_kwargs)
 
     def ask(self, message: str, password: bool = False) -> str:
         return self.prompter.ask(message, password=password)

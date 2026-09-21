@@ -140,3 +140,43 @@ def test_global_muyah_home_is_not_a_project_marker(tmp_path, monkeypatch):
     (proj / ".muyah").mkdir(parents=True)                  # a real project marker still counts
     (proj / "src").mkdir()
     assert find_project_root(proj / "src") == proj.resolve()
+
+
+def test_append_writer_keeps_order_and_flushes(tmp_path):
+    import threading
+
+    from muyah_code.appendlog import append_line, flush
+
+    path = tmp_path / "log.jsonl"
+    for i in range(500):
+        append_line(path, str(i))
+    flush(path)
+    assert path.read_text(encoding="utf-8").split() == [str(i) for i in range(500)]
+    # writes from several threads all land, and close=True releases the file so it can be deleted
+    threads = [threading.Thread(target=lambda k=k: [append_line(path, f"t{k}") for _ in range(50)]) for k in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    flush(path, close=True)
+    assert len(path.read_text(encoding="utf-8").split()) == 700
+    path.unlink()                                   # would fail on Windows if the handle were still open
+
+
+def test_requests_send_the_conversation_as_plain_json(project):
+    """Messages go straight into the request body (the SDK's slow per-request transform is skipped)."""
+    import sys
+
+    sys.path.insert(0, str(__import__("pathlib").Path(__file__).parent))
+    from fakeserver import FakeOpenAI, reply
+    from test_agent_e2e import make_app
+
+    with FakeOpenAI([reply("", [{"name": "Glob", "arguments": {"pattern": "*"}}]), reply("ok")]) as srv:
+        app = make_app(srv, project)
+        statuses = []
+        app.llm.on_status = statuses.append
+        app.run_prompt("hi")
+    first = srv.requests[0]
+    assert first["messages"][0]["role"] == "system" and first["messages"][-1]["content"].endswith("hi")
+    assert any(t["function"]["name"] == "Glob" for t in first["tools"])
+    assert statuses[:2] == ["sent", "first_token"]
