@@ -7,6 +7,7 @@ same `.events.jsonl` file every session writes, so the replay is exactly what `m
     python scripts/make_viz_demo.py            # record, print the events file
     python scripts/make_viz_demo.py --serve    # record, then serve the replay and print its URL
     python scripts/make_viz_demo.py --live 10  # watch it live: prints a URL, starts the turn 10 s later
+    python scripts/make_viz_demo.py --scenario long --live 10   # the long tour: most features, two turns
 """
 
 from __future__ import annotations
@@ -112,8 +113,51 @@ def record(project: Path, live_wait: float | None = None) -> Path:
     return app.session.path.with_suffix(".events.jsonl")
 
 
+def record_long(project: Path, live_wait: float | None = None) -> Path:
+    """The long scenario (scripts/demo_long.py): two turns, skills, MCP, two sub-agents, approvals, a hook,
+    tests written first, a message typed while it works."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import demo_long
+
+    project.mkdir(parents=True, exist_ok=True)
+    for rel, text in demo_long.FILES.items():
+        (project / rel).parent.mkdir(parents=True, exist_ok=True)
+        (project / rel).write_text(text, encoding="utf-8")
+    (project / ".mcp.json").write_text(json.dumps({"mcpServers": {"tracker": {
+        "command": sys.executable, "args": [str(ROOT / "tests" / "fakemcp.py"), "--delay", "0.8"]}}}), encoding="utf-8")
+    (project / ".muyah").mkdir(exist_ok=True)
+    (project / ".muyah" / "after_bash.py").write_text("import sys, json\njson.load(sys.stdin)\n", encoding="utf-8")
+    hook = f'"{sys.executable}" "{project / ".muyah" / "after_bash.py"}"'
+    (project / ".muyah" / "settings.json").write_text(json.dumps({"hooks": {"PostToolUse": [
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": hook}]}]}}), encoding="utf-8")
+    with FakeOpenAI(demo_long.script(), chunk_delay=0.03) as srv:
+        cfg = load_config(cwd=project, overrides={"base_url": srv.url, "model": "qwen3-coder-30b", "api_key": "k"})
+        cfg.set("learning.reflect", False)
+        app = App(cfg, demo_long.DemoUser(), cwd=project, mode="default", enable_mcp=True)
+        app.lessons.add(Lesson(trigger="adding a feature with tests",
+                               lesson="Write the failing test first, then the code, then run the whole suite.",
+                               tags=["test", "tests", "feature", "priority"]))
+        server = None
+        if live_wait is not None:
+            from muyah_code.viz import VizServer
+
+            server = VizServer(bus=app.events, title="tasks-demo (live)", recording=app.events.record_to)
+            print(f"live: {server.start()}", flush=True)
+            time.sleep(live_wait)
+        results = demo_long.run(app)
+        app.shutdown()
+        if server is not None:
+            server.stop()
+    bad = [r.status for r in results if r.status != "ok"]
+    if bad:
+        raise SystemExit(f"demo turns ended with {bad}")
+    return app.session.path.with_suffix(".events.jsonl")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--scenario", choices=["short", "long"], default="short",
+                    help="short: fix one failing test (17 s); long: two turns using most features (~1 min)")
     ap.add_argument("--serve", action="store_true", help="Serve the replay after recording")
     ap.add_argument("--live", type=float, metavar="SECONDS",
                     help="Serve the live view while recording; wait SECONDS before starting the turn")
@@ -121,8 +165,9 @@ def main() -> int:
     ap.add_argument("--project", help="Folder for the demo project (default: a new temp folder). Run "
                     "`muyah viz` there, with the same MUYAH_HOME, to watch from another terminal.")
     a = ap.parse_args()
-    project = Path(a.project) if a.project else Path(tempfile.mkdtemp(prefix="muyah-viz-proj-")) / "calc-demo"
-    path = record(project, a.live)
+    name = "tasks-demo" if a.scenario == "long" else "calc-demo"
+    project = Path(a.project) if a.project else Path(tempfile.mkdtemp(prefix="muyah-viz-proj-")) / name
+    path = (record_long if a.scenario == "long" else record)(project, a.live)
     if a.out:
         shutil.copyfile(path, a.out)
         path = Path(a.out)
