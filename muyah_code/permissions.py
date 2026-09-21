@@ -249,6 +249,8 @@ def _auto_decision(tool: Tool, args: dict, subject: str, read_only: bool, projec
         return Decision("ask", "auto mode still asks: the file is outside the project")
     if tool.name.startswith("mcp__"):
         return Decision("ask", "auto mode still asks: this MCP tool can change things outside this project")
+    if tool.name == "McpServers":
+        return Decision("ask", "auto mode still asks: this starts a program on your machine (an MCP server)")
     return Decision("allow", "auto mode")
 
 

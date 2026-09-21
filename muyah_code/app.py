@@ -209,6 +209,10 @@ class App:
             from muyah_code.mcp.browser import BrowserTool
 
             self.registry.register(BrowserTool(self._start_browser))
+        if enable_mcp:
+            from muyah_code.mcp.manage import McpServersTool
+
+            self.registry.register(McpServersTool(self))
         self.subagents = SubagentManager(self.agent_defs, self._make_subagent, depth=0, roles=self._roles)
         self.registry.register(AgentTool(self.subagents))
 
@@ -278,6 +282,44 @@ class App:
                 continue
             found.append((media, b64, describe(m.group(1), data)))
         return found
+
+    def mcp_list(self) -> str:
+        if self.mcp is None or not self.mcp.configs:
+            return "No MCP servers configured yet." + (" The built-in browser starts when you call Browser."
+                                                       if "Browser" in self.registry.names() else "")
+        lines = []
+        for name, cfg in self.mcp.configs.items():
+            tools = [t.name.split("__", 2)[-1] for t in self.mcp_tools if t.name.startswith(f"mcp__{name}__")]
+            where = cfg.url or " ".join([cfg.command, *cfg.args])
+            lines.append(f"- {name}: {self.mcp.status.get(name, 'not started')} · {where}"
+                         + (f"\n  tools: {', '.join(tools)}" if tools else ""))
+        return "\n".join(lines)
+
+    def mcp_add(self, name: str, spec: dict, scope: str = "project") -> tuple[Path, list[str]]:
+        """Save a server in the MCP config (project .mcp.json or ~/.muyah/mcp.json) and start it now."""
+        from muyah_code.config import read_json, write_json
+        from muyah_code.mcp.client import MCPManager, ServerConfig
+
+        path = self.home / "mcp.json" if scope == "user" else self.root / ".mcp.json"
+        data = read_json(path)
+        data.setdefault("mcpServers", {})[name] = spec
+        write_json(path, data)
+        if self.mcp is None:
+            self.mcp = MCPManager({}, self.home / "logs")
+        prefix = f"mcp__{name}__"
+        if name in self.mcp.clients:                       # replacing a running one
+            self.mcp.disconnect(name)
+            for registry in {id(r): r for r in (self.registry, self.agent.registry)}.values():
+                for tool in [n for n in registry.names() if n.startswith(prefix)]:
+                    registry.unregister(tool)
+            self.mcp_tools = [t for t in self.mcp_tools if not t.name.startswith(prefix)]
+        tools = self.mcp.add(ServerConfig.from_dict(name, spec))
+        self.mcp_tools.extend(tools)
+        for registry in {id(r): r for r in (self.registry, self.agent.registry)}.values():
+            for tool in tools:
+                registry.register(tool)
+        self.emit_session()
+        return path, [t.name for t in tools]
 
     def mcp_set(self, name: str, action: str) -> str:
         """/mcp enable|disable|reconnect <name>: change a server now; enable/disable is remembered for this project."""

@@ -56,6 +56,8 @@ which keeps your context small.
 - Skills are proven workflows. If one matches the task (debugging, planning, tdd, verification, code-review...), \
 load it with the Skill tool BEFORE starting and follow it.
 - Long outputs are truncated in the middle; re-run with filters (grep, head, tail, --tb=short, -q) if needed.
+- Need tools you do not have (a database, an API, image understanding...)? Set up an MCP server yourself with \
+McpServers (add writes the config and starts it now; no restart). Ask the user for any API key it needs.
 - The user can type MUYAH-CODE slash commands that you cannot run: /usage (tokens, cost, context), /rewind and /undo, /verify, /btw, /mcp, /model, /status. When one answers their question, tell them to type it."""
 
 PLAN_MODE = """\

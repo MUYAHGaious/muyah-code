@@ -104,3 +104,37 @@ def test_claude_code_servers_for_this_project_are_used(project, monkeypatch, tmp
     assert list(configs) == ["tracker"]                                  # user-wide ones need "all"
     assert set(mcp_client.load_server_configs(project, tmp_path / "home", "all")) == {"everywhere", "tracker"}
     assert mcp_client.load_server_configs(project, tmp_path / "home", "off") == {}
+
+
+def test_the_agent_sets_up_an_mcp_server_itself_and_uses_it_right_away(project):
+    script = [reply("", [{"name": "McpServers", "arguments": {
+                  "action": "add", "name": "tracker", "command": sys.executable, "args": [str(FAKE)],
+                  "env": {"TRACKER_KEY": "secret-123"}}}]),
+              reply("", [{"name": "mcp__tracker__lookup_issue", "arguments": {"id": "7"}}]),
+              reply("Issue 7 is about divide().")]
+    with FakeOpenAI(script) as srv:
+        app = app_with_mcp(srv, project)
+        try:
+            res = app.run_prompt("add the issue tracker and look up issue 7")
+        finally:
+            app.shutdown()
+    saved = json.loads((project / ".mcp.json").read_text(encoding="utf-8"))
+    assert saved["mcpServers"]["tracker"]["args"] == [str(FAKE)]
+    added = [m for m in srv.requests[1]["messages"] if m["role"] == "tool"][-1]["content"]
+    assert "started it: 3 tools" in added
+    assert "mcp__tracker__lookup_issue" in [t["function"]["name"] for t in srv.requests[1]["tools"]]
+    assert res.text == "Issue 7 is about divide()."
+
+
+def test_adding_a_server_asks_first_even_in_auto_mode(project):
+    from muyah_code.mcp.manage import McpServersTool
+    from muyah_code.permissions import PermissionManager
+    from muyah_code.tools.base import ToolContext
+
+    tool = McpServersTool(app=None)
+    args = {"action": "add", "name": "x", "command": "npx", "args": ["-y", "pkg"], "env": {"KEY": "s3cret"}}
+    ctx = ToolContext(cwd=project, project_root=project, config=load_config(cwd=project))
+    decision = PermissionManager("auto", project_root=project).check(tool, args, ctx)
+    assert decision.action == "ask" and "starts a program" in decision.reason
+    assert "s3cret" not in tool.preview(args, ctx)          # keys are never shown on screen
+    assert PermissionManager("auto", project_root=project).check(tool, {"action": "list"}, ctx).action == "allow"
