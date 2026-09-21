@@ -120,6 +120,15 @@ class ReadTool(Tool):
             raise ToolError(f"File does not exist: {args['file_path']} (resolved to {path}).{hint}")
         if path.is_dir():
             raise ToolError(f"{args['file_path']} is a directory. Use LS or Glob to list it.")
+        from muyah_code.llm.content import describe, is_image_path, load_image
+
+        if is_image_path(path):
+            try:
+                media, b64, data = load_image(path)
+            except ValueError as e:
+                return ToolResult(f"{ctx.rel(path)} is an image, but it cannot be attached: {e}.", summary="image")
+            return ToolResult(f"{describe(ctx.rel(path), data)} is an image; it is attached for you to look at.",
+                              summary="image", images=[(media, b64)])
         raw = path.read_bytes()
         if is_binary(raw):
             kind = "image" if path.suffix.lower() in IMAGE_EXT else "binary"

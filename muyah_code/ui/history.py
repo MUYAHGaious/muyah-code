@@ -77,7 +77,9 @@ def print_history(console: Console, messages: list[dict], last: int = SHOW_EXCHA
         messages = messages[starts[-last]:]
     for m in messages:
         role = m.get("role")
-        content = m.get("content") if isinstance(m.get("content"), str) else ""
+        from muyah_code.llm.content import text_of
+
+        content = text_of(m.get("content") or "")
         if is_real_user_message(m):
             if content.startswith("[Summary of the earlier conversation"):
                 console.print(Text("⋯ earlier messages were summarized to save context", style=t.dim))

@@ -524,9 +524,11 @@ class CommandRouter:
         path = Path(arg or f"muyah-session-{self.app.session_id or 'export'}.md")
         lines = [f"# MUYAH-CODE session {self.app.session_id}\n"]
         for m in self.app.agent.messages[1:]:
+            from muyah_code.llm.content import text_of
+
             role = m.get("role")
-            content = m.get("content") or ""
-            if role == "tool":
+            content = text_of(m.get("content") or "")
+            if role == "tool" or m.get("_images"):
                 lines.append(f"<details><summary>tool result</summary>\n\n```\n{content[:4000]}\n```\n</details>\n")
             elif m.get("tool_calls"):
                 calls = ", ".join(tc["function"]["name"] for tc in m["tool_calls"])

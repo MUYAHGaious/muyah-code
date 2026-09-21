@@ -38,6 +38,26 @@ def _content_text(content: Any) -> str:
     return str(content or "")
 
 
+def _user_blocks(content: Any) -> list[dict]:
+    """OpenAI-format user content -> Claude blocks (text and base64 images)."""
+    from muyah_code.llm.content import parse_data_url
+
+    if isinstance(content, str):
+        return [{"type": "text", "text": content}] if content else []
+    blocks = []
+    for p in content or []:
+        if not isinstance(p, dict):
+            continue
+        if p.get("type") == "text" and p.get("text"):
+            blocks.append({"type": "text", "text": p["text"]})
+        elif p.get("type") == "image_url":
+            parsed = parse_data_url((p.get("image_url") or {}).get("url", ""))
+            if parsed:
+                blocks.append({"type": "image", "source": {"type": "base64", "media_type": parsed[0],
+                                                           "data": parsed[1]}})
+    return blocks
+
+
 def _safe_blocks(blocks: list[dict]) -> list[dict]:
     """After a mid-output fallback, drop thinking/tool_use blocks that precede the last `fallback` marker."""
     idx = max((i for i, b in enumerate(blocks) if b.get("type") == "fallback"), default=-1)
@@ -86,15 +106,17 @@ def to_anthropic(messages: list[dict]) -> tuple[str, list[dict]]:
                 blocks = [{"type": "text", "text": "(no response)"}]
             out.append({"role": "assistant", "content": blocks})
             continue
-        # user
-        text = _content_text(m.get("content"))
+        # user (text, or text and images)
+        content = m.get("content")
         if out and out[-1]["role"] == "user":
             prev = out[-1]["content"]
             if isinstance(prev, str):
                 out[-1]["content"] = [{"type": "text", "text": prev}]
-            out[-1]["content"].append({"type": "text", "text": text})
+            out[-1]["content"].extend(_user_blocks(content))
+        elif isinstance(content, list):
+            out.append({"role": "user", "content": _user_blocks(content) or [{"type": "text", "text": "(empty)"}]})
         else:
-            out.append({"role": "user", "content": text})
+            out.append({"role": "user", "content": _content_text(content)})
     if out and out[0]["role"] != "user":
         out.insert(0, {"role": "user", "content": "(conversation start)"})
     return "\n\n".join(p for p in system_parts if p.strip()), out

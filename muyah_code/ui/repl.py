@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from pathlib import Path
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.application.current import get_app
@@ -345,12 +346,32 @@ class Repl:
     def _paste(self, data: str) -> str:
         """A big paste goes into the prompt as a short placeholder (like Claude Code); the real text is sent."""
         text = data.replace("\r\n", "\n").replace("\r", "\n")
+        image = self._pasted_image_path(text)
+        if image:
+            return image
         lines = text.count("\n") + 1
         if lines <= PASTE_LINES and len(text) <= PASTE_CHARS:
             return text
         key = f"[Pasted text #{len(self._pastes) + 1} +{lines} lines]"
         self._pastes[key] = text
         return key
+
+    def _pasted_image_path(self, text: str) -> str:
+        """Dragging an image into the terminal pastes its path: turn it into an @mention (it is attached)."""
+        from muyah_code.llm.content import is_image_path
+
+        raw = text.strip().strip('"').strip("'")
+        if not raw or "\n" in raw or len(raw) > 400:
+            return ""
+        path = Path(raw).expanduser()
+        try:
+            if not (path.is_file() and is_image_path(path)):
+                return ""
+            rel = path.resolve().relative_to(self.app.cwd)
+            shown = rel.as_posix()
+        except (OSError, ValueError):
+            shown = path.as_posix()
+        return "" if " " in shown else f"@{shown} "   # mentions cannot contain spaces: leave those as typed
 
     def _expand_pastes(self, line: str) -> str:
         for key, text in self._pastes.items():

@@ -65,6 +65,8 @@ DEFAULTS: dict[str, Any] = {
     "budget": {"session_usd": 0, "daily_usd": 0},
     # auto | full | lean: lean = short prompt + 6 core tools for small models / windows under 32k (agent/lean.py)
     "prompt_profile": "auto",
+    # can the model look at images? auto = the price table's flag, else the model's name; true / false to decide
+    "vision": "auto",
     # model per role (see llm/pool.py): main, explore, edit, summarize, verify, btw, strong
     "models": {},
     # profiles or provider:model specs that answer when the main provider fails (rate limit, 5xx, network)

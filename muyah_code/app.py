@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -139,10 +140,14 @@ class App:
 
         self.mcp = None
         self.mcp_tools = []
+        self._browser_offered = False
+        self._browser_lock = threading.Lock()
         if enable_mcp:
+            from muyah_code.mcp.browser import wanted
             from muyah_code.mcp.client import MCPManager, load_server_configs
 
             configs = load_server_configs(self.root, self.home)
+            self._browser_offered = wanted(cfg, configs)
             if configs:
                 self.mcp = MCPManager(configs, self.home / "logs")
                 self.mcp_tools = self.mcp.connect_all()
@@ -173,6 +178,10 @@ class App:
         self.hooks.events = self.events
 
         self.registry = ToolRegistry(builtin_tools() + list(self.mcp_tools))
+        if self._browser_offered:
+            from muyah_code.mcp.browser import BrowserTool
+
+            self.registry.register(BrowserTool(self._start_browser))
         self.subagents = SubagentManager(self.agent_defs, self._make_subagent, depth=0, roles=self._roles)
         self.registry.register(AgentTool(self.subagents))
 
@@ -216,6 +225,55 @@ class App:
         from muyah_code.agent.lean import lean_registry
 
         return lean_registry(registry)
+
+    def sees_images(self, llm) -> bool:
+        from muyah_code.llm.content import model_sees_images
+
+        model = getattr(llm, "model", "")
+        return model_sees_images(model, self.pricing.supports_vision(model, getattr(llm, "provider_id", "")),
+                                 self.cfg.get("vision", "auto"))
+
+    def mention_images(self, prompt: str) -> list[tuple[str, str, str]]:
+        """@image.png mentions -> (media type, base64, label) to attach to the prompt."""
+        from muyah_code.llm.content import describe, is_image_path, load_image
+
+        found = []
+        for m in FILE_MENTION.finditer(prompt):
+            p = Path(m.group(1)).expanduser()
+            p = p if p.is_absolute() else (self.cwd / p)
+            if not (p.is_file() and is_image_path(p)):
+                continue
+            try:
+                media, b64, data = load_image(p)
+            except (OSError, ValueError) as e:
+                self.ui.warn(f"{m.group(1)} was not attached: {e}")
+                continue
+            found.append((media, b64, describe(m.group(1), data)))
+        return found
+
+    def _start_browser(self) -> list[str]:
+        """The Browser tool's first call: start the Playwright MCP server and swap in its real tools."""
+        from muyah_code.mcp.browser import browser_config
+        from muyah_code.mcp.client import MCPManager
+        from muyah_code.tools.base import ToolError
+
+        with self._browser_lock:
+            if self.mcp is not None and "browser" in self.mcp.clients:
+                return [t.name for t in self.mcp_tools if t.name.startswith("mcp__browser__")]
+            if self.mcp is None:
+                self.mcp = MCPManager({}, self.home / "logs")
+            try:
+                tools = self.mcp.add(browser_config(headless=bool(self.cfg.get("mcp.browser_headless", True)),
+                                                    output_dir=self.home / "browser"))
+            except Exception as e:
+                raise ToolError(f"Could not start the browser tools: {e}. Details in {self.home / 'logs'}.") from e
+            self.mcp_tools.extend(tools)
+            for registry in {id(r): r for r in (self.registry, self.agent.registry)}.values():
+                registry.unregister("Browser")
+                for tool in tools:
+                    registry.register(tool)
+            self.emit_session()
+            return [t.name for t in tools]
 
     def _roles(self) -> list[str]:
         """Model roles a sub-agent can be run on (the ones set in settings, plus main)."""
@@ -288,7 +346,7 @@ class App:
         ctx = ToolContext(cwd=self.cwd, project_root=self.root, config=self.cfg, depth=depth, headless=self.headless)
         ctx.services.update({
             "ui": ui, "llm": self.summarizer, "skills": self.skills, "jobs": self.jobs, "budget": self.budget,
-            "models": self.models,
+            "models": self.models, "vision": self.sees_images,
             "checkpoints": self.rewind, "rewind": self.rewind, "context_window": self.window, "events": self.events,
         })
         return ctx
@@ -451,6 +509,10 @@ class App:
             except OSError:
                 continue
             if p.is_file():
+                from muyah_code.llm.content import is_image_path
+
+                if is_image_path(p):            # attached as an image (mention_images), never as text
+                    continue
                 try:
                     text = p.read_text(encoding="utf-8", errors="replace")
                 except OSError:
@@ -472,7 +534,7 @@ class App:
         self.agent.llm = self.llm                     # an escalation lasts one turn
         self.agent.escalation.reset()
         self.rewind.begin_turn(prompt, start_index)   # snapshot before anything in this turn changes
-        result = self.agent.run(self.expand_mentions(prompt))
+        result = self.agent.run(self.expand_mentions(prompt), images=self.mention_images(prompt))
         self.last_turn = TurnRecord(prompt, result, [x.id for x in self._current_lessons], start_index)
         if self.learning_enabled and self.cfg.get("learning.reflect", True) and \
                 Reflector.worth_reflecting(result.signals, result.status):

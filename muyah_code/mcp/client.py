@@ -234,9 +234,10 @@ class MCPClient:
                 break
         return tools
 
-    def call_tool(self, name: str, arguments: dict) -> tuple[str, bool]:
+    def call_tool(self, name: str, arguments: dict) -> tuple[str, bool, list[tuple[str, str]]]:
+        """(text, is_error, images as (media type, base64))."""
         res = self.request("tools/call", {"name": name, "arguments": arguments})
-        parts = []
+        parts, images = [], []
         for item in res.get("content") or []:
             t = item.get("type")
             if t == "text":
@@ -244,13 +245,14 @@ class MCPClient:
             elif t == "resource":
                 r = item.get("resource") or {}
                 parts.append(r.get("text") or f"[resource {r.get('uri', '')}]")
-            elif t == "image":
-                parts.append(f"[image: {item.get('mimeType', 'unknown')}]")
+            elif t == "image" and item.get("data"):
+                images.append((item.get("mimeType") or "image/png", item["data"]))
+                parts.append(f"[image {len(images)}: {item.get('mimeType', 'image')}, attached]")
             else:
                 parts.append(json.dumps(item)[:1000])
         if not parts and res.get("structuredContent") is not None:
             parts.append(json.dumps(res["structuredContent"], indent=2))
-        return "\n".join(parts) or "(no content)", bool(res.get("isError"))
+        return "\n".join(parts) or "(no content)", bool(res.get("isError")), images
 
     def close(self) -> None:
         if self.transport:
@@ -282,10 +284,11 @@ class MCPTool(Tool):
 
     def run(self, args, ctx):
         try:
-            text, is_error = self.client.call_tool(self.remote_name, args)
+            text, is_error, images = self.client.call_tool(self.remote_name, args)
         except MCPError as e:
             raise ToolError(f"MCP server '{self.client.cfg.name}': {e}") from e
-        return ToolResult(text, is_error=is_error, summary=("error" if is_error else f"{len(text)} chars"))
+        summary = "error" if is_error else f"{len(text)} chars" + (f", {len(images)} image(s)" if images else "")
+        return ToolResult(text, is_error=is_error, summary=summary, images=images)
 
 
 def load_server_configs(project_root: Path, home: Path) -> dict[str, ServerConfig]:
@@ -336,6 +339,19 @@ class MCPManager:
                 self.status[name] = f"connected ({len(client.tools)} tools)"
                 tools.extend(MCPTool(client, spec) for spec in client.tools if spec.get("name"))
         return tools
+
+    def add(self, cfg: ServerConfig) -> list[Tool]:
+        """Connect one more server now (e.g. the built-in browser, on first use). Raises on failure."""
+        self.configs[cfg.name] = cfg
+        client = MCPClient(cfg, self.log_dir)
+        try:
+            client.connect()
+        except Exception as e:
+            self.status[cfg.name] = f"failed: {e}"
+            raise
+        self.clients[cfg.name] = client
+        self.status[cfg.name] = f"connected ({len(client.tools)} tools)"
+        return [MCPTool(client, spec) for spec in client.tools if spec.get("name")]
 
     def shutdown(self) -> None:
         for c in self.clients.values():

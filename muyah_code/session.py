@@ -54,8 +54,10 @@ class Session:
 
     def log_message(self, message: dict) -> None:
         if self.title is None and message.get("role") == "user":
-            content = message.get("content") or ""
-            if isinstance(content, str) and not content.startswith("<"):
+            from muyah_code.llm.content import text_of
+
+            content = text_of(message.get("content") or "")
+            if not message.get("_images") and content and not content.startswith("<"):
                 self.title = " ".join(content.split())[:80]
                 self._append({"t": "title", "title": self.title})
         self._append({"t": "msg", "m": message})

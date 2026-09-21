@@ -26,6 +26,8 @@ class ToolResult:
     display: str | None = None
     summary: str | None = None
     meta: dict = field(default_factory=dict)
+    # images for the model to look at: (media type, base64). Sent only to models that can see images.
+    images: list[tuple[str, str]] = field(default_factory=list)
 
     @classmethod
     def error(cls, message: str) -> ToolResult:

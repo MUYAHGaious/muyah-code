@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 
 from muyah_code.llm.client import estimate_tokens
+from muyah_code.llm.content import IMAGE_TOKENS, count_images, strip_images, text_of
 
 PRUNED_MARK = "[output pruned to save context"
 SUMMARY_PROMPT = """\
@@ -29,7 +30,7 @@ Be specific (paths, function names, commands). No filler.{focus}"""
 
 
 def is_tool_result_message(m: dict) -> bool:
-    if m.get("role") == "tool":
+    if m.get("role") == "tool" or m.get("_images"):
         return True
     content = m.get("content")
     return m.get("role") == "user" and isinstance(content, str) and content.startswith("<tool_result")
@@ -66,7 +67,8 @@ class ContextManager:
         return max(3000, min(int(configured), int(self.usable * 0.2 * 3.5)))
 
     def raw_count(self, messages: list[dict], tools: list[dict] | None = None) -> int:
-        total = sum(estimate_tokens(m.get("content") or "") + 6 for m in messages)
+        total = sum(estimate_tokens(text_of(m.get("content") or "")) + 6 +
+                    IMAGE_TOKENS * count_images(m.get("content")) for m in messages)
         for m in messages:
             if m.get("tool_calls"):
                 total += estimate_tokens(m["tool_calls"])
@@ -104,7 +106,11 @@ class ContextManager:
         pruned = 0
         for i in idxs[:-keep_recent] if keep_recent else idxs:
             content = messages[i].get("content") or ""
-            if len(content) <= max_chars or PRUNED_MARK in content:
+            if count_images(content):             # old screenshots are the most expensive thing to keep
+                messages[i] = {**messages[i], "content": strip_images(content)}
+                pruned += 1
+                continue
+            if not isinstance(content, str) or len(content) <= max_chars or PRUNED_MARK in content:
                 continue
             messages[i] = {**messages[i], "content": content[:max_chars] + f"\n{PRUNED_MARK}; re-run the tool if needed]"}
             pruned += 1
@@ -191,7 +197,7 @@ def render_transcript(messages: list[dict], per_message: int = 1500) -> str:
     out = []
     for m in messages:
         role = m.get("role", "?")
-        content = (m.get("content") or "").strip()
+        content = text_of(m.get("content") or "").strip()
         if len(content) > per_message:
             content = content[: per_message // 2] + " ... " + content[-per_message // 2:]
         if role == "assistant" and m.get("tool_calls"):
@@ -213,12 +219,12 @@ def mechanical_digest(messages: list[dict]) -> str:
     requests, actions = [], []
     for m in messages:
         if is_real_user_message(m):
-            requests.append("- " + " ".join((m.get("content") or "").split())[:300])
+            requests.append("- " + " ".join(text_of(m.get("content") or "").split())[:300])
         elif m.get("role") == "assistant":
             for tc in m.get("tool_calls") or []:
                 fn = tc.get("function", {})
                 actions.append(f"- {fn.get('name')}({str(fn.get('arguments', ''))[:120]})")
             if m.get("content"):
-                actions.append("- said: " + " ".join(m["content"].split())[:200])
+                actions.append("- said: " + " ".join(text_of(m["content"]).split())[:200])
     return ("User requests so far:\n" + "\n".join(requests[-10:]) +
             "\n\nRecent actions:\n" + "\n".join(actions[-25:]))

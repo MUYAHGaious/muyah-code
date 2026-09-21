@@ -210,7 +210,8 @@ Do not change any code while verifying.
 1. Work out how this project is run (README, MUYAH.md/AGENTS.md, package.json scripts, entry points).
 2. Run it for real: start the app / CLI / server and exercise the changed behaviour. For a web UI, open it \
 with the browser tools if you have them (navigate, click through the changed flow, read the page); otherwise \
-request it with curl or a short script. Stop anything you started when you are done.
+request it with curl or a short script (call the Browser tool first if the browser_* tools are not there yet). \
+Stop anything you started when you are done.
 3. Report: each command you ran with its exit code, what you observed, and a verdict per changed behaviour \
 (works / broken / could not check, and why). If something is broken, show the evidence and ask before fixing it.
 {changed}"""

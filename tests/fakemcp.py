@@ -3,6 +3,7 @@
 Tools:
     lookup_issue(id)   returns a fake issue tracker entry
     fail()             always returns an MCP tool error (isError: true)
+    screenshot()       returns a 1x1 PNG image (like a browser MCP server's screenshot)
 
     python tests/fakemcp.py [--delay SECONDS]    (delay makes calls look like real network work in demos)
 """
@@ -17,7 +18,10 @@ TOOLS = [
      "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]},
      "annotations": {"readOnlyHint": True}},
     {"name": "fail", "description": "Always fails.", "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "screenshot", "description": "Take a screenshot of the page.",
+     "inputSchema": {"type": "object", "properties": {}}, "annotations": {"readOnlyHint": True}},
 ]
+PNG_1X1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
 
 
 def result(rid, value):
@@ -37,6 +41,9 @@ def handle(msg):
         if name == "lookup_issue":
             text = f"Issue {args.get('id')}: divide() returns wrong results. Reported by QA. Priority: high."
             return result(rid, {"content": [{"type": "text", "text": text}]})
+        if name == "screenshot":
+            return result(rid, {"content": [{"type": "text", "text": "Screenshot of http://localhost:3000"},
+                                             {"type": "image", "data": PNG_1X1, "mimeType": "image/png"}]})
         if name == "fail":
             return result(rid, {"content": [{"type": "text", "text": "tracker is down"}], "isError": True})
         return {"jsonrpc": "2.0", "id": rid, "error": {"code": -32601, "message": f"unknown tool {name}"}}

@@ -378,7 +378,9 @@ class Agent:
         self.emit_context()
         return desc
 
-    def run(self, prompt: str) -> TurnResult:
+    def run(self, prompt: str, images: list[tuple[str, str, str]] | None = None) -> TurnResult:
+        """images: (media type, base64, label) attached to the prompt (@image.png mentions)."""
+        self._prompt_images = images or []
         start = time.time()
         result = TurnResult()
         self._emit("subagent_start" if self.is_subagent else "turn_start", prompt=prompt[:300],
@@ -429,7 +431,18 @@ class Agent:
             extra = self.turn_context(prompt)
             if extra:
                 prompt = f"{prompt}\n\n{extra}"
-        self._append({"role": "user", "content": prompt})
+        images, self._prompt_images = self._prompt_images, []
+        if images and self.sees_images():
+            from muyah_code.llm.content import image_part
+
+            parts = [{"type": "text", "text": prompt}]
+            for media, b64, label in images:
+                parts += [{"type": "text", "text": f"[{label}]"}, image_part(media, b64)]
+            self._append({"role": "user", "content": parts})
+        else:
+            if images:
+                prompt += "\n\n" + self._no_vision_note(", ".join(label for _, _, label in images))
+            self._append({"role": "user", "content": prompt})
 
         seen: dict[str, int] = {}
         failures: dict[str, str] = {}
@@ -927,16 +940,47 @@ class Agent:
                     res.content += f"\n\n[hook context]\n{out.additional_context}"
         return res
 
+    _prompt_images: list = []
+
+    def sees_images(self) -> bool:
+        """Can this agent's current model look at images? (the `vision` setting, the price table, the name)"""
+        check = self.ctx.service("vision")
+        return bool(check(self.llm)) if callable(check) else False
+
+    def _no_vision_note(self, what: str) -> str:
+        return (f"[{what}: not sent, because {getattr(self.llm, 'model', 'this model')} cannot see images. "
+                'If it can, set "vision": true in settings.]')
+
     def _append_results(self, calls: list[ToolCall], outputs: list[ToolResult]) -> None:
+        sees = self.sees_images()
+        images: list[tuple[str, str, str]] = []
+        texts = []
+        for call, res in zip(calls, outputs, strict=True):
+            text = res.content
+            if res.images:
+                if sees:
+                    images += [(media, b64, f"image {i} from {call.name}") for i, (media, b64) in
+                               enumerate(res.images, len(images) + 1)]
+                else:
+                    text += "\n" + self._no_vision_note(f"{len(res.images)} image(s)")
+            texts.append(text)
         if self.text_mode:
             blocks = []
-            for call, res in zip(calls, outputs, strict=True):
+            for call, res, text in zip(calls, outputs, texts, strict=True):
                 status = ' status="error"' if res.is_error else ""
-                blocks.append(f'<tool_result name="{call.name}"{status}>\n{res.content}\n</tool_result>')
+                blocks.append(f'<tool_result name="{call.name}"{status}>\n{text}\n</tool_result>')
             self._append({"role": "user", "content": "\n\n".join(blocks)})
-            return
-        for call, res in zip(calls, outputs, strict=True):
-            self._append({"role": "tool", "tool_call_id": call.id, "content": res.content})
+        else:
+            for call, text in zip(calls, texts, strict=True):
+                self._append({"role": "tool", "tool_call_id": call.id, "content": text})
+        if images:
+            from muyah_code.llm.content import image_part
+
+            parts = [{"type": "text", "text": "Images returned by the tool calls above:"}]
+            for media, b64, label in images:
+                parts += [{"type": "text", "text": f"[{label}]"}, image_part(media, b64)]
+            # "_images": part of the tool results for pruning and compaction (keys with "_" are never sent)
+            self._append({"role": "user", "content": parts, "_images": True})
 
     def _repair_after_interrupt(self) -> None:
         """Make sure every native tool call has a result so the history stays valid."""

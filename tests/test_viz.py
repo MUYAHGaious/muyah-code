@@ -323,7 +323,7 @@ def test_mcp_servers_and_calls_show_up(project):
     assert "divide() returns wrong results" in srv.requests[1]["messages"][-1]["content"]   # MCP result reached the model
     events = app.events.history
     session = [e for e in events if e["type"] == "session"][0]
-    assert session["mcp"] == [{"name": "tracker", "status": "connected (2 tools)", "tools": ["lookup_issue", "fail"]}]
+    assert session["mcp"] == [{"name": "tracker", "status": "connected (3 tools)", "tools": ["lookup_issue", "fail", "screenshot"]}]
     assert any(s["name"] == "debugging" for s in session["skills"]) and any(a["name"] == "explore" for a in session["agents"])
     ends = {e["name"]: e["ok"] for e in events if e["type"] == "tool_end"}
     assert ends == {"mcp__tracker__lookup_issue": True, "mcp__tracker__fail": False}
