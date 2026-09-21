@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import weakref
 from dataclasses import dataclass
 
 
@@ -50,4 +51,34 @@ def set_theme(name: str) -> Theme:
     if name not in THEMES:
         raise ValueError(f"Unknown theme '{name}'. Available: {', '.join(THEMES)}")
     _current = THEMES[name]
+    for console in list(_calm_consoles):
+        console.pop_theme()
+        console.push_theme(markdown_styles())
     return _current
+
+
+_calm_consoles: weakref.WeakSet = weakref.WeakSet()   # consoles to restyle on /theme
+
+
+def markdown_styles():
+    """Answers in plain white: Rich's defaults color list numbers cyan and headings magenta, which made a
+    reply look like a rainbow. Only inline code keeps the accent; links stay recognizable but quiet."""
+    from rich.theme import Theme as RichTheme
+
+    t = _current
+    return RichTheme({
+        "markdown.h1": "bold", "markdown.h2": "bold", "markdown.h3": "bold", "markdown.h4": "bold",
+        "markdown.h5": "bold", "markdown.h6": "bold", "markdown.h7": "bold",
+        "markdown.list": "none", "markdown.item.number": "none", "markdown.item.bullet": "none",
+        "markdown.block_quote": f"italic {t.dim}", "markdown.hr": t.dim,
+        "markdown.code": f"bold {t.accent}", "markdown.code_block": "none",
+        "markdown.link": "underline", "markdown.link_url": f"underline {t.dim}",
+        "markdown.table.border": t.dim, "markdown.table.header": "bold", "markdown.kbd": "bold",
+    })
+
+
+def calm_markdown(console):
+    """Use the plain answer styles on this console (kept in step with /theme)."""
+    console.push_theme(markdown_styles())
+    _calm_consoles.add(console)
+    return console

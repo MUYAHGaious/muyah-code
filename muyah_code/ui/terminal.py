@@ -32,7 +32,7 @@ from rich.text import Text
 from muyah_code.tools.base import ToolResult
 from muyah_code.ui import blocks
 from muyah_code.ui.base import UI, PermissionReply, PermissionRequest
-from muyah_code.ui.theme import theme
+from muyah_code.ui.theme import calm_markdown, markdown_styles, theme
 
 MAX_DIFF_LINES = 40
 LIVE_TAIL_LINES = 8
@@ -118,6 +118,7 @@ class ReplayConsole(Console):
         super().__init__(*args, **kwargs)
         self.transcript: list[tuple[tuple, dict]] = []
         self._paused = 0
+        calm_markdown(self)
 
     def print(self, *objects, **kwargs):  # noqa: A003 - Rich API name
         super().print(*objects, **kwargs)
@@ -194,7 +195,7 @@ class _MarkdownStream:
         width = max(20, self.console.width - 2)
         buf = io.StringIO()
         c = Console(file=buf, force_terminal=True, width=width, color_system=self.console.color_system or "standard",
-                    highlight=False)
+                    highlight=False, theme=markdown_styles())
         c.print(Markdown(text, code_theme=theme().code_theme))
         lines = buf.getvalue().splitlines()
         while lines and not Text.from_ansi(lines[-1]).plain.strip():
@@ -275,6 +276,7 @@ class TerminalUI(UI):
         self.on_btw = None         # (question) -> None: answer a /btw side question now (set by the REPL)
         self.on_mic = None         # () -> None: the talk key while it works (set by the REPL)
         self.slash_menu = None     # () -> [(name, help)]: the "/" suggestions (set by the REPL)
+        self.slash_needs_args = lambda name: False
         self._slash_sel = 0
         self.mic_key = "f2"
         self.focused: bool | None = None   # the terminal window has focus (None: it never said)
@@ -560,6 +562,8 @@ class TerminalUI(UI):
                 self._draft = f"/{pick} "          # tab completes; you can add arguments
             elif menu and key == "esc":
                 self._draft = ""                   # esc closes the menu (esc again interrupts)
+            elif menu and key == "enter" and self.slash_needs_args(pick):
+                self._draft = f"/{pick} "          # it needs an argument: filled in for you to finish
             elif menu and key == "enter" and self._draft[1:] != pick:
                 self._queued.append(f"/{pick}")    # enter runs the highlighted command (after this turn)
                 self._draft = ""
@@ -701,7 +705,11 @@ class TerminalUI(UI):
                 # always two lines under a turn (a tip, or blank): a changing height made the input box jump
                 body = Group(body, self.ui._tip_line() or Text(""))
             tail = self.ui._stream_tail
-            return self.ui._with_typing(Group(tail, body) if tail is not None else body)
+            if tail is not None:
+                return self.ui._with_typing(Group(tail, body))
+            if self.ui._last is not None:
+                body = Group(Text(""), body)     # a blank line under your message (or the last block), as below it
+            return self.ui._with_typing(body)
 
     def _stop_live(self) -> None:
         self._stream_tail = None

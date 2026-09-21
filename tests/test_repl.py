@@ -440,3 +440,16 @@ def test_a_resumed_session_shows_messages_that_were_compacted_away(project, tmp_
     _, messages, meta = Session.resume(tmp_path, s.id)
     assert "first question" not in str(messages)                    # the model continues from the summary
     assert [m["content"] for m in meta["display"]][:2] == ["first question", "first answer"]   # you still see it
+
+
+
+def test_needs_args_is_true_only_for_required_arguments():
+    from types import SimpleNamespace
+
+    from muyah_code.ui.commands import Command, CommandRouter
+
+    router = SimpleNamespace(commands={"btw": Command("btw", "", print, "<question>"),
+                                       "mode": Command("mode", "", print, "[mode]"),
+                                       "help": Command("help", "", print)})
+    needs = lambda name: CommandRouter.needs_args(router, name)   # noqa: E731
+    assert needs("btw") and not needs("mode") and not needs("help") and not needs("nope")

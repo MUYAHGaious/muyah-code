@@ -5,6 +5,16 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **Calmer answers:**
+  - headings and list numbers are plain white, not magenta and cyan (Rich's defaults);
+  - only `code` keeps the accent, and quotes and tables are quiet.
+- **Picking a command that needs an argument** (e.g. `/btw <question>`) fills it in and waits, instead of running it with nothing.
+  - Enter on a partial name (`/cont`) runs the first match; Tab only completes.
+  - This matches what Claude Code users ask for (anthropics/claude-code#72601, #82279).
+- **Spacing:**
+  - a blank line between your message and the spinner under it;
+  - a blank line around a slash command's output.
+
 - **Ask mode:** talk an idea through before planning or building.
   - Shift+Tab goes manual → edit → ask → plan → auto, the same order as Claude Code with ask before plan.
   - In ask mode the model asks clarifying questions, weighs options and may read files or search, but it changes and runs nothing.

@@ -13,6 +13,7 @@ from pathlib import Path
 from prompt_toolkit import PromptSession
 from prompt_toolkit.application.current import get_app
 from prompt_toolkit.completion import Completer, Completion
+from prompt_toolkit.filters import Condition
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.keys import Keys
@@ -160,11 +161,32 @@ class Repl:
         self.ui.mic_key = self.mic_key
         self.ui.on_mic = lambda: self._talk(into_box=True)
         self.ui.slash_menu = self.router.menu
+        self.ui.slash_needs_args = self.router.needs_args
 
         def talk(event):
             self._talk()
 
         kb.add("c-space")(talk)
+
+        def slash_line() -> bool:
+            text = get_app().current_buffer.text
+            return text.startswith("/") and " " not in text.strip()
+
+        @kb.add("enter", filter=Condition(slash_line))
+        def _(event):
+            buf = event.current_buffer
+            state = buf.complete_state
+            typed = buf.text.strip()[1:]
+            if state is not None and state.current_completion is not None:
+                buf.apply_completion(state.current_completion)
+            elif typed not in self.router.names() and state is not None and state.completions:
+                buf.apply_completion(state.completions[0])     # "/mo" + Enter: the first match, as listed
+            name = buf.text.strip()[1:]
+            if self.router.needs_args(name):
+                buf.text = f"/{name} "                          # finish it (e.g. /btw <question>), then Enter
+                buf.cursor_position = len(buf.text)
+                return
+            buf.validate_and_handle()
         try:
             kb.add(self.mic_key)(talk)
         except ValueError:            # not a key prompt_toolkit knows: Ctrl+Space still works
@@ -546,18 +568,22 @@ class Repl:
                 self.console.print(f"[dim]{escape(self.add_memory(line[1:]))}[/]")
                 continue
             if line.startswith("/"):
+                self.console.print()               # a blank line between your command and what it shows
                 try:
                     out = self.router.dispatch(line)
                 except KeyboardInterrupt:
                     continue
                 except Exception as e:  # a failing command must not kill the session
                     self.ui.error(f"/{line[1:].split()[0]} failed: {e}")
+                    self.console.print()
                     continue
                 if out is EXIT:
                     break
                 if isinstance(out, tuple) and out[0] == "prompt":
                     line = out[1]
+                    self.ui.mark_prompt()
                 else:
+                    self.console.print()           # and one before the input box
                     continue
             self.ui.context_pct = self._ctx_pct()
             self.ui.on_btw = self._btw_async

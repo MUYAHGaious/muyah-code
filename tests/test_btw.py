@@ -210,3 +210,26 @@ def test_enter_runs_the_highlighted_command_and_commands_wait_for_the_turn_to_en
     assert ui._queued == ["/context"]                        # the command runs after the turn
     keys(ui, "/c", "esc")
     assert ui._draft == "" and ui._queued == ["/context"]    # esc closes the menu, nothing else
+
+
+def test_enter_on_a_command_that_needs_an_argument_fills_it_in_instead_of_running_it():
+    ui = TerminalUI(Console(file=io.StringIO(), width=100))
+    ui.slash_menu = lambda: [("btw", "Ask on the side"), ("help", "Show commands")]
+    ui.slash_needs_args = lambda name: name == "btw"
+    keys(ui, "/bt", "enter")
+    assert ui._draft == "/btw " and ui._queued == []
+    keys(ui, "is it done?", "enter")
+    assert ui._draft == ""
+
+
+def test_answers_are_not_a_rainbow():
+    from rich.markdown import Markdown
+
+    from muyah_code.ui.terminal import ReplayConsole
+
+    out = io.StringIO()
+    c = ReplayConsole(file=out, force_terminal=True, color_system="standard", width=80, highlight=False)
+    c.print(Markdown("## Progress so far\n\n1. first\n2. second\n\n> a quote"))
+    text = out.getvalue()
+    assert "\x1b[36m" not in text and "\x1b[35m" not in text      # no cyan numbers, no magenta headings
+    assert "\x1b[1mProgress so far" in text                       # headings: bold, plain white

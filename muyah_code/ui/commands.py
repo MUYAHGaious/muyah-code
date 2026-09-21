@@ -121,6 +121,12 @@ class CommandRouter:
                 items.append((s.name, f"skill · {desc}"))
         return items
 
+    def needs_args(self, name: str) -> bool:
+        """A command that cannot run without an argument (its usage starts with <...>, like /btw <question>):
+        picking it from the menu fills it in for you to finish instead of running it at once."""
+        cmd = self.commands.get(name)
+        return bool(cmd and cmd.usage.startswith("<"))
+
     def names(self) -> list[str]:
         return list(self.commands) + [s.name for s in self.app.skills.all() if s.user_invocable]
 
