@@ -127,6 +127,8 @@ class CommandRouter:
             Command("memory", "Show instruction files; '/memory add <text>' appends to MUYAH.md", self.memory,
                     "[add <text>]"),
             Command("init", "Generate a MUYAH.md for this project", self.init),
+            Command("verify", "Check the last changes: quick (changed files) | full (all tests, lint) | e2e (run it)",
+                    self.verify, "[quick|full|e2e]"),
             Command("permissions", "Show permission rules", self.permissions),
             Command("tools", "List available tools", self.tools),
             Command("mcp", "Show MCP server status", self.mcp),
@@ -435,7 +437,84 @@ class CommandRouter:
                 self.console.print(f"Set $EDITOR, or open {escape(str(target))} yourself.")
 
     def init(self, arg):
-        return ("prompt", INIT_PROMPT)
+        from muyah_code.verify import detect
+
+        found = detect(self.app.root)
+        if not found:
+            return ("prompt", INIT_PROMPT)
+        listing = "\n".join(f"- {c.kind}: {c.command}" for c in found)
+        return ("prompt", INIT_PROMPT + "\n\nMUYAH-CODE detected these check commands from the config files "
+                "(confirm they work before listing them):\n" + listing)
+
+    def verify(self, arg):
+        from muyah_code import verify as v
+
+        depth = (arg or "quick").split()[0].lower()
+        if depth not in v.DEPTHS:
+            self.console.print(f"[red]Unknown depth '{escape(depth)}'[/]. Use /verify quick | full | e2e.")
+            return None
+        app = self.app
+        changed = [rel for status, rel in app.rewind.turn_changes() if status != "D"]
+        if depth == "e2e":
+            return ("prompt", v.e2e_prompt(changed))
+        if depth == "quick":
+            if not changed:
+                self.console.print("[dim]The last turn changed no files. /verify full checks the whole project.[/]")
+                return None
+            checks, notes = v.quick_checks(app.cfg, app.root, changed)
+        else:
+            checks, from_settings = v.configured(app.cfg, app.root)
+            notes = [] if checks else ["no test or lint commands found"]
+        for note in notes:
+            self.console.print(f"[dim]{escape(note)}[/]")
+        if not checks:
+            self.console.print("[yellow]Nothing to run.[/] Set verify.test / verify.lint in .muyah/settings.json "
+                               "(a command or a list), or try /verify e2e.")
+            return None
+        results = self._run_checks(depth, checks)
+        app.verify_note = v.summary_for_model(depth, results)
+        return None
+
+    def _run_checks(self, depth, checks):
+        from rich.panel import Panel
+        from rich.text import Text
+
+        from muyah_code import verify as v
+        from muyah_code.ui.theme import theme
+
+        t, app = theme(), self.app
+        timeout = float(app.cfg.get("verify.timeout", 900) or 900)
+        self.console.print(Text(f"◆ Verify {depth}", style=f"bold {t.accent}"))
+        status = None
+
+        def start(check):
+            nonlocal status
+            status = self.console.status(Text(f"$ {check.command}", style=t.dim), spinner="dots")
+            status.start()
+
+        def done(r):
+            status.stop()
+            line = Text("  ")
+            line.append("✓ " if r.ok else "✗ ", style=t.ok if r.ok else t.err)
+            line.append(r.check.command, style="bold")
+            result = "timed out" if r.timed_out else ("passed" if r.ok else f"exit {r.exit_code}")
+            line.append(f"  {r.check.kind} · {result} · {r.seconds:.1f}s", style=t.dim)
+            self.console.print(line)
+            if not r.ok and r.output.strip():
+                self.console.print(Panel(Text(r.tail()), border_style=t.err, expand=False, padding=(0, 1)))
+
+        try:
+            results = v.run_checks(checks, app.cwd, app.shell, timeout, on_start=start, on_done=done)
+        finally:
+            if status is not None:
+                status.stop()
+        failed = [r for r in results if not r.ok]
+        if failed:
+            self.console.print(Text(f"  {len(failed)} of {len(results)} failed. The next prompt tells the model "
+                                    "(say \"fix it\").", style=t.warn))
+        else:
+            self.console.print(Text(f"  All {len(results)} passed.", style=t.ok))
+        return results
 
     def permissions(self, arg):
         p = self.app.permissions

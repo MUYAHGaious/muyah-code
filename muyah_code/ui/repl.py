@@ -180,9 +180,17 @@ class Repl:
         used, usable = self.app.context_usage()
         return min(100, int(100 * used / max(1, usable)))
 
-    def _files_changed(self) -> int:
-        turns = self.app.checkpoints.turns
-        return len(turns[-1]["changes"]) if turns else 0
+    def _turn_changes(self) -> tuple[list[tuple[str, str]], list[str]]:
+        """What the last turn changed (including by commands) and any tests it weakened."""
+        from muyah_code.verify import weakened_tests
+
+        rewind = self.app.rewind
+        try:
+            changes = rewind.turn_changes()
+            return changes, weakened_tests(changes, rewind.text_before_turn, self.app.root)
+        except Exception as e:  # the footer must never break the session
+            self.ui.error(f"could not list this turn's changes: {e}")
+            return [], []
 
     @staticmethod
     def _cols() -> int:
@@ -397,12 +405,21 @@ class Repl:
                 result = self.app.run_prompt(line)
             finally:
                 queued, draft = self.ui.end_typing()
+            changes: list = []
             try:
-                self.ui.turn_footer(result.status, result.duration, result.tool_calls, self._files_changed(),
-                                    self._ctx_pct())
+                changes, weakened = self._turn_changes()
+                self.ui.turn_footer(result.status, result.duration, result.tool_calls, len(changes),
+                                    self._ctx_pct(), warnings=weakened)
                 self.console.print()
             except KeyboardInterrupt:  # an Esc that arrived just as the turn ended
                 pass
+            auto = str(self.app.cfg.get("verify.auto", "off") or "off").lower()
+            if auto in ("quick", "full") and changes and result.status == "ok" and not queued:
+                try:
+                    self.router.verify(auto)
+                    self.console.print()
+                except KeyboardInterrupt:
+                    self.console.print("[dim]Verification stopped.[/]")
             if queued:  # typed while it worked but not yet delivered: send it now
                 pending = "\n\n".join(queued)
                 self.console.print(blocks.user_prompt(pending))

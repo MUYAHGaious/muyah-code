@@ -59,6 +59,8 @@ DEFAULTS: dict[str, Any] = {
     # Claude only: effort level (None = xhigh on Opus 5 / Sonnet 5) and server-side refusal fallbacks
     "effort": None,
     "fallbacks": True,
+    # /verify: auto = off | quick | full (after a turn that changed files); test/lint = your own commands
+    "verify": {"auto": "off", "test": None, "lint": None, "timeout": 900},
 }
 
 LIST_MERGE_KEYS = {"allow", "ask", "deny"}

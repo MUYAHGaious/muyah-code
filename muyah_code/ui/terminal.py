@@ -660,7 +660,8 @@ class TerminalUI(UI):
             return True
         return False
 
-    def turn_footer(self, status: str, seconds: float, tool_calls: int, files_changed: int, ctx_pct: int) -> None:
+    def turn_footer(self, status: str, seconds: float, tool_calls: int, files_changed: int, ctx_pct: int,
+                    warnings: list[str] | None = None) -> None:
         t = theme()
         self._stop_live()
         ok = status == "ok"
@@ -671,11 +672,13 @@ class TerminalUI(UI):
         if tool_calls:
             parts.append(f"{tool_calls} tool call{'s' if tool_calls != 1 else ''}")
         if files_changed:
-            parts.append(f"{files_changed} file{'s' if files_changed != 1 else ''} changed (/undo)")
+            parts.append(f"{files_changed} file{'s' if files_changed != 1 else ''} changed (/undo · /verify)")
         parts.append(f"ctx {ctx_pct}%")
         if not ok:
             parts.append(status)
         self.console.print(mark + Text(" · ".join(parts), style=t.dim))
+        if warnings:   # weakened tests are always pointed out, whatever the turn says about them
+            self.console.print(Text("⚠ Tests weakened: " + "; ".join(warnings), style=t.warn))
 
     # ------------------------------------------------------------------ interaction
 

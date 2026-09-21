@@ -171,6 +171,9 @@ class Rewind:
         self.disabled_reason = "" if self.shadow else "git is not available (or the folder is too broad)"
         self._pending: threading.Thread | None = None
         self._lock = threading.Lock()
+        self.project = project.resolve()
+        self._touched: set[int] = set()                          # turns in which a tool may have changed files
+        self._after: dict[int, tuple[str, list[tuple[str, str]]]] = {}   # turn -> (end snapshot, its changes)
 
     # ------------------------------------------------------------------ recording
 
@@ -222,6 +225,64 @@ class Rewind:
         pending = self._pending
         if pending is not None and pending.is_alive():
             pending.join(timeout)
+
+    def before_change(self) -> None:
+        """A tool that may change files is about to run in the current turn."""
+        turns = self.turns()
+        if turns:
+            self._touched.add(turns[-1].turn)
+        self.wait_ready()
+
+    def turn_changes(self) -> list[tuple[str, str]]:
+        """(status, path) of what the last turn changed: M, A (created), D (deleted). With the shadow repo
+        this includes changes made by commands; without it, only what Write/Edit changed."""
+        turns = self.turns()
+        if not turns:
+            return []
+        point = turns[-1]
+        if point.turn not in self._touched:
+            return []
+        if point.turn in self._after:
+            return self._after[point.turn][1]
+        self.wait_ready()
+        if self.shadow is not None and point.sha:
+            try:
+                after = self.shadow.snapshot(f"after turn {point.turn}")
+                changes = self.shadow.changes(point.sha, after)
+                self._after[point.turn] = (after, changes)
+                return changes
+            except Exception:  # fall back to what Write/Edit recorded
+                pass
+        recorded = self.files.turns[-1]["changes"] if self.files.turns else {}
+        out = []
+        for key, previous in recorded.items():
+            rel = self._rel(Path(key))
+            if previous is None:
+                out.append(("A", rel))
+            else:
+                out.append(("M" if Path(key).exists() else "D", rel))
+        return out
+
+    def text_before_turn(self, rel: str) -> str | None:
+        """A file's content from before the last turn (None if unknown)."""
+        turns = self.turns()
+        if not turns:
+            return None
+        point = turns[-1]
+        if self.shadow is not None and point.sha:
+            res = self.shadow._git("show", f"{point.sha}:{rel}", check=False)
+            return res.stdout if res.returncode == 0 else None
+        recorded = self.files.turns[-1]["changes"] if self.files.turns else {}
+        for key, previous in recorded.items():
+            if self._rel(Path(key)) == rel and previous is not None:
+                return previous.decode("utf-8", errors="replace")
+        return None
+
+    def _rel(self, path: Path) -> str:
+        try:
+            return path.resolve().relative_to(self.project).as_posix()
+        except ValueError:
+            return path.as_posix()
 
     def record(self, path: Path, previous: bytes | None) -> None:
         self.files.record(path, previous)

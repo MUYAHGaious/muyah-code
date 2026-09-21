@@ -800,7 +800,7 @@ class Agent:
 
         rewind = self.ctx.service("rewind")
         if rewind is not None and not tool.is_read_only(args):
-            rewind.wait_ready()   # the turn's snapshot must be done before anything changes
+            rewind.before_change()   # the turn's snapshot must be done before anything changes
         tid = self._show_tool_start(title, tool.name, tool_id, args)
         t0 = time.time()
         res = self.registry.execute(tool, args, self.ctx, self._max_output())

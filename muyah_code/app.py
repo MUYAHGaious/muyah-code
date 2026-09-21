@@ -119,6 +119,7 @@ class App:
         self.lessons = LessonStore(self.home / "lessons.jsonl", project_lessons)
         self.reflector = Reflector(self.llm, self.lessons)
         self.last_turn: TurnRecord | None = None
+        self.verify_note = ""        # the last /verify result, told to the model with the next prompt
         self._current_lessons: list[Lesson] = []
 
         self.mcp = None
@@ -241,15 +242,16 @@ class App:
     def _turn_context(self, prompt: str) -> str:
         self._current_lessons = []
         pushback = len(self.agent.messages) > 2 and is_correction(prompt)
+        note, self.verify_note = self.verify_note, ""
         if not self.learning_enabled:
-            return turn_context_block("", pushback=pushback)
+            return turn_context_block("", pushback=pushback, verify=note)
         k = int(self.cfg.get("learning.max_lessons_in_prompt", 5))
         found = self.lessons.search(prompt, k=k)
         self._current_lessons = found
         self.lessons.record_use(found)
         if found:
             self.events.emit("lessons", items=[x.render()[2:][:160] for x in found])
-        return turn_context_block("\n".join(x.render() for x in found), pushback=pushback)
+        return turn_context_block("\n".join(x.render() for x in found), pushback=pushback, verify=note)
 
     def _make_agent(self, registry: ToolRegistry, ctx: ToolContext, ui: UI, session=None, extra: str = "",
                     subagent: bool = False, max_steps: int | None = None) -> Agent:

@@ -177,7 +177,9 @@ muyah --resume                          # pick an earlier conversation from a li
 | `/provider` (or `/login`), `/logout <provider>` | pick a provider + paste an API key; remove a saved key |
 | `/model [id]`, `/models`, `/profile [name]`, `/connect <url>` | switch backends at runtime (the context window is re-detected) |
 | `/mode [default\|acceptEdits\|plan\|bypassPermissions]`, `/plan` | permission modes |
-| `/undo` | revert every file change from the last turn |
+| `/undo`, `/rewind` (Esc Esc) | go back to before the last turn, or any earlier one: code, conversation or both (commands' changes included) |
+| `/verify [quick\|full\|e2e]` | check the last changes only when you ask: lint + the changed files' tests, the whole suite, or run the app end to end |
+| `/mic` (Ctrl+Space) | talk instead of typing (Windows voice typing) |
 | `/compact [focus]`, `/context` | context management |
 | `/skills`, `/<skill> [args]`, `/agents` | workflows and sub-agents |
 | `/lessons`, `/good [note]`, `/bad [what was wrong]`, `/learn on\|off` | the learning system |

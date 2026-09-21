@@ -139,11 +139,13 @@ PUSHBACK_NOTE = ("<note>The user is disagreeing with your previous answer. Re-ex
                  "it; if it does not, say so plainly and show why.</note>")
 
 
-def turn_context_block(lessons: str, pushback: bool = False) -> str:
+def turn_context_block(lessons: str, pushback: bool = False, verify: str = "") -> str:
     """Per-turn additions appended to the user message (keeps the system prompt cache-stable)."""
     parts = []
     if pushback:
         parts.append(PUSHBACK_NOTE)
+    if verify:
+        parts.append(verify)
     if lessons:
         parts.append("<lessons>\nLessons MUYAH-CODE learned in past sessions that look relevant to this request. "
                      "Apply them when they fit:\n" + lessons + "\n</lessons>")

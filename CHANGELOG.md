@@ -5,6 +5,13 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **`/verify quick | full | e2e`: checking the work when you choose, not automatically.**
+  - quick lints the files the last turn changed and runs their tests (`calc.py` → `test_calc.py`); full runs the whole suite and linters; e2e asks the agent to run the app the way a user would (browser tools for web UIs) without changing code.
+  - Commands are detected from pyproject.toml, package.json (npm/pnpm/yarn/bun), Cargo.toml and go.mod. Set `verify.test` / `verify.lint` to use your own. `/init` passes the detected commands to the model.
+  - Real exit codes; a failure's output is shown, and the next prompt tells the model the result, so "fix it" works.
+  - `verify.auto` = `quick` or `full` runs it after every turn that changed files (default `off`: no surprise time or tokens).
+  - The turn footer counts every file the turn changed, including by commands, and offers `/undo · /verify`.
+  - **Weakened tests are always pointed out**, without a model: removed assertions, added skip/xfail, deleted test files.
 - **Honest, not agreeable.**
   - A short "check the premise" section in the system prompt: verify claims before agreeing, say so when the evidence contradicts the user, point out contradictory requests, don't flatter.
   - When you push back on an answer, the model is asked to re-examine the evidence rather than cave.
