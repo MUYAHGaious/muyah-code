@@ -635,7 +635,7 @@ function apply(ev, fx) {
       S.subCur[agent] = rk;
       S.subagents.set(agent, { start: ev.t || 0, active: true });
       S.agentUse.set(agent, (S.agentUse.get(agent) || 0) + 1);
-      log(ev, "k-sub", `sub-agent ${agent} started · ${oneLine(ev.prompt).slice(0, 200)}`);
+      log(ev, "k-sub", `sub-agent ${agent} started${ev.model ? " on " + ev.model : ""} · ${oneLine(ev.prompt).slice(0, 200)}`);
       if (fx) { fx.hot(`model>sub:${rk}`, C.violet); fx.chip("model", "sub:" + rk, { label: agent, color: C.violet }); }
       break;
     }
@@ -659,6 +659,18 @@ function apply(ev, fx) {
         `hook ${ev.event}${ev.tool ? " (" + ev.tool + ")" : ""} · ${ev.outcome} · ${fmtDur(ev.duration || 0)} · ${ev.command || ""}`);
       if (ev.outcome === "blocked") S.caption = `A ${ev.event} hook blocked this step`;
       fx && fx.hot("hooks>context", ev.outcome === "blocked" ? C.rose : C.orange);
+      break;
+    case "escalate":   // hard failure signals: a bigger model takes over (the failed attempts come along)
+      log(ev, "k-sub", `${agent === "main" ? "" : agent + ": "}escalated ${ev.source} → ${ev.target} · ${ev.reason}`);
+      S.caption = `Escalated to ${ev.target}: ${ev.reason}`;
+      break;
+    case "fallback":   // the provider failed after its retries: another model answers this one request
+      log(ev, "k-err", `${agent === "main" ? "" : agent + ": "}fallback ${ev.source} → ${ev.target} (${ev.reason})`);
+      S.caption = `${ev.source} failed (${ev.reason}): ${ev.target} answers this request`;
+      break;
+    case "budget":
+      log(ev, "k-err", ev.message || "budget reached");
+      S.caption = ev.message || "Budget reached";
       break;
   }
 }

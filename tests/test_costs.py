@@ -108,7 +108,7 @@ def test_usage_shows_cost_where_tokens_went_and_the_context(project):
 def test_unpriced_models_say_so(project):
     with FakeOpenAI([reply("ok")]) as srv:
         app = make_app(srv, project)
-        app.llm.base_url = "https://api.example.com/v1"   # not self-hosted, not in any price list
+        app.pricing.price = lambda *a, **k: None          # a hosted model that is in no price list
         app.run_prompt("hi")
         app.shutdown()
     out = io.StringIO()

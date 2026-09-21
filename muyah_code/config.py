@@ -63,6 +63,12 @@ DEFAULTS: dict[str, Any] = {
     "verify": {"auto": "off", "test": None, "lint": None, "timeout": 900},
     # dollars: 0 = no limit. At 80% you are warned, at 100% the agent asks before going on.
     "budget": {"session_usd": 0, "daily_usd": 0},
+    # auto | full | lean: lean = short prompt + 6 core tools for small models / windows under 32k (agent/lean.py)
+    "prompt_profile": "auto",
+    # model per role (see llm/pool.py): main, explore, edit, summarize, verify, btw, strong
+    "models": {},
+    # profiles or provider:model specs that answer when the main provider fails (rate limit, 5xx, network)
+    "fallback": [],
     # update: refresh the public price list once a day; models: your own prices ($ per 1M tokens)
     "pricing": {"update": True, "models": {}},
 }

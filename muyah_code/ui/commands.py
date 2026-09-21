@@ -559,7 +559,14 @@ class CommandRouter:
             ("session", a.session_id or "(not saved)"),
             ("loaded", f"{len(a.instructions)} instruction files · {len(a.skills.names())} skills · "
                        f"{len(a.lessons.lessons)} lessons · {len(a.mcp_tools)} MCP tools"),
+            ("prompt", a.prompt_profile + (" (short prompt, 6 core tools, find_tools for the rest)"
+                                           if a.prompt_profile == "lean" else "")),
         ]
+        roles = a.models.configured()
+        if roles:
+            rows.append(("models", " · ".join(f"{role}: {spec}" for role, spec in roles.items())))
+        if a.models.fallbacks():
+            rows.append(("fallback", " → ".join(a.models.fallbacks())))
         t = Table(show_header=False, box=None, padding=(0, 2))
         for k, v in rows:
             t.add_row(f"[dim]{k}[/]", escape(str(v)))

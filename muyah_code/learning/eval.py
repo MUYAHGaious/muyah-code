@@ -105,10 +105,11 @@ def run_eval(tasks_dir: Path, names: list[str] | None, overrides: dict, learn: b
 
     passed = sum(r.passed for r in results)
     rate = passed / len(results)
+    prompt = base_cfg.get("prompt_profile") or "auto"
     record = {"ts": time.time(), "model": model, "base_url": base_cfg["base_url"], "learning": learn,
-              "pass_rate": rate, "tasks": [asdict(r) for r in results]}
+              "prompt_profile": prompt, "pass_rate": rate, "tasks": [asdict(r) for r in results]}
     history_path = base_cfg.home / "evals.jsonl"
-    previous = _previous(history_path, model)
+    previous = _previous(history_path, model, prompt)
     with open(history_path, "a", encoding="utf-8") as f:
         f.write(json.dumps(record) + "\n")
 
@@ -122,11 +123,12 @@ def run_eval(tasks_dir: Path, names: list[str] | None, overrides: dict, learn: b
     if previous is not None:
         delta = rate - previous
         trend = "[green]improved[/]" if delta > 0 else "[red]regressed[/]" if delta < 0 else "unchanged"
-        console.print(f"Compared with the previous run on this model ({previous:.0%}): {trend} ({delta:+.0%})")
+        console.print(f"Compared with the previous run on this model and prompt profile ({previous:.0%}): "
+                      f"{trend} ({delta:+.0%})")
     return 0 if passed == len(results) else 1
 
 
-def _previous(path: Path, model: str) -> float | None:
+def _previous(path: Path, model: str, prompt: str = "auto") -> float | None:
     if not path.exists():
         return None
     last = None
@@ -135,6 +137,6 @@ def _previous(path: Path, model: str) -> float | None:
             rec = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if rec.get("model") == model:
+        if rec.get("model") == model and (rec.get("prompt_profile") or "auto") == prompt:
             last = rec.get("pass_rate")
     return last

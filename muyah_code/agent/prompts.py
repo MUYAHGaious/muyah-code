@@ -78,6 +78,8 @@ class PromptInputs:
     git_status: str = ""
     extra: str = ""
     subagent: bool = False
+    lean: bool = False        # small models: the short prompt (see agent/lean.py)
+    skill_names: list[str] = field(default_factory=list)
 
 
 def git_snapshot(cwd: Path, max_lines: int = 20) -> str:
@@ -112,7 +114,27 @@ def environment_block(inp: PromptInputs) -> str:
     return "\n".join(lines)
 
 
+def build_lean_prompt(inp: PromptInputs) -> str:
+    from muyah_code.agent.lean import LEAN_PROMPT, lean_instructions
+
+    parts = [LEAN_PROMPT]
+    if inp.text_protocol:
+        parts.append(inp.text_protocol)
+    parts.append(environment_block(inp))
+    if inp.permission_mode == "plan":
+        parts.append(PLAN_MODE)
+    if inp.skill_names:
+        parts.append("# Skills\n" + ", ".join(inp.skill_names) + " (find_tools \"skill\" to use one).")
+    if inp.instructions:
+        parts.append("# Project instructions (follow them)\n" + lean_instructions(inp.instructions))
+    if inp.extra:
+        parts.append(inp.extra)
+    return "\n\n".join(parts)
+
+
 def build_system_prompt(inp: PromptInputs) -> str:
+    if inp.lean:
+        return build_lean_prompt(inp)
     parts = [IDENTITY, HABITS, HONESTY, TOOL_TIPS]
     if inp.text_protocol:
         parts.append(inp.text_protocol)

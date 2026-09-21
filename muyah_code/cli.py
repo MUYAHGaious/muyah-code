@@ -238,13 +238,15 @@ def _subcommand(name: str, argv: list[str]) -> int:
         p.add_argument("-m", "--model")
         p.add_argument("--profile")
         p.add_argument("--no-learn", action="store_true", help="Evaluate without lessons (baseline)")
+        p.add_argument("--prompt", choices=["auto", "full", "lean"],
+                       help="Prompt profile to evaluate (compare lean vs full on the same model)")
         p.add_argument("-v", "--verbose", action="store_true")
         a = p.parse_args(argv)
         from muyah_code.learning.eval import run_eval
 
         tasks_dir = Path(a.dir) if a.dir else _default_tasks_dir()
-        return run_eval(tasks_dir, a.tasks, {"model": a.model, "profile": a.profile}, not a.no_learn, a.verbose,
-                        console)
+        return run_eval(tasks_dir, a.tasks, {"model": a.model, "profile": a.profile, "prompt_profile": a.prompt},
+                        not a.no_learn, a.verbose, console)
 
     if name == "login":
         p = argparse.ArgumentParser(prog="muyah login", description="Set up an AI provider with your API key.")

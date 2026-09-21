@@ -236,11 +236,13 @@ class AnthropicClient:
             raise LLMError(f"Model '{self.model}' was not found. Try /models or /provider.") from e
         except a.RateLimitError as e:
             self._remember_limits(getattr(getattr(e, "response", None), "headers", None))
-            raise LLMError("Claude rate limit reached; wait a moment and retry.") from e
+            raise LLMError("Claude rate limit reached; wait a moment and retry.", kind="rate_limit") from e
         except a.APIStatusError as e:
-            raise LLMError(f"Claude API error {e.status_code}: {getattr(e, 'message', e)}") from e
+            raise LLMError(f"Claude API error {e.status_code}: {getattr(e, 'message', e)}",
+                           kind="server" if e.status_code >= 500 else "other") from e
         except a.APIConnectionError as e:
-            raise LLMError(f"Cannot reach the Claude API: {e}") from e
+            raise LLMError(f"Cannot reach the Claude API: {e}",
+                           kind="timeout" if isinstance(e, a.APITimeoutError) else "network") from e
         result = self._convert(final)
         if self.on_call is not None:
             self.on_call(self, purpose, result.usage, time.monotonic() - started)

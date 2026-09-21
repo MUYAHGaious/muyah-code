@@ -104,9 +104,14 @@ class App:
                                    cfg.get("budget.daily_usd") or 0)
         self.llm = llm or make_client(cfg)
         self._watch_calls(self.llm)
+        from muyah_code.llm.pool import ModelPool, RoleClient
+
+        self.models = ModelPool(cfg, self.llm, watch=self._watch_calls)   # roles, escalation, fallback
+        self.summarizer = RoleClient(self.models, "summarize", warn=ui.warn)
         self.window, self.window_source = resolve_context_window(cfg, self.llm)
         self.context = ContextManager(self.window, int(cfg.get("max_tokens", 4096)),
                                       float(cfg.get("compact_threshold", 0.8)))
+        self.prompt_profile = self._choose_profile()
 
         self.permissions = PermissionManager.from_config(cfg, mode_override=mode)
         for rule in allowed_tools or []:
@@ -117,6 +122,8 @@ class App:
         self.skills = SkillRegistry.load(self.root, self.home, bool(cfg.get("compat.claude_skills", True)))
         self.agent_defs, self.agent_def_errors = load_agent_defs(self.root, self.home,
                                                                  bool(cfg.get("compat.claude_skills", True)))
+        if not cfg.get("models.edit") and self.agent_defs.get("editor") and self.agent_defs["editor"].source == "bundled":
+            del self.agent_defs["editor"]      # only useful with a cheaper "edit" model to hand work to
         self.instructions = load_instructions(self.root, self.cwd, self.home, bool(cfg.get("compat.claude_md", True)))
         self.shell = detect_shell(cfg.get("shell", "auto"))
         self.git_status = git_snapshot(self.cwd)
@@ -125,7 +132,7 @@ class App:
         self.learning_enabled = bool(cfg.get("learning.enabled", True))
         project_lessons = self.root / ".muyah" / "lessons.jsonl"
         self.lessons = LessonStore(self.home / "lessons.jsonl", project_lessons)
-        self.reflector = Reflector(self.llm, self.lessons)
+        self.reflector = Reflector(self.summarizer, self.lessons)
         self.last_turn: TurnRecord | None = None
         self.verify_note = ""        # the last /verify result, told to the model with the next prompt
         self._current_lessons: list[Lesson] = []
@@ -166,11 +173,11 @@ class App:
         self.hooks.events = self.events
 
         self.registry = ToolRegistry(builtin_tools() + list(self.mcp_tools))
-        self.subagents = SubagentManager(self.agent_defs, self._make_subagent, depth=0)
+        self.subagents = SubagentManager(self.agent_defs, self._make_subagent, depth=0, roles=self._roles)
         self.registry.register(AgentTool(self.subagents))
 
         self.ctx = self._make_ctx(ui, depth=0)
-        self.agent = self._make_agent(self.registry, self.ctx, ui, session=self.session)
+        self.agent = self._make_agent(self._fit(self.registry), self.ctx, ui, session=self.session)
         self.resumed = bool(history)
         self.viz = None  # the /viz web server, started on demand
         if history:
@@ -189,9 +196,42 @@ class App:
     def session_id(self) -> str:
         return self.session.id if self.session else ""
 
-    def _watch_calls(self, llm) -> None:
+    def _watch_calls(self, llm, provider_id: str | None = None) -> None:
         llm.on_call = self._on_call
-        llm.provider_id = self.cfg.get("provider") or ""
+        llm.provider_id = (self.cfg.get("provider") or "") if provider_id is None else provider_id
+
+    def _choose_profile(self) -> str:
+        from muyah_code.agent.lean import choose_profile
+        from muyah_code.pricing import is_self_hosted
+        from muyah_code.providers import BY_ID
+
+        prov = BY_ID.get(self.cfg.get("provider") or "")
+        local = is_self_hosted(getattr(self.llm, "base_url", "") or "", bool(prov and prov.local))
+        return choose_profile(self.cfg.get("prompt_profile", "auto"), self.window, self.llm.model, local)
+
+    def _fit(self, registry: ToolRegistry) -> ToolRegistry:
+        """Lean mode: the 6 core tools with short descriptions; the rest one find_tools call away."""
+        if self.prompt_profile != "lean":
+            return registry
+        from muyah_code.agent.lean import lean_registry
+
+        return lean_registry(registry)
+
+    def _roles(self) -> list[str]:
+        """Model roles a sub-agent can be run on (the ones set in settings, plus main)."""
+        return ["main", *[r for r in self.models.configured() if r not in ("btw", "verify")]]
+
+    def _escalate(self, client):
+        from muyah_code.config import ConfigError
+
+        try:
+            target = self.models.step_up(client)
+        except (ConfigError, ValueError) as e:
+            self.ui.warn(f"Could not escalate: {e}")
+            return None
+        if target is None:
+            return None
+        return target, self.models.label(client), self.models.label(target)
 
     def _on_call(self, client, purpose: str, raw_usage: dict, seconds: float) -> None:
         """Every model call, whoever made it: priced, added to this session's ledger and ~/.muyah/usage.jsonl."""
@@ -247,7 +287,8 @@ class App:
     def _make_ctx(self, ui: UI, depth: int) -> ToolContext:
         ctx = ToolContext(cwd=self.cwd, project_root=self.root, config=self.cfg, depth=depth, headless=self.headless)
         ctx.services.update({
-            "ui": ui, "llm": self.llm, "skills": self.skills, "jobs": self.jobs, "budget": self.budget,
+            "ui": ui, "llm": self.summarizer, "skills": self.skills, "jobs": self.jobs, "budget": self.budget,
+            "models": self.models,
             "checkpoints": self.rewind, "rewind": self.rewind, "context_window": self.window, "events": self.events,
         })
         return ctx
@@ -260,6 +301,7 @@ class App:
                 instructions=self.instructions, skills_index=self.skills.index_text(),
                 text_protocol=TEXT_PROTOCOL_INSTRUCTIONS if text_mode else "",
                 git_status=self.git_status, extra=extra, subagent=subagent,
+                lean=self.prompt_profile == "lean", skill_names=self.skills.names(),
             ))
         return build
 
@@ -278,9 +320,10 @@ class App:
         return turn_context_block("\n".join(x.render() for x in found), pushback=pushback, verify=note)
 
     def _make_agent(self, registry: ToolRegistry, ctx: ToolContext, ui: UI, session=None, extra: str = "",
-                    subagent: bool = False, max_steps: int | None = None) -> Agent:
+                    subagent: bool = False, max_steps: int | None = None, llm=None, context=None) -> Agent:
         agent = Agent(
-            llm=self.llm, registry=registry, permissions=self.permissions, ctx=ctx, ui=ui, context=self.context,
+            llm=llm or self.llm, registry=registry, permissions=self.permissions, ctx=ctx, ui=ui,
+            context=context or self.context,
             system_prompt=self._prompt_builder(registry, extra, subagent),
             turn_context=None if subagent else self._turn_context,
             hooks=self.hooks, session=session, tool_mode=self.cfg.get("tool_mode", "auto"),
@@ -289,23 +332,49 @@ class App:
             is_subagent=subagent, session_id=self.session_id,
         )
         agent.events = self.events
+        agent.summarizer = self.summarizer
+        agent.escalate = self._escalate
         return agent
 
-    def _make_subagent(self, d: AgentDef, depth: int) -> Agent:
+    def _subagent_client(self, d: AgentDef, model: str | None):
+        """The model a sub-agent runs on: the Agent call's `model`, its definition's `model:`, its role
+        (explore -> models.explore, editor -> models.edit), else the main model."""
+        from muyah_code.config import ConfigError
+        from muyah_code.llm.pool import agent_model
+
+        wanted = model or agent_model(d.model, self.cfg.get("api") or "openai") or \
+            {"explore": "explore", "editor": "edit"}.get(d.name)
+        if not self.models.resolve(wanted):
+            return None, None
+        try:
+            client = self.models.get(wanted)
+        except (ConfigError, ValueError) as e:
+            self.ui.warn(f"[{d.name}] its model ({wanted}) is not usable: {e}. Using the main model.")
+            return None, None
+        if client is self.llm:
+            return None, None
+        window, _ = self.models.window_for(client)
+        return client, ContextManager(window, int(self.cfg.get("max_tokens", 4096)),
+                                      float(self.cfg.get("compact_threshold", 0.8)))
+
+    def _make_subagent(self, d: AgentDef, depth: int, model: str | None = None) -> Agent:
         exclude = ["AskUser"] + list(d.disallowed_tools)
         if depth >= 2:
             exclude.append("Agent")
         registry = self.registry.subset(d.tools, exclude=exclude)
         if depth < 2 and "Agent" in registry.names():
             registry.unregister("Agent")
-            registry.register(AgentTool(SubagentManager(self.agent_defs, self._make_subagent, depth=depth)))
+            registry.register(AgentTool(SubagentManager(self.agent_defs, self._make_subagent, depth=depth,
+                                                        roles=self._roles)))
+        registry = self._fit(registry)
         sub_ui = SubagentUI(self.ui, d.name)
         ctx = self._make_ctx(sub_ui, depth)
         ctx.headless = self.headless
         extra = (f"# Sub-agent role: {d.name}\n{d.prompt}\n\nYou are running as a sub-agent. Nobody can answer "
                  "questions; work autonomously and end with a concise report.")
+        client, context = self._subagent_client(d, model)
         agent = self._make_agent(registry, ctx, sub_ui, session=None, extra=extra, subagent=True,
-                                 max_steps=d.max_steps)
+                                 max_steps=d.max_steps, llm=client, context=context)
         agent.label = d.name
         if d.permission_mode:
             # a read-only helper gets its own permission view without changing the parent's mode
@@ -327,8 +396,7 @@ class App:
         self._watch_calls(llm)
         self.llm = llm
         self.agent.llm = llm
-        self.reflector.llm = llm
-        self.ctx.services["llm"] = llm
+        self.models.set_main(llm)
 
     def _refresh_window(self, explicit: bool) -> str:
         if not explicit:
@@ -337,6 +405,12 @@ class App:
         self.context.set_window(self.window, int(self.cfg.get("max_tokens", 4096)))
         self.context.ratio, self.context.calibrated = 1.0, False
         self.ctx.services["context_window"] = self.window
+        profile = self._choose_profile()
+        if profile != self.prompt_profile:
+            self.prompt_profile = profile
+            self.agent.registry = self._fit(self.registry)
+            self.ui.info(f"Prompt profile: {profile}" + (" (short prompt, 6 core tools, find_tools for the rest)"
+                                                         if profile == "lean" else ""))
         self.agent.invalidate_system_prompt()
         return f"{self.llm.model} (context window {self.window:,} tokens, from {self.window_source})"
 
@@ -395,6 +469,8 @@ class App:
     def run_prompt(self, prompt: str) -> TurnResult:
         self._learn_from_previous(prompt)
         start_index = len(self.agent.messages)
+        self.agent.llm = self.llm                     # an escalation lasts one turn
+        self.agent.escalation.reset()
         self.rewind.begin_turn(prompt, start_index)   # snapshot before anything in this turn changes
         result = self.agent.run(self.expand_mentions(prompt))
         self.last_turn = TurnRecord(prompt, result, [x.id for x in self._current_lessons], start_index)

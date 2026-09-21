@@ -1,6 +1,11 @@
 """OpenAI-compatible chat client: streaming, retries, tool-call assembly, capability probing.
 
 Works with vLLM, Ollama, LM Studio, llama.cpp server, OpenRouter, Groq, DeepSeek, OpenAI...
+
+It speaks the protocol directly over httpx (the same HTTP library the OpenAI SDK uses) instead of through
+the SDK: importing the SDK took ~1.7 s and its lazily imported resources another ~1 s on the first request,
+most of MUYAH-CODE's startup time and a good part of its memory, for what is one JSON POST and a stream of
+server-sent events.
 """
 
 from __future__ import annotations
@@ -14,8 +19,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
-import openai
-from openai import OpenAI
 
 from muyah_code.llm.models import is_billing_error, is_context_overflow, is_tools_unsupported
 
@@ -35,10 +38,12 @@ def limit_headers(headers) -> dict:
 ENDPOINT_KEY = "_endpoint"  # on assistant messages whose tool calls carry provider fields
 
 
-def _extra_fields(obj) -> dict:
-    """Fields the OpenAI SDK model did not define (the server's own additions), without empty values."""
-    extra = getattr(obj, "model_extra", None) or {}
-    return {k: v for k, v in extra.items() if v is not None}
+STANDARD_TOOL_CALL_KEYS = {"index", "id", "type", "function"}
+
+
+def _extra_fields(tool_call: dict) -> dict:
+    """A tool call's non-standard fields (the server's own additions, e.g. Gemini's thought signature)."""
+    return {k: v for k, v in (tool_call or {}).items() if k not in STANDARD_TOOL_CALL_KEYS and v is not None}
 
 
 def _merge(into: dict, new: dict) -> None:
@@ -53,7 +58,33 @@ def _merge(into: dict, new: dict) -> None:
 
 
 class LLMError(Exception):
-    pass
+    """kind: rate_limit | server | network | timeout (worth trying another provider) | other."""
+
+    def __init__(self, message: str = "", kind: str = "other"):
+        super().__init__(message)
+        self.kind = kind
+
+
+class HTTPStatusFailure(Exception):
+    """The server answered with an error status (or sent an error inside the stream)."""
+
+    def __init__(self, status_code: int, body, headers=None):
+        self.status_code = status_code
+        self.body = body if isinstance(body, dict) else {"message": str(body or "")}
+        self.headers = headers or {}
+        err = self.body.get("error")
+        self.message = self.body.get("message") or (err.get("message", "") if isinstance(err, dict) else str(err or ""))
+        super().__init__(f"HTTP {status_code}: {self.message or self.body}")
+
+
+def error_kind(e: BaseException) -> str:
+    if isinstance(e, HTTPStatusFailure):
+        return "rate_limit" if e.status_code == 429 else "server" if e.status_code >= 500 else "other"
+    if isinstance(e, httpx.TimeoutException):
+        return "timeout"
+    if isinstance(e, httpx.HTTPError):
+        return "network"
+    return "other"
 
 
 class ToolsUnsupportedError(LLMError):
@@ -185,7 +216,9 @@ class _ThinkFilter:
             cb(text)
 
 
-RETRYABLE = (openai.APIConnectionError, openai.APITimeoutError, openai.RateLimitError, openai.InternalServerError)
+def _retryable(e: BaseException) -> bool:
+    return isinstance(e, httpx.HTTPError) or (isinstance(e, HTTPStatusFailure) and
+                                             (e.status_code == 429 or e.status_code >= 500))
 
 
 def make_client(cfg):
@@ -230,13 +263,9 @@ class LLMClient:
         # timeout <= 0 means "wait as long as it takes": huge models on CPU/NVMe streaming (e.g. colibri)
         # can spend many minutes on prefill before the first token arrives.
         http_timeout = httpx.Timeout(None, connect=30.0) if timeout <= 0 else httpx.Timeout(timeout, connect=30.0)
-        self._client = OpenAI(
-            base_url=base_url,
-            api_key=self.api_key,
-            timeout=http_timeout,
-            max_retries=0,
-            default_headers={"X-Title": "MUYAH-CODE", **self.extra_headers},
-        )
+        self._http = httpx.Client(timeout=http_timeout, headers={
+            "Authorization": f"Bearer {self.api_key}", "X-Title": "MUYAH-CODE", "User-Agent": "MUYAH-CODE",
+            **self.extra_headers})
         self.total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "requests": 0}
 
     @classmethod
@@ -254,13 +283,15 @@ class LLMClient:
 
     # ------------------------------------------------------------------ discovery
 
+    def _url(self, path: str) -> str:
+        return self.base_url.rstrip("/") + "/" + path
+
     def list_models(self, timeout: float = 15.0) -> list[dict]:
-        resp = self._client.with_options(timeout=timeout).models.list()
-        out = []
-        for m in resp.data:
-            d = m.model_dump() if hasattr(m, "model_dump") else dict(m)
-            out.append(d)
-        return out
+        resp = self._http.get(self._url("models"), timeout=timeout)
+        if resp.status_code >= 400:
+            raise HTTPStatusFailure(resp.status_code, _json_or_text(resp), resp.headers)
+        data = resp.json()
+        return [m for m in (data.get("data") if isinstance(data, dict) else data) or [] if isinstance(m, dict)]
 
     def probe_context_window(self, timeout: float = 10.0) -> int | None:
         """vLLM reports max_model_len, OpenRouter context_length, llama.cpp n_ctx."""
@@ -317,55 +348,74 @@ class LLMClient:
                 if self.on_call is not None:
                     self.on_call(self, purpose, result.usage, time.monotonic() - started)
                 return result
-            except openai.BadRequestError as e:
-                msg = str(e).lower()
-                if is_billing_error(msg):
-                    raise LLMError(self._billing_message(e)) from e
-                if is_context_overflow(msg):
-                    if kwargs.get("max_tokens", 0) > 1024 and not shrunk:
-                        # Often prompt + max_tokens > window: a smaller completion budget fits.
-                        kwargs["max_tokens"] = max(1024, kwargs["max_tokens"] // 2)
-                        shrunk = True
-                        continue
-                    raise ContextOverflowError(self._describe(e)) from e
-                if tools and is_tools_unsupported(msg):
-                    raise ToolsUnsupportedError(str(e)) from e
-                raise LLMError(self._describe(e)) from e
-            except openai.NotFoundError as e:
-                raise LLMError(self._describe(e) + self._model_hint()) from e
-            except openai.AuthenticationError as e:
-                raise LLMError(f"Authentication failed ({e.status_code}). Check api_key for {self.base_url}.") from e
-            except RETRYABLE as e:
-                self._remember_limits(getattr(getattr(e, "response", None), "headers", None))
-                if is_billing_error(str(e)):  # e.g. OpenAI 429 insufficient_quota: retrying cannot help
-                    raise LLMError(self._billing_message(e)) from e
-                if attempt > self.max_retries:
+            except (HTTPStatusFailure, httpx.HTTPError) as e:
+                status = getattr(e, "status_code", None)
+                if status == 400:
+                    msg = str(e).lower()
+                    if is_billing_error(msg):
+                        raise LLMError(self._billing_message(e)) from e
+                    if is_context_overflow(msg):
+                        if kwargs.get("max_tokens", 0) > 1024 and not shrunk:
+                            # Often prompt + max_tokens > window: a smaller completion budget fits.
+                            kwargs["max_tokens"] = max(1024, kwargs["max_tokens"] // 2)
+                            shrunk = True
+                            continue
+                        raise ContextOverflowError(self._describe(e)) from e
+                    if tools and is_tools_unsupported(msg):
+                        raise ToolsUnsupportedError(str(e)) from e
                     raise LLMError(self._describe(e)) from e
-                time.sleep(min(2 ** attempt, 20))
-            except openai.APIStatusError as e:
-                if e.status_code == 402 or is_billing_error(str(e)):
+                if status == 404:
+                    raise LLMError(self._describe(e) + self._model_hint()) from e
+                if status == 401:
+                    raise LLMError(f"Authentication failed ({status}). Check api_key for {self.base_url}.") from e
+                if status == 402 or is_billing_error(str(e)):   # e.g. OpenAI 429 insufficient_quota
                     raise LLMError(self._billing_message(e)) from e
-                raise LLMError(self._describe(e)) from e
-            except httpx.HTTPError as e:
-                if attempt > self.max_retries:
-                    raise LLMError(f"HTTP error talking to {self.base_url}: {e}") from e
-                time.sleep(min(2 ** attempt, 20))
+                if _retryable(e):
+                    if attempt > self.max_retries:
+                        raise LLMError(self._describe(e), kind=error_kind(e)) from e
+                    time.sleep(min(2 ** attempt, 20))
+                    continue
+                raise LLMError(self._describe(e), kind=error_kind(e)) from e
 
-    def _create(self, kwargs):
-        """chat.completions.create without the SDK's request "transform": it walks every message and
-        tool schema in pure Python on each request (about a second per request on a long conversation,
-        and it grows with every message). Our messages are already plain JSON, so they go in the body
-        as they are."""
-        kwargs = dict(kwargs)
-        body = dict(kwargs.pop("extra_body", None) or {})
-        body["messages"] = kwargs.pop("messages")
-        if "tools" in kwargs:
-            body["tools"] = kwargs.pop("tools")
+    def _post(self, body: dict) -> dict:
+        """One non-streaming chat completion: the parsed JSON body."""
         if self.on_status:
             self.on_status("sent")
-        raw = self._client.chat.completions.with_raw_response.create(messages=[], extra_body=body, **kwargs)
-        self._remember_limits(raw.headers)
-        return raw.parse()
+        resp = self._http.post(self._url("chat/completions"), json=body)
+        self._remember_limits(resp.headers)
+        data = _json_or_text(resp)
+        if resp.status_code >= 400:
+            raise HTTPStatusFailure(resp.status_code, data, resp.headers)
+        if isinstance(data, dict) and data.get("error") and not data.get("choices"):
+            raise HTTPStatusFailure(500, data, resp.headers)
+        return data if isinstance(data, dict) else {}
+
+    def _events(self, body: dict):
+        """A streaming chat completion: yields each server-sent event's JSON."""
+        if self.on_status:
+            self.on_status("sent")
+        with self._http.stream("POST", self._url("chat/completions"), json=body) as resp:
+            self._remember_limits(resp.headers)
+            if resp.status_code >= 400:
+                resp.read()
+                raise HTTPStatusFailure(resp.status_code, _json_or_text(resp), resp.headers)
+            for line in resp.iter_lines():
+                if not line.startswith("data:"):
+                    continue
+                payload = line[5:].strip()
+                if payload == "[DONE]":
+                    return
+                if not payload:
+                    continue
+                try:
+                    event = json.loads(payload)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(event, dict) and event.get("error") and not event.get("choices"):
+                    err = event["error"]
+                    code = err.get("code") if isinstance(err, dict) else None
+                    raise HTTPStatusFailure(code if isinstance(code, int) and code >= 400 else 500, event)
+                yield event
 
     def _remember_limits(self, headers) -> None:
         found = limit_headers(headers)
@@ -373,37 +423,43 @@ class LLMClient:
             self.limits, self.limits_at = found, time.time()
 
     def _chat_once(self, kwargs, on_text, on_reasoning) -> AssistantMessage:
-        resp = self._create(kwargs)
-        if not resp.choices:
+        resp = self._post(kwargs)
+        choices = resp.get("choices") or []
+        if not choices:
             raise LLMError("Server returned no choices")
-        choice = resp.choices[0]
-        msg = choice.message
-        content = msg.content or ""
+        choice = choices[0]
+        msg = choice.get("message") or {}
+        content = msg.get("content") or ""
         visible, think = split_think(content)
-        reasoning = (getattr(msg, "reasoning_content", None) or getattr(msg, "reasoning", None) or "") + think
+        reasoning = (msg.get("reasoning_content") or msg.get("reasoning") or "") + think
         if on_reasoning and reasoning:
             on_reasoning(reasoning)
         if on_text and visible:
             on_text(visible)
         calls = []
-        for tc in msg.tool_calls or []:
-            args, err = parse_arguments(tc.function.arguments)
-            call = ToolCall(name=tc.function.name, arguments=args,
-                            raw_arguments=tc.function.arguments or "", parse_error=err, extra=_extra_fields(tc))
-            if tc.id:
-                call.id = tc.id
+        for tc in msg.get("tool_calls") or []:
+            fn = tc.get("function") or {}
+            raw = fn.get("arguments") or ""
+            raw = raw if isinstance(raw, str) else json.dumps(raw)
+            args, err = parse_arguments(raw)
+            call = ToolCall(name=fn.get("name") or "", arguments=args, raw_arguments=raw, parse_error=err,
+                            extra=_extra_fields(tc))
+            if tc.get("id"):
+                call.id = tc["id"]
             calls.append(call)
-        usage = resp.usage.model_dump() if resp.usage else {}
-        return self._tag(AssistantMessage(visible, reasoning, calls, choice.finish_reason, usage))
+        return self._tag(AssistantMessage(visible, reasoning, calls, choice.get("finish_reason"),
+                                          resp.get("usage") or {}))
 
     def _chat_stream(self, kwargs, on_text, on_reasoning) -> AssistantMessage:
         kwargs = {**kwargs, "stream": True, "stream_options": {"include_usage": True}}
+        stream = self._events(kwargs)
         try:
-            stream = self._create(kwargs)
-        except openai.BadRequestError as e:
-            if "stream_options" in str(e):
+            first_event = next(stream, None)
+        except HTTPStatusFailure as e:
+            if e.status_code == 400 and "stream_options" in str(e):   # an older server without usage in streams
                 kwargs.pop("stream_options")
-                stream = self._create(kwargs)
+                stream = self._events(kwargs)
+                first_event = next(stream, None)
             else:
                 raise
         text_parts: list[str] = []
@@ -423,43 +479,48 @@ class LLMClient:
                 on_text(t)
 
         filt = _ThinkFilter(rec_text, rec_reasoning)
+
+        def chunks():
+            if first_event is not None:
+                yield first_event
+            yield from stream
+
         try:
             first = True
-            for chunk in stream:
+            for chunk in chunks():
                 if first and self.on_status:
                     first = False
                     self.on_status("first_token")
-                if getattr(chunk, "usage", None):
-                    usage = chunk.usage.model_dump()
-                if not chunk.choices:
+                if chunk.get("usage"):
+                    usage = chunk["usage"]
+                choices = chunk.get("choices") or []
+                if not choices:
                     continue
-                choice = chunk.choices[0]
-                delta = choice.delta
-                if choice.finish_reason:
-                    finish = choice.finish_reason
-                if delta is None:
+                choice = choices[0]
+                delta = choice.get("delta")
+                if choice.get("finish_reason"):
+                    finish = choice["finish_reason"]
+                if not delta:
                     continue
-                r = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
+                r = delta.get("reasoning_content") or delta.get("reasoning")
                 if r:
                     rec_reasoning(r)
-                if delta.content:
-                    filt.feed(delta.content)
-                for tcd in delta.tool_calls or []:
-                    idx = tcd.index if tcd.index is not None else len(pending)
+                if delta.get("content"):
+                    filt.feed(delta["content"])
+                for tcd in delta.get("tool_calls") or []:
+                    idx = tcd.get("index") if tcd.get("index") is not None else len(pending)
                     slot = pending.setdefault(idx, {"id": None, "name": "", "args": "", "extra": {}})
-                    if tcd.id:
-                        slot["id"] = tcd.id
+                    if tcd.get("id"):
+                        slot["id"] = tcd["id"]
                     _merge(slot["extra"], _extra_fields(tcd))
-                    if tcd.function:
-                        if tcd.function.name:
-                            slot["name"] += tcd.function.name
-                        if tcd.function.arguments:
-                            slot["args"] += tcd.function.arguments
+                    fn = tcd.get("function") or {}
+                    if fn.get("name"):
+                        slot["name"] += fn["name"]
+                    if fn.get("arguments"):
+                        slot["args"] += fn["arguments"] if isinstance(fn["arguments"], str) else json.dumps(fn["arguments"])
         finally:
             filt.flush()
-            close = getattr(stream, "close", None)
-            if close:
-                close()
+            stream.close()
 
         calls = []
         for idx in sorted(pending):
@@ -494,18 +555,13 @@ class LLMClient:
 
     def _describe(self, e: Exception) -> str:
         status = getattr(e, "status_code", None)
-        body = getattr(e, "body", None)
-        detail = ""
-        if isinstance(body, dict):
-            err = body.get("error")
-            detail = body.get("message") or (err.get("message", "") if isinstance(err, dict) else str(err or ""))
-        detail = detail or str(e)
+        detail = getattr(e, "message", "") or str(e)
         prefix = f"HTTP {status}: " if status else ""
         if status in (524, 522, 504):
             return (f"HTTP {status}: the tunnel/proxy gave up waiting for the model. Cloudflare quick tunnels "
                     "drop requests that stay silent for ~100s (long prefill on big models). Use a tunnel without "
                     "that limit (the Pinggy URL printed by the MUYAH server notebook) or a smaller prompt/model.")
-        if isinstance(e, (openai.APIConnectionError, openai.APITimeoutError)):
+        if isinstance(e, httpx.HTTPError):
             return f"Cannot reach {self.base_url} ({e.__class__.__name__}). Is the server/tunnel up? Try /model or /config."
         return prefix + detail[:800]
 
@@ -530,3 +586,10 @@ class LLMClient:
         if not ids:
             return ""
         return f"\nModel '{self.model}' not found. Available: {', '.join(ids[:10])}. Switch with /model <name>."
+
+
+def _json_or_text(resp: httpx.Response):
+    try:
+        return resp.json()
+    except ValueError:
+        return {"message": resp.text[:2000]}

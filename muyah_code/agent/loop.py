@@ -278,6 +278,12 @@ class Agent:
         self._prompt_dirty = True
         self.events = None       # muyah_code.events.EventBus (feeds /viz); None = no events
         self.label = "main"      # which agent emitted an event (sub-agents use their type name)
+        from muyah_code.agent.escalation import Escalation
+
+        self.escalation = Escalation()
+        self.summarizer = None   # the model that writes compaction summaries (models.summarize; None = self.llm)
+        # escalate(client) -> (bigger client, "from" label, "to" label) or None (set by the app: models.py ladder)
+        self.escalate = None
         self._tool_seq = 0
 
     # ------------------------------------------------------------------ events (for /viz)
@@ -360,7 +366,7 @@ class Agent:
         busy = getattr(self.ui, "busy", None)
         if callable(busy):
             busy(f"Compacting the conversation ({len(self.messages) - 1} messages, {before:,} tokens)")
-        new, desc = self.context.compact(self.messages, self.llm, focus=focus, todos=self.ctx.todos,
+        new, desc = self.context.compact(self.messages, self.summarizer or self.llm, focus=focus, todos=self.ctx.todos,
                                          tools=tools, emergency=emergency)
         after = self.context.count(new, tools)
         desc = f"Compacted the conversation: {before:,} → {after:,} tokens. {desc}"
@@ -375,7 +381,8 @@ class Agent:
     def run(self, prompt: str) -> TurnResult:
         start = time.time()
         result = TurnResult()
-        self._emit("subagent_start" if self.is_subagent else "turn_start", prompt=prompt[:300])
+        self._emit("subagent_start" if self.is_subagent else "turn_start", prompt=prompt[:300],
+                   model=getattr(self.llm, "model", ""))
         try:
             self._run(prompt, result)
         except KeyboardInterrupt:
@@ -493,6 +500,8 @@ class Agent:
                 result.status = "denied"
                 return
             self._append_results(calls, outputs)
+            self.escalation.step(len(outputs), sum(1 for o in outputs if o is not None and o.is_error))
+            self._maybe_escalate()
             if result.status == "loop":
                 self.ui.warn("Stopped: the model kept repeating the same tool call.")
                 return
@@ -525,7 +534,65 @@ class Agent:
         self._last_error = message + ". Stopped before the next request."
         return False
 
+    def _maybe_escalate(self) -> None:
+        """Hard failure signals -> the next bigger model takes over (it sees the failed attempts)."""
+        reason = self.escalation.take_reason()
+        if not reason or self.escalate is None:
+            return
+        step = self.escalate(self.llm)
+        if step is None:
+            return
+        target, before, after = step
+        self.llm = target
+        self.ui.warn(f"Escalated {before} → {after}: {reason}")
+        self._emit("escalate", source=before, target=after, reason=reason)
+
     def _call_llm(self) -> AssistantMessage | None:
+        """One model request. If the provider fails after its own retries (rate limit, server error, network),
+        the next `fallback` model answers this request instead, and the terminal says so."""
+        original = self.llm
+        tried: list[str] = []
+        try:
+            while True:
+                self._fallback_error = None
+                resp = self._request()
+                if resp is not None or self._fallback_error is None:
+                    return resp
+                target = self._next_fallback(tried, original)
+                if target is None:
+                    return None
+                self.llm = target
+        finally:
+            self.llm = original
+
+    _fallback_error: BaseException | None = None
+
+    def _next_fallback(self, tried: list[str], original):
+        pool = self.ctx.service("models")
+        if pool is None:
+            return None
+        from muyah_code.config import ConfigError
+
+        for spec in pool.fallbacks():
+            if spec in tried:
+                continue
+            tried.append(spec)
+            try:
+                client = pool.get(spec)
+            except (ConfigError, ValueError) as e:
+                self.ui.warn(f"Fallback {spec} skipped: {e}")
+                continue
+            if client is original or client is self.llm:
+                continue
+            kind = getattr(self._fallback_error, "kind", "error").replace("_", " ")
+            self.ui.warn(f"Using the fallback model {pool.label(client)} for this request "
+                         f"({kind} from {getattr(original, 'model', 'the main model')}).")
+            self._emit("fallback", source=getattr(original, "model", ""), target=getattr(client, "model", ""),
+                       reason=kind)
+            return client
+        return None
+
+    def _request(self) -> AssistantMessage | None:
         overflow_retries = 0
         while True:
             if self.context.needs_compaction(self.messages, None if self.text_mode else self.registry.schemas()):
@@ -607,6 +674,10 @@ class Agent:
                 self._llm_failed(meter, started, e)
                 self._last_error = str(e)
                 self.ui.error(f"Model request failed: {e}")
+                from muyah_code.llm.pool import FALLBACK_KINDS
+
+                if getattr(e, "kind", "") in FALLBACK_KINDS:
+                    self._fallback_error = e
                 return None
             finally:
                 if hasattr(self.llm, "on_status"):
@@ -668,6 +739,7 @@ class Agent:
         for i, call in enumerate(calls):
             result.tool_calls += 1
             if call.parse_error or call.name == "__invalid__":
+                self.escalation.malformed_call()
                 hint = ""
                 if resp.finish_reason == "length":
                     hint = (" Your reply hit the output token limit, so the call was cut off. Write large files in "
@@ -677,6 +749,7 @@ class Agent:
                 continue
             tool, args, errors = self.registry.validate(call.name, call.arguments)
             if tool is None or errors:
+                self.escalation.malformed_call()
                 schema = json.dumps(tool.parameters, separators=(",", ":"))[:1200] if tool else ""
                 outputs[i] = ToolResult.error(
                     f"Error: invalid call to {call.name}: {'; '.join(errors)}." +
@@ -744,6 +817,7 @@ class Agent:
                 res.content += (f"\n\n[Note: you have made this exact {tool.name} call {seen[sig]} times and the "
                                 "result will not change. Try a different approach.]")
             self._track_signal(tool, args, res, result, failures)
+            self.escalation.tool_result(tool.name, args, res.is_error)
         return [o if o is not None else ToolResult.error("Error: no result") for o in outputs]
 
     def _handoff(self, tool: Tool, args: dict, tool_id: int) -> ToolResult:

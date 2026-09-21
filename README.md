@@ -323,12 +323,72 @@ summaries. Each one is priced, and cached input is priced separately.
 {"pricing": {"models": {"my-finetune": {"input": 0.5, "output": 1.5, "cache_read": 0.05}}}}   // $ per 1M tokens
 ```
 
+**Several models working together.** Each part of the work can use the model that fits it. Anything not set
+uses your main model.
+
+```json
+{
+  "models": {
+    "explore":   "groq:llama-3.1-8b-instant",   // the explore sub-agent: many cheap reads
+    "edit":      "deepseek-chat",                // the editor sub-agent applies changes the main model describes
+    "summarize": "gemini:gemini-2.5-flash",      // compaction, learning, web page summaries
+    "strong":    "anthropic:claude-opus-5"       // where the main model escalates when it is stuck
+  },
+  "fallback": ["openrouter"]                     // answers when your provider fails (rate limit, 5xx, network)
+}
+```
+
+- **What a model can be:** a saved profile, `provider:model` (that provider's own saved key is used; your main
+  key is never sent to another provider), or a bare model id on your main endpoint.
+- **Sub-agent definitions** can set `model:`. Claude Code's `opus`/`sonnet`/`haiku`/`inherit` also work. The
+  Agent tool can also pick a model role per call.
+- **Escalation happens only on hard failure signals:**
+  - two malformed tool calls;
+  - the same edit failing twice;
+  - the same failing command twice;
+  - four steps in a row where every call failed.
+
+  When one of these happens, the next bigger model takes over (explore/edit → main → strong) and sees the
+  failed attempts. The terminal says so, e.g. `Escalated explore (llama-3.1-8b) → main (…): two malformed
+  tool calls`. An escalation lasts for the rest of that turn.
+- **Fallback** switches for that one request only, and it is always announced. `/status` lists the roles and
+  the fallbacks.
+
+**Lean mode for small models.** `"prompt_profile": "auto"` (the default) switches to lean when the context
+window is under 32k, or when a model of 14B or fewer runs on your own machine.
+- **What changes:** a ~400-token prompt and the six core tools with short descriptions (Read, Edit, Write,
+  Bash, Grep, Glob). Everything else (web, todos, skills, sub-agents, MCP) is one `find_tools` call away.
+- **The saving:** each request's fixed cost drops from about 4,400 to 1,200 tokens.
+- **Compare the two** on your model with `muyah eval --prompt lean` and `--prompt full`.
+
 **Hooks** follow Claude Code's format: `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `Stop` and more.
 - The hook gets JSON on stdin.
 - Exit code `2` blocks the action.
 - To modify the action, print JSON such as `{"hookSpecificOutput": {"permissionDecision": "deny"}}`.
 
 **MCP servers** are configured in `.mcp.json` or `~/.muyah/mcp.json` (stdio or HTTP). Their tools appear as `mcp__<server>__<tool>`.
+
+## Light on your machine
+
+Measured with `python scripts/bench_resources.py --others` on Windows 11 (12 CPUs, 32 GB). **Startup** is the
+wall time of `--version`. **Ready** is the time to the first prompt; the pseudo-terminal's own 3.1 s is
+subtracted. **Idle** is the prompt sitting still, sampled over 5 s after start-up settled.
+
+The 50-step columns come from a scripted 50-step session with reads, searches, commands and streamed replies,
+run against a local fake model. They measure the CLI itself, not the model. Other CLIs can't be pointed at that
+fake model without their accounts, so only their startup and idle numbers are shown. Their first screen may be a
+login screen.
+
+| CLI | startup (s) | ready (s) | idle RAM (MB) | idle CPU % | 50-step peak RAM (MB) | 50-step CPU % |
+|---|---|---|---|---|---|---|
+| MUYAH-CODE 1.0.0 | 0.11 | 1.84 | 66 | 0.0 | 75 | 15 |
+| Claude Code 2.1.278 | 0.08 | – | 230 | 0.6 | – | – |
+| Codex CLI 0.130.0 | 0.17 | – | 106 | 0.0 | – | – |
+| Gemini CLI 0.60.0 | 2.09 | – | 391 | 0.0 | – | – |
+| OpenCode 1.18.31 | 0.94 | – | 795 | 8.4 | – | – |
+
+CI runs the same script on every push and fails if MUYAH-CODE goes over its ceilings (4 s startup, 250 MB
+idle, 350 MB during a session).
 
 ## Development
 

@@ -5,6 +5,23 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **Models working together.**
+  - **Roles** (`models`: explore, edit, summarize, verify, btw, strong). The explore sub-agent, the new editor sub-agent, and compaction/learning/web summaries run on their own models.
+  - **What a model can be:** a profile, `provider:model` (that provider's key only), or a bare model id.
+  - **Sub-agents choose models:** sub-agent files accept `model:` (Claude Code's aliases too), and the Agent tool can choose a role per call.
+  - **Escalation on hard signals only:** malformed calls, repeated edit or command failures, no progress. It goes one step up the ladder, carries the failed attempts along, is announced, and lasts one turn.
+  - **Fallback providers** (`fallback`) answer one request when the main provider fails after its retries. This covers rate limits, 5xx and network errors, never a bad request. It is always announced.
+  - Each sub-agent gets a context budget sized to its own model's window. The live view logs escalations, fallbacks, budget stops and which model each sub-agent ran on.
+- **Lean mode for small models** (`prompt_profile`: auto/full/lean).
+  - Auto picks it for windows under 32k or self-hosted models of 14B or fewer.
+  - **What changes:** a ~400-token prompt, 6 core tools with short descriptions, and everything else behind a `find_tools` meta-tool that switches tools on as needed. Instructions are capped at 4k characters.
+  - **The saving:** each request's fixed cost drops from ~4,400 to ~1,200 tokens.
+  - `muyah eval --prompt lean|full` compares the two, and the eval history keeps them apart.
+- **Faster and lighter:** the model client now speaks the OpenAI-compatible protocol directly over httpx. The `openai` package is no longer a dependency.
+  - The first prompt appears about 2× sooner.
+  - Idle memory went from 128 MB to 66 MB.
+  - Peak memory in a 50-step session went from 133 MB to 75 MB.
+- **`scripts/bench_resources.py`** measures startup, time to prompt, idle RAM/CPU and a 50-step session; with `--others`, also Claude Code, Codex, Gemini CLI and OpenCode. The README has the table, and CI fails if MUYAH-CODE exceeds its ceilings.
 - **Cost, in dollars, for every model call, and budgets.**
   - **Every call is counted.** This includes compaction, learning (reflection), web page summaries and `/doctor`, each tagged with what it was for. Before, those calls never reached `usage.jsonl`.
   - **Cache tokens are kept separately.** This covers Anthropic cache reads/writes, OpenAI/Groq/Gemini `cached_tokens` and DeepSeek cache hits, and they are priced at the cache rate.

@@ -9,6 +9,8 @@ Definitions (Claude Code compatible) live in .muyah/agents/<name>.md or ~/.muyah
     tools: Read, Grep, Glob, Bash        # optional; default = all except Agent
     permissionMode: default              # optional
     max_steps: 30                        # optional
+    model: explore                       # optional: a role from "models", a profile, provider:model, or
+                                         # Claude Code's opus/sonnet/haiku/inherit
     ---
     System prompt for the sub-agent...
 
@@ -42,6 +44,7 @@ class AgentDef:
     permission_mode: str | None = None
     max_steps: int = 40
     source: str = "bundled"
+    model: str | None = None
 
 
 def _list(val) -> list[str] | None:
@@ -81,6 +84,7 @@ def load_agent_defs(project_root: Path, home: Path, claude_compat: bool = True) 
                 permission_mode=meta.get("permissionMode") or meta.get("permission_mode"),
                 max_steps=int(meta.get("max_steps") or 40),
                 source=source,
+                model=str(meta["model"]).strip() if meta.get("model") else None,
             )
     return defs, errors
 
@@ -112,21 +116,23 @@ class SubagentUI(UI):
 
 
 class SubagentManager:
-    def __init__(self, defs: dict[str, AgentDef], factory: Callable[[AgentDef, int], object], depth: int = 0):
+    def __init__(self, defs: dict[str, AgentDef], factory: Callable[..., object], depth: int = 0,
+                 roles: Callable[[], list[str]] | None = None):
         self.defs = defs
-        self.factory = factory  # (definition, depth) -> Agent
+        self.factory = factory  # (definition, depth, model) -> Agent
         self.depth = depth
+        self.roles = roles or (lambda: [])  # model roles set in settings (for the tool description)
 
     def index_text(self) -> str:
         return "\n".join(f"- {d.name}: {d.description}" for d in self.defs.values())
 
-    def run(self, agent_type: str, description: str, prompt: str) -> tuple[str, dict]:
+    def run(self, agent_type: str, description: str, prompt: str, model: str | None = None) -> tuple[str, dict]:
         if self.depth >= MAX_DEPTH:
             raise ToolError("Sub-agents cannot spawn further sub-agents (depth limit).")
         d = self.defs.get(agent_type) or self.defs.get("general")
         if d is None:
             raise ToolError(f"Unknown agent type '{agent_type}'. Known: {', '.join(self.defs)}")
-        child = self.factory(d, self.depth + 1)
+        child = self.factory(d, self.depth + 1, model)
         task = (f"{prompt}\n\nWhen you are done, reply with a concise, self-contained report of your findings "
                 "or of what you changed (paths, line numbers, commands and results). The report is all the "
                 "caller will see.")
@@ -148,11 +154,14 @@ class AgentTool(Tool):
 
     @property
     def description(self) -> str:  # type: ignore[override]
-        return (
-            "Launch a sub-agent with a fresh context to handle a broad search or a self-contained subtask; only its "
-            "final report comes back, which keeps your context small. Give it a complete, standalone task "
-            "description (it cannot see this conversation). Available agent types:\n" + self.manager.index_text()
-        )
+        text = ("Launch a sub-agent with a fresh context to handle a broad search or a self-contained subtask; only "
+                "its final report comes back, which keeps your context small. Give it a complete, standalone task "
+                "description (it cannot see this conversation). Available agent types:\n" + self.manager.index_text())
+        roles = self.manager.roles()
+        if roles:
+            text += ("\nOptional model: one of " + ", ".join(roles) + " (default: the agent type's own model). Use a "
+                     "smaller one for simple searches and edits, and main or strong for hard reasoning.")
+        return text
 
     parameters = {
         "type": "object",
@@ -160,6 +169,7 @@ class AgentTool(Tool):
             "description": {"type": "string", "description": "3-5 word label"},
             "prompt": {"type": "string", "description": "The complete task for the sub-agent"},
             "subagent_type": {"type": "string", "description": "Agent type (default: general)"},
+            "model": {"type": "string", "description": "Optional model role to run it on (see the description)"},
         },
         "required": ["prompt"],
     }
@@ -168,6 +178,9 @@ class AgentTool(Tool):
         return f"Agent[{args.get('subagent_type') or 'general'}]({args.get('description') or args.get('prompt', '')[:60]})"
 
     def run(self, args, ctx):
+        model = args.get("model")
+        if model and model not in self.manager.roles():
+            raise ToolError(f"Unknown model role '{model}'. Use one of: {', '.join(self.manager.roles()) or '(none set)'}")
         report, stats = self.manager.run(args.get("subagent_type") or "general", args.get("description", ""),
-                                         args["prompt"])
+                                         args["prompt"], model=model)
         return ToolResult(report, summary=f"{stats['status']}, {stats['tool_calls']} tool calls")
