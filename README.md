@@ -139,12 +139,28 @@ cuts the fixed cost of every request from about 4,400 to 1,200 tokens.</sub>
 
 ## Everything else
 
-| | | |
-|---|---|---|
-| 🎙️ **Talk instead of type.** Press F2, speak, and your words land in the prompt. | ⌨️ **Keep typing while it works.** Queue messages, or ask a side question with `/btw`. | 🧭 **`/` menu** with every command, even mid-turn. |
-| 🖼️ **Sees images**: screenshots, diagrams, and a built-in browser to check web apps. | 🧩 **Editor support**: Zed, JetBrains and Neovim, through `muyah acp`. | 🔌 **MCP servers**: it can set them up for you when you ask. |
-| 🧠 **Learns from mistakes** and measures whether that helps (`muyah eval`). | 🤖 **Sub-agents and skills**: debugging, planning, TDD, code review, commits. | 🌿 **Worktrees** keep parallel sessions out of each other's way. |
-| 🔔 **Notifies you** when it's done or needs you. | 🔐 **Trust check** before a new folder's hooks or tools can run. | 📦 **Works with your Claude Code setup**: `.claude/skills`, hooks, `CLAUDE.md`, MCP. |
+<table>
+  <tr>
+    <td width="33%">🎙️ <b>Talk instead of type.</b> Press F2, speak, and your words land in the prompt.</td>
+    <td width="33%">⌨️ <b>Keep typing while it works.</b> Queue messages, or ask a side question with <code>/btw</code>.</td>
+    <td width="33%">🧭 <b>The <code>/</code> menu</b> lists every command, even mid-turn.</td>
+  </tr>
+  <tr>
+    <td>🖼️ <b>Sees images</b>: screenshots, diagrams, and a built-in browser to check web apps.</td>
+    <td>🧩 <b>Editor support</b>: Zed, JetBrains and Neovim, through <code>muyah acp</code>.</td>
+    <td>🔌 <b>MCP servers</b>: it can set them up for you when you ask.</td>
+  </tr>
+  <tr>
+    <td>🧠 <b>Learns from mistakes</b> and measures whether that helps (<code>muyah eval</code>).</td>
+    <td>🤖 <b>Sub-agents and skills</b>: debugging, planning, TDD, code review, commits.</td>
+    <td>🌿 <b>Worktrees</b> keep parallel sessions out of each other's way.</td>
+  </tr>
+  <tr>
+    <td>🔔 <b>Notifies you</b> when it's done or needs you.</td>
+    <td>🔐 <b>Trust check</b> before a new folder's hooks or tools can run.</td>
+    <td>📦 <b>Works with your Claude Code setup</b>: <code>.claude/skills</code>, hooks, <code>CLAUDE.md</code>, MCP.</td>
+  </tr>
+</table>
 
 ## Learn more
 

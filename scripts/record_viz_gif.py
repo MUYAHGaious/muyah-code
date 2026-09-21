@@ -118,6 +118,7 @@ def main() -> int:
     ap.add_argument("--fps", type=int, default=12)
     ap.add_argument("--scale", type=float, default=2.0, help="device pixel ratio of the capture")
     ap.add_argument("--mp4", help="also write an H.264 MP4 here")
+    ap.add_argument("--skip", type=float, default=1.0, help="seconds to drop from the start (the empty board)")
     a = ap.parse_args()
 
     server = VizServer(events=redact_home(load_events(Path(a.events))), title="demo")
@@ -178,7 +179,8 @@ def main() -> int:
         if a.out.endswith(".webp"):
             # animated WebP: full color and sharp text at a fraction of a GIF's size; GitHub shows it as an image
             subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-framerate", str(a.fps), "-i",
-                            str(frames_dir / "f%05d.png"), "-vf", f"scale={a.gif_width}:-1:flags=lanczos",
+                            str(frames_dir / "f%05d.png"), "-ss", f"{a.skip:g}",
+                            "-vf", f"scale={a.gif_width}:-1:flags=lanczos",
                             "-c:v", "libwebp_anim", "-q:v", "90", "-compression_level", "6", "-loop", "0", a.out],
                            check=True)
         palette = (f"scale={a.gif_width}:-1:flags=lanczos,split[x][y];"
@@ -189,7 +191,7 @@ def main() -> int:
                             str(frames_dir / "f%05d.png"), "-lavfi", palette, "-loop", "0", a.out], check=True)
         if a.mp4:
             subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-framerate", str(a.fps), "-i",
-                            str(frames_dir / "f%05d.png"), "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",
+                            str(frames_dir / "f%05d.png"), "-ss", f"{a.skip:g}", "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",
                             "-c:v", "libx264", "-crf", "16", "-preset", "slow", "-pix_fmt", "yuv420p",
                             "-movflags", "+faststart", a.mp4], check=True)
             print(f"wrote {a.mp4}: {Path(a.mp4).stat().st_size / 1e6:.1f} MB")

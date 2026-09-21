@@ -9,3 +9,4 @@ venv/
 .ruff_cache/
 .muyah/settings.local.json
 .muyah/sessions/
+.playwright-mcp/
