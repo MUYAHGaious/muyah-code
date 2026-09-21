@@ -64,6 +64,35 @@ def test_header_is_compact(project):
     assert "███" not in out
 
 
+def test_input_field_has_rule_with_folder_and_status_line(project):
+    """Render the real prompt into an 80-column fake terminal and read the screen."""
+    import re
+
+    from prompt_toolkit.data_structures import Size
+    from prompt_toolkit.output.vt100 import Vt100_Output
+
+    class FakeTerminal(Vt100_Output):
+        # Real terminals report the rows below the cursor; prompt_toolkit draws the bottom toolbar
+        # only once it knows that (Windows consoles answer directly, others via a CPR query).
+        def get_rows_below_cursor_position(self) -> int:
+            return 20
+
+    screen = io.StringIO()
+    term = FakeTerminal(screen, lambda: Size(rows=24, columns=80), term="xterm", enable_cpr=False)
+    out = io.StringIO()
+    ui = TerminalUI(Console(file=out, width=80, color_system=None))
+    with FakeOpenAI([]) as srv, create_pipe_input() as pipe, create_app_session(input=pipe, output=term):
+        cfg = load_config(cwd=project, overrides={"base_url": srv.url, "model": "fake-model"})
+        app = App(cfg, ui, cwd=project, mode="acceptEdits", enable_mcp=False)
+        pipe.send_text("/exit" + ENTER)
+        Repl(app, ui).run()
+        app.shutdown()
+    text = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07", "", screen.getvalue())
+    assert re.search(r"─{20,} proj ─", text)                     # rule with the folder name on the right
+    assert "❯" in text
+    assert "accept edits on" in text and "fake-model" in text and "/ for commands" in text  # status line
+
+
 def test_double_ctrl_c_exits_without_typing_exit(project):
     code, out, app = run_session(project, [CTRL_C, CTRL_C], [], lines=False)
     assert code == 0 and "Bye." in out

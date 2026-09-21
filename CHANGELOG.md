@@ -7,6 +7,7 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 - **Arrow-key menus everywhere.** Typing `/` opens the command menu with descriptions. Providers, models, permission prompts and questions are all chosen with ↑/↓ and Enter instead of typed numbers.
 - **Exiting:** Ctrl+C clears the line, and pressing it twice on an empty line exits (Ctrl+D also exits).
+- **Input field like Claude Code:** a thin rule with the project folder name above the `❯` prompt, and a status line directly under it (mode · model · context · `/ for commands`).
 - **Compact startup header** (model, folder and one hint) in place of the banner and stats box. The details moved to the new `/status` command.
 - **Model picker** ranks by newest version and hides speech, image and embedding models. When a model is retired, it offers the provider's suggested replacement.
 - **Billing errors:** "no credits / quota" is explained clearly, and a valid key is kept instead of being thrown away.

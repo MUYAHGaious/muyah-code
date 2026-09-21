@@ -6,15 +6,15 @@ to exit) · Ctrl+D exit · typing "/" opens the command menu (↑/↓ + Enter).
 
 from __future__ import annotations
 
-import html
 import time
 from pathlib import Path
 
 from prompt_toolkit import PromptSession
+from prompt_toolkit.application.current import get_app
 from prompt_toolkit.completion import Completer, Completion
-from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.styles import Style
 from rich.markup import escape
 from rich.text import Text
@@ -33,6 +33,21 @@ MODE_LABEL = {
     "bypassPermissions": "⚠ bypass permissions on",
 }
 EXIT_WINDOW = 2.0  # seconds between two Ctrl+C presses to exit
+MENU_ROWS = 8      # rows the "/" and "@" menus may use
+
+
+class _CompactPromptSession(PromptSession):
+    """prompt_toolkit stretches the input area over every row below the cursor, which pushes the bottom
+    toolbar to the bottom of the terminal. Cap the input at its own lines (plus room for an open
+    completion menu) so the status line sits directly under the input, like Claude Code."""
+
+    def _get_default_buffer_control_height(self) -> Dimension:
+        buff = self.default_buffer
+        lines = max(1, buff.document.line_count)
+        if not get_app().is_done and buff.complete_state is not None:
+            rows = min(MENU_ROWS, len(buff.complete_state.completions)) + 1
+            return Dimension.exact(lines + rows)
+        return Dimension.exact(lines)
 
 
 class _Completer(Completer):
@@ -110,9 +125,9 @@ class Repl:
             "completion-menu.meta.completion.current": "bg:default fg:ansibrightblack",
             "bottom-toolbar": "noreverse fg:ansibrightblack",
         })
-        self.session = PromptSession(history=history, completer=_Completer(self), key_bindings=kb,
+        self.session = _CompactPromptSession(history=history, completer=_Completer(self), key_bindings=kb,
                                      complete_while_typing=True, bottom_toolbar=self._toolbar, style=style,
-                                     reserve_space_for_menu=8, refresh_interval=0.5, **session_kwargs)
+                                     reserve_space_for_menu=0, refresh_interval=0.5, **session_kwargs)
 
     def ask(self, message: str, password: bool = False) -> str:
         return self.prompter.ask(message, password=password)
@@ -126,11 +141,30 @@ class Repl:
         return len(turns[-1]["changes"]) if turns else 0
 
     def _toolbar(self):
+        """The status line under the input: mode · model · context · hint."""
+        t = theme()
         if time.monotonic() - self._last_interrupt < EXIT_WINDOW:
-            return HTML(" Press Ctrl+C again to exit")
+            return [(f"fg:{t.accent}", "  Press Ctrl+C again to exit")]
+        parts: list[tuple[str, str]] = [("", "  ")]
         mode = MODE_LABEL.get(self.app.permissions.mode, "")
-        left = f"{mode} (shift+tab) · " if mode else ""
-        return HTML(f" {left}{html.escape(self.app.llm.model)} · ctx {self._ctx_pct()}% · / for commands")
+        if mode:
+            parts += [(f"fg:{t.accent} bold", mode), ("", " (shift+tab) · ")]
+        parts += [("", f"{self.app.llm.model} · ctx {self._ctx_pct()}% · / for commands")]
+        return parts
+
+    def _prompt_message(self):
+        """A thin rule with the folder name on the right, then the ❯ prompt (like Claude Code)."""
+        t = theme()
+        try:
+            cols = get_app().output.get_size().columns
+        except Exception:
+            cols = 80
+        name = self.app.cwd.name or str(self.app.cwd)
+        label = f" {name} "
+        if len(label) > cols // 2:
+            label = f" {name[: max(4, cols // 2 - 4)]}… "
+        rule = "─" * max(4, cols - len(label) - 2) + label + "─"
+        return [("fg:ansibrightblack", rule + "\n"), (f"fg:{t.accent}", "❯ ")]
 
     def header(self) -> None:
         """Just what you need: which model, which folder, where to go next."""
@@ -170,7 +204,7 @@ class Repl:
         """Returns the typed line, or None to exit."""
         while True:
             try:
-                return self.session.prompt(HTML(f'<style fg="{theme().accent}">❯</style> '))
+                return self.session.prompt(self._prompt_message)
             except KeyboardInterrupt:  # Ctrl+C on an empty line
                 now = time.monotonic()
                 if now - self._last_interrupt < EXIT_WINDOW:
