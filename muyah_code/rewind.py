@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -52,11 +53,21 @@ class Point:
 
 
 class ShadowRepo:
-    def __init__(self, home: Path, project: Path):
+    """One shadow repository per project, shared by every session there. Each session has its own index
+    and its own ref (refs/muyah/<session>) and makes commits with write-tree + commit-tree, so several
+    sessions in the same folder never race for git's index lock or a shared HEAD."""
+
+    ACTIVE_SECONDS = 600   # a session counts as "working here" if it said so in the last 10 minutes
+
+    def __init__(self, home: Path, project: Path, session_key: str = "default"):
         self.project = project.resolve()
         digest = hashlib.sha1(str(self.project).lower().encode()).hexdigest()[:16]
         self.git_dir = home / "rewind" / digest     # (~/.muyah/history is the prompt history file)
         self.hooks_dir = home / "rewind" / "_no_hooks"
+        self.key = re.sub(r"[^A-Za-z0-9._-]", "_", session_key or "default")
+        self.index = self.git_dir / f"index-{self.key}"
+        self.ref = f"refs/muyah/{self.key}"
+        self._last: tuple[str, str] | None = None   # (tree, commit) of this session's last snapshot
         self.skipped: list[str] = []   # large files left out of the last snapshot
 
     @staticmethod
@@ -75,6 +86,7 @@ class ShadowRepo:
                "-c", "core.quotepath=false", *args]
         env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
         env["GIT_OPTIONAL_LOCKS"] = "0"
+        env["GIT_INDEX_FILE"] = str(self.index)   # this session's own index
         kwargs = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
         res = subprocess.run(cmd, cwd=str(self.project), capture_output=True, text=True, encoding="utf-8",
                              errors="replace", timeout=timeout, env=env, **kwargs)
@@ -119,11 +131,41 @@ class ShadowRepo:
         self.ensure()
         self._exclude_large()
         self._git("add", "-A", "--ignore-errors", check=False)
-        has_head = self._git("rev-parse", "--verify", "-q", "HEAD", check=False).returncode == 0
-        if has_head and not self._git("diff", "--cached", "--quiet", check=False).returncode:
-            return self._git("rev-parse", "HEAD").stdout.strip()   # nothing changed: reuse the last one
-        self._git("commit", "-q", "--no-verify", "--allow-empty", "-m", label[:200] or "snapshot")
-        return self._git("rev-parse", "HEAD").stdout.strip()
+        tree = self._git("write-tree").stdout.strip()
+        if self._last is not None and self._last[0] == tree:
+            return self._last[1]                                   # nothing changed: reuse the last one
+        parent = self._last[1] if self._last else None
+        args = ["commit-tree", tree, "-m", label[:200] or "snapshot"] + (["-p", parent] if parent else [])
+        sha = self._git(*args).stdout.strip()
+        self._git("update-ref", self.ref, sha)                     # keeps it (and its history) from being pruned
+        self._last = (tree, sha)
+        return sha
+
+    # ------------------------------------------------------------------ other sessions in this folder
+
+    def mark_active(self) -> None:
+        try:
+            folder = self.git_dir / "active"
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / self.key).write_text(str(os.getpid()), encoding="utf-8")
+        except OSError:
+            return             # only used for a warning; snapshots work without it
+
+    def mark_done(self) -> None:
+        try:
+            (self.git_dir / "active" / self.key).unlink(missing_ok=True)
+        except OSError:
+            return
+
+    def others_active(self) -> int:
+        """How many other sessions worked in this folder in the last few minutes."""
+        folder = self.git_dir / "active"
+        now = time.time()
+        try:
+            return sum(1 for p in folder.iterdir() if p.name != self.key
+                       and now - p.stat().st_mtime < self.ACTIVE_SECONDS)
+        except OSError:
+            return 0
 
     def changes(self, current: str, target: str) -> list[tuple[str, str]]:
         """(status, path) of what restoring `target` over `current` will change: M, A (created), D (deleted)."""
@@ -164,7 +206,8 @@ class Rewind:
 
     def __init__(self, home: Path, project: Path, session=None):
         self.session = session
-        self.shadow = ShadowRepo(home, project) if ShadowRepo.usable(project, home) else None
+        key = getattr(session, "id", "") or f"pid{os.getpid()}"
+        self.shadow = ShadowRepo(home, project, key) if ShadowRepo.usable(project, home) else None
         self.files = Checkpoints()        # always kept: the fallback without git, and a cheap per-file log
         self.points: list[Point] = []
         self.epoch = 0
@@ -194,6 +237,13 @@ class Rewind:
             self.points.append(Point(**fields))
             self.epoch = max(self.epoch, fields["epoch"])
 
+    def others_active(self) -> int:
+        return self.shadow.others_active() if self.shadow is not None else 0
+
+    def close(self) -> None:
+        if self.shadow is not None:
+            self.shadow.mark_done()
+
     def begin_turn(self, prompt: str, msg_index: int) -> Point:
         """Called before a turn. The snapshot runs in the background (the model is thinking anyway);
         tools that change files wait for it (wait_ready)."""
@@ -202,6 +252,7 @@ class Rewind:
         self.points.append(point)
         self.files.begin_turn(prompt)
         if self.shadow is not None:
+            self.shadow.mark_active()
             self._pending = threading.Thread(target=self._snap, args=(point,), name="muyah-rewind", daemon=True)
             self._pending.start()
         else:

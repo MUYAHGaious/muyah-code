@@ -73,7 +73,8 @@ class Session:
     def load(path: Path) -> tuple[list[dict], dict]:
         flush(path)
         messages: list[dict] = []
-        meta: dict = {}
+        display: list[dict] = []   # what you saw: compaction does not remove messages from it (the model's copy
+        meta: dict = {}            # is compacted; the screen shows the whole conversation, like Claude Code)
         with open(path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
@@ -88,12 +89,16 @@ class Session:
                     meta.update({k: v for k, v in ev.items() if k not in ("t", "ts")})
                 elif t == "msg":
                     messages.append(ev["m"])
+                    display.append(ev["m"])
                 elif t == "replace":
                     messages = list(ev.get("messages") or [])
+                    if ev.get("reason") != "compact":      # /clear and rewinds really remove messages
+                        display = list(messages)
                 elif t == "title":
                     meta["title"] = ev.get("title")
                 elif t in ("checkpoint", "epoch"):
                     meta.setdefault("rewind", []).append(ev)
+        meta["display"] = display
         return _repair(messages), meta
 
     @classmethod

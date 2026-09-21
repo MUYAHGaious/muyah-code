@@ -42,14 +42,18 @@ def test_sequences_are_safe():
 
 def test_only_when_unfocused_or_after_a_long_wait():
     out, native = [], []
-    n = Notifier(Cfg(notify="osc9"), out.append, hooks=Hooks(), native=lambda t, m: native.append(m))
+    n = Notifier(Cfg(notify="osc9"), out.append, hooks=Hooks(), native=lambda t, m, s: native.append((m, s)) or True)
     assert not n.should(True, 300) and n.should(False, 1)
     assert not n.should(None, 5) and n.should(None, 25)       # unknown focus: only long turns
     n.notify("done", "Done in 30s")
     assert out == ["\x1b]9;MUYAH-CODE: Done in 30s\x07"] and n.hooks.runs[0][1]["kind"] == "done"
-    w = Notifier(Cfg(notify="native"), out.append, native=lambda t, m: native.append(m))
+    w = Notifier(Cfg(notify="native"), out.append, native=lambda t, m, s: native.append((m, s)) or True)
+    before = len(out)
     w.notify("attention", "Waiting for your approval")
-    assert native == ["Waiting for your approval"] and out[-1] == "\x07"
+    assert native == [("Waiting for your approval", "im")] and len(out) == before   # a chime, not a beep
+    fallback = Notifier(Cfg(notify="native"), out.append, native=lambda t, m, s: False)
+    fallback.notify("done", "x")
+    assert out[-1] == "\x07"                          # no notification system: the bell instead
     off = Notifier(Cfg(notify="off"), out.append)
     assert not off.should(False, 999)
 

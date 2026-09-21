@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+import re
+
 import json
 import time
 from pathlib import Path
 
 from rich.console import Console
-from rich.rule import Rule
 from rich.text import Text
 
 from muyah_code.agent.context import is_real_user_message
 from muyah_code.session import Session
+from muyah_code.ui import blocks
 from muyah_code.ui.theme import theme
 
 
@@ -60,7 +62,8 @@ def _tool_line(call: dict) -> Text:
     return line
 
 
-SHOW_EXCHANGES = 8  # a resumed conversation shows its last few exchanges, not everything (fast on long ones)
+SHOW_EXCHANGES = 20  # a resumed conversation shows its last exchanges (the model has all of them)
+INJECTED = re.compile(r"\n\n<(?:lessons|file path=|directory path=|note>|verify |context source=)")
 
 
 def print_history(console: Console, messages: list[dict], last: int = SHOW_EXCHANGES) -> None:
@@ -84,9 +87,10 @@ def print_history(console: Console, messages: list[dict], last: int = SHOW_EXCHA
             if content.startswith("[Summary of the earlier conversation"):
                 console.print(Text("⋯ earlier messages were summarized to save context", style=t.dim))
                 continue
-            prompt = content.split("\n\n<lessons>")[0].split("\n\n<file path=")[0]
-            console.print(Rule(style="bright_black"))
-            console.print(Text("❯ ", style=t.accent) + Text(prompt.strip()))
+            prompt = INJECTED.split(content)[0]   # your words, without what MUYAH-CODE added for the model
+            if shown:
+                console.print()
+            console.print(blocks.user_prompt(prompt.strip()))   # the same grey block as when you sent it
             console.print()
             shown = True
         elif role == "assistant":

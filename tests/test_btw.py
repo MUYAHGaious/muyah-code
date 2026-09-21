@@ -140,3 +140,43 @@ def test_history_is_capped(tmp_path):
         h.store_string(f"prompt {i}")
     recent = h.recent()
     assert len(recent) == HISTORY_LIMIT and recent[-1] == f"prompt {HISTORY_LIMIT + 49}"
+
+
+def test_the_box_while_it_works_edits_at_the_cursor_and_wraps():
+    from rich.text import Text
+
+    ui = TerminalUI(Console(file=io.StringIO(), width=100))
+    keys(ui, "fix bug")
+    for _ in range(3):
+        ui._on_key("left")
+    keys(ui, "the ")
+    assert ui._draft == "fix the bug" and ui._cursor == 8
+    ui._on_key("home")
+    ui._on_key("delete")
+    assert ui._draft == "ix the bug" and ui._cursor == 0
+    ui._on_key("end")
+    ui._on_key("backspace")
+    assert ui._draft == "ix the bu"
+    ui._reader = object()
+    keys(ui, " " + "word " * 40)
+    out = io.StringIO()
+    Console(file=out, width=60, color_system=None).print(ui._with_typing(Text("status")))
+    field_rows = [r for r in out.getvalue().splitlines() if "word" in r]
+    assert len(field_rows) >= 3                               # a long message wraps instead of running off
+
+
+def test_pastes_while_it_works_are_one_message():
+    from muyah_code.ui.typeahead import PasteAssembler
+
+    a = PasteAssembler()
+    assert a.feed(list("\x1b[200~one") + ["\r"] + list("two\x1b[201~")) == ["paste:one\ntwo"]
+    assert a.feed(list("\x1b[200~split")) == [] and a.feed(list(" across reads\x1b[201~")) == ["paste:split across reads"]
+    assert a.feed(list("ab") + ["\r"] + list("cd") + ["\r"]) == ["paste:ab\ncd\n"]      # a raw burst
+    assert a.feed(["h", "i", "\r"]) == ["h", "i", "enter"]                          # typed, not pasted
+    assert a.feed(["\x1b"]) == ["esc"] and a.feed(["\x03"]) == ["ctrl-c"]
+    ui = TerminalUI(Console(file=io.StringIO(), width=100))
+    ui._on_key("paste:" + "\n".join(f"line {i}" for i in range(50)))
+    assert ui._draft == "[Pasted text #1 +50 lines]"
+    ui._on_key("enter")
+    assert ui._queued == ["[Pasted text #1 +50 lines]"]                            # shown collapsed
+    assert ui.take_queued()[0].count("line ") == 50                                 # sent in full

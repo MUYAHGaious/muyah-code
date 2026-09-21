@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import re
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -195,6 +197,7 @@ class App:
 
         self.rewind = Rewind(self.home, self.root, self.session)
         self.checkpoints = self.rewind.files  # per-file snapshots (the fallback without git)
+        self.resume_display = resume_meta.get("display") or []   # the whole conversation, for the screen
         if resume_meta.get("rewind"):
             self.rewind.load(resume_meta["rewind"])
         # Live event stream for /viz; also recorded next to the session file so it can be replayed.
@@ -392,15 +395,36 @@ class App:
     TREE_CAP = 4000
     _tree_sig = ""
 
-    def emit_tree(self) -> None:
-        """The project's files (git-tracked + untracked, honoring .gitignore) for the live view's explorer.
-        Sent only when the listing changed, so recordings stay small."""
-        from muyah_code.tools.search import list_files
+    TREE_SECONDS = 1.5
 
+    def emit_tree(self) -> None:
+        """The project's files for the live view's explorer, listed in the background (never delays startup or
+        a turn). Sent only when the listing changed, so recordings stay small."""
+        if self._tree_thread is not None and self._tree_thread.is_alive():
+            return
+        self._tree_thread = threading.Thread(target=self._list_tree, name="muyah-tree", daemon=True)
+        self._tree_thread.start()
+
+    _tree_thread = None
+
+    def _list_tree(self) -> None:
+        from muyah_code.tools.search import IGNORED_DIRS, _git_files
+
+        folder = self.cwd.resolve()
+        if folder == Path.home().resolve() or folder.parent == folder:
+            return                   # your home folder or a drive root: not a project, far too big to list
+        files = _git_files(folder) if (folder / ".git").exists() else None
+        if files is None:            # not a git checkout: walk, but stop at the cap or the time limit
+            files, stop = [], time.monotonic() + self.TREE_SECONDS
+            for dirpath, dirnames, filenames in os.walk(folder):
+                dirnames[:] = [d for d in dirnames if d not in IGNORED_DIRS and not d.startswith(".")
+                               and not d.endswith(".egg-info")]
+                files.extend(Path(dirpath) / f for f in filenames)
+                if len(files) > self.TREE_CAP or time.monotonic() > stop:
+                    break
         try:
-            paths = sorted({p.relative_to(self.cwd).as_posix() for p in list_files(self.cwd)
-                            if p.is_file() or not p.exists()})
-        except (OSError, ValueError):
+            paths = sorted({p.relative_to(folder).as_posix() for p in files[: self.TREE_CAP * 2]})
+        except ValueError:
             return
         sig = f"{len(paths)}:{hash(tuple(paths))}"
         if sig == self._tree_sig:
@@ -701,6 +725,9 @@ class App:
         return describe_rewind(point, result, self.rewind)
 
     def shutdown(self) -> None:
+        self.rewind.close()
+        if self._tree_thread is not None:
+            self._tree_thread.join(3)      # a listing still running: let its event be recorded
         self.events.close()
         if self.session is not None:
             self.session.close()

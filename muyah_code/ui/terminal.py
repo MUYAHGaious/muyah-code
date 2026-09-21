@@ -266,6 +266,8 @@ class TerminalUI(UI):
         self._sub_errors = 0
         # typing while it works (see ui/typeahead.py)
         self._draft = ""
+        self._cursor = 0           # where you are typing in the draft (← → Home End move it)
+        self._pastes: dict[str, str] = {}   # "[Pasted text #1 +245 lines]" -> the text (expanded when sent)
         self._queued: list[str] = []
         self._selected: int | None = None   # a queued message picked with ↑ (enter: edit it, delete: drop it)
         # True while carried-over messages wait for their own turn (they are not fed into the running one)
@@ -276,6 +278,8 @@ class TerminalUI(UI):
 
         self.tips = TipRotation()  # "⎿ Tip: ..." under the spinner (the REPL fills it at each turn)
         self._turn_t0 = 0.0        # when this turn started (the spinner shows the turn's time, like Claude Code)
+        self._width = 0            # terminal width the live area was last drawn at (resize during a turn)
+        self._resize_timer = None
         self._turn_chars = 0       # characters received this turn (shown as ↓ tokens)
         self.history = None        # () -> earlier prompts, oldest first: ↑ with nothing queued (set by the REPL)
         self._hist: list[str] | None = None
@@ -309,37 +313,78 @@ class TerminalUI(UI):
                 step.append(f"{self._sub_current}", style=t.dim)
                 step.append(f"  · {self._sub_steps} step{'s' if self._sub_steps != 1 else ''}", style=t.dim)
                 step.no_wrap, step.overflow = True, "ellipsis"
+                self._second_line_taken = True
                 return Group(spin, step)
             return spin
         parts = [_clock(time.monotonic() - self._turn_t0) if self._turn_active and self._turn_t0 else f"{elapsed:.0f}s"]
         if self._turn_active and self._turn_chars:
             parts.append(f"↓ {_tokens(self._turn_chars / 3.5)} tokens")
+        # the turn's time, then the tokens right beside it (like Claude Code); context use is at the bottom right
+        if self._phase == "Compacting" and self._compacting:
+            messages, tokens = self._compacting
+            width, span = 24, 6
+            pos = int(elapsed * 10) % (width + span) - span      # a segment sliding along the bar
+            bar = Text()
+            for i in range(width):
+                bar.append("━", style=t.accent if pos <= i < pos + span else "bright_black")
+            line = Text.assemble(("Compacting the conversation  ", t.accent), bar,
+                                 (f"  {messages} messages · {_tokens(tokens)} tokens · {_clock(elapsed)}", t.dim))
+            return self._spin(line)
         if self._phase == "thinking" and self._sent_at:
             # the request is out and nothing has come back yet: say so (slow providers queue requests)
             label = f"Waiting for {self.model_name or 'the model'}"
-            parts = [f"sent {time.monotonic() - self._sent_at:.0f}s ago"]
+            parts.append(f"sent {time.monotonic() - self._sent_at:.0f}s ago")
         elif self._phase == "thinking":
             label = THINKING_WORDS[int(elapsed // WORD_SECONDS) % len(THINKING_WORDS)]
-            if self._reasoning_chars:
-                parts.append(f"{int(self._reasoning_chars / 3.5):,} reasoning tokens")
         elif self._phase == "writing":
             label = "Writing"
-            toks = int(self._chars / 3.5)
             gen_time = max(0.001, time.monotonic() - self._first_token)
-            parts.append(f"{toks:,} tokens")
             if gen_time > 1:
-                parts.append(f"{toks / gen_time:.1f} tok/s")
+                parts.append(f"{self._chars / 3.5 / gen_time:.0f} tok/s")
         elif self._phase in ("", "Working"):
             label = THINKING_WORDS[int(elapsed // WORD_SECONDS) % len(THINKING_WORDS)]
         else:
             label = self._phase
-        if self.context_pct is not None:
-            parts.append(f"ctx {self.context_pct}%")
         return self._spin(Text.assemble((f"{label}… ", t.accent), (" · ".join(parts), t.dim),
                                         ("  (esc to interrupt · type to queue a message)", t.dim)))
 
+    _second_line_taken = False
+    RESIZE_SETTLE = 0.3
+
+    def _check_width(self) -> None:
+        """The terminal was resized while it works: redraw everything at the new width once dragging stops
+        (the terminal re-wraps the live area's old lines, which left blank rows and made the input box jump)."""
+        width = self.console.width
+        if not self._width:
+            self._width = width
+        elif width != self._width:
+            self._width = width
+            if self._resize_timer is not None:
+                self._resize_timer.cancel()
+            self._resize_timer = threading.Timer(self.RESIZE_SETTLE, self._redraw_during_turn)
+            self._resize_timer.daemon = True
+            self._resize_timer.start()
+
+    def _redraw_during_turn(self) -> None:
+        if not isinstance(self.console, ReplayConsole) or not self._turn_active:
+            return
+        live, phase, t0 = self._live, self._phase, self._t0
+        if live is not None:
+            live.stop()
+            self._live = None
+        self.console.replay()
+        if self._stream is not None:
+            self._stream.printed = 0          # the answer so far is printed again, at the new width
+        if live is not None:
+            self._live = Live(self._StatsRenderable(self), console=self.console, refresh_per_second=8, transient=True)
+            self._live.start()
+            self._phase, self._t0 = phase, t0
+            if self._stream is not None:
+                self._stream.live = self._live
+                self._stream.update("")
+
     def _tip_line(self):
-        if not self._turn_active or self._tool is not None:
+        if not self._turn_active:
             return None
         tip = self.tips.at(time.monotonic() - self._turn_t0)
         if not tip:
@@ -377,19 +422,26 @@ class TerminalUI(UI):
         field = Text()
         field.append("❯ ", style=f"bold {color}")   # only the arrow is colored: what you type stays plain
         if draft:
-            field.append(draft)
-            field.append("▌", style=color)
+            cur = max(0, min(self._cursor, len(draft)))
+            field.append(draft[:cur])
+            field.append(draft[cur] if cur < len(draft) else " ", style="reverse")   # the cursor
+            field.append(draft[cur + 1:])
         elif queued:
             field.append("Press up to edit queued messages", style=t.dim)
         else:
             field.append("type to queue a message · esc: interrupt · /btw: ask on the side", style=t.dim)
-        field.no_wrap, field.overflow = True, "ellipsis"
+        if not draft:
+            field.no_wrap, field.overflow = True, "ellipsis"   # the hint stays on one line; your text wraps
         rows.append(field)
         rows.append(Text("─" * width, style="bright_black"))
         status = Text("  ")
         if label:
             status.append(label, style=f"bold {color}")
             status.append(f" · {what} (shift+tab)", style=t.dim)
+        if self.context_pct is not None:     # context use at the bottom right, as when idle
+            right = f"ctx {self.context_pct}%"
+            gap = width - len(status.plain) - len(right) - 1
+            status.append(" " * max(2, gap) + right, style=t.dim)
         status.no_wrap, status.overflow = True, "ellipsis"
         rows.append(status)
         return Group(*rows)
@@ -419,8 +471,9 @@ class TerminalUI(UI):
             self._reader.stop()
             self._reader = None
         with self._keys:
-            queued, draft = self._queued, self._draft
+            queued, draft = [self._expand(q) for q in self._queued], self._expand(self._draft)
             self._queued, self._draft, self._selected, self._hold_queue = [], "", None, False
+            self._pastes = {}
         return queued, draft
 
     def take_queued(self) -> list[str]:
@@ -429,7 +482,7 @@ class TerminalUI(UI):
         with self._keys:
             if self._hold_queue:
                 return []
-            queued, self._queued, self._selected = self._queued, [], None
+            queued, self._queued, self._selected = [self._expand(q) for q in self._queued], [], None
         if queued:
             self._emit_queue()
         for msg in queued:
@@ -448,6 +501,9 @@ class TerminalUI(UI):
         if key in ("focus-in", "focus-out"):
             self.focused = key == "focus-in"
             return
+        if key.startswith("paste:"):
+            self._insert_paste(key[6:])
+            return
         interrupt = False
         btw = ""
         before = list(self._queued)
@@ -462,19 +518,26 @@ class TerminalUI(UI):
             elif key == "delete" and sel is not None:
                 self._queued.pop(sel)
                 self._selected = min(sel, len(self._queued) - 1) if self._queued else None
+            elif key == "delete":
+                self._draft = self._draft[:self._cursor] + self._draft[self._cursor + 1:]
+            elif key in ("left", "right", "home", "end"):
+                self._cursor = {"left": self._cursor - 1, "right": self._cursor + 1, "home": 0,
+                                "end": len(self._draft)}[key]
             elif key == "enter" and sel is not None and not self._draft:
                 self._draft = self._queued.pop(sel)       # back into the box to edit, then enter queues it again
                 self._selected = None
             elif key == "enter":
                 text = self._draft.strip()
                 if text.startswith("/btw ") and self.on_btw is not None:
-                    btw = text[5:].strip()
+                    btw = self._expand(text[5:].strip())
                 elif text:
                     self._queued.append(text)
                 self._draft = ""
                 self._selected = None
             elif key == "backspace":
-                self._draft = self._draft[:-1]
+                if self._cursor > 0:
+                    self._draft = self._draft[:self._cursor - 1] + self._draft[self._cursor:]
+                    self._cursor -= 1
             elif key in ("shift-tab", "mic"):
                 pass                       # handled below, outside the lock
             elif key == "esc" and sel is not None:
@@ -486,10 +549,14 @@ class TerminalUI(UI):
                 self._selected = None
                 interrupt = True
             elif len(key) == 1:
-                self._draft += key
+                self._draft = self._draft[:self._cursor] + key + self._draft[self._cursor:]
+                self._cursor += 1
                 self._selected = None
             if key not in ("up", "down"):
                 self._hist = None        # typing (or sending) starts a fresh walk through the history
+            if key in ("up", "down", "enter", "esc", "ctrl-c") or key.startswith("focus"):
+                self._cursor = len(self._draft)   # a new or recalled draft: type at its end
+            self._cursor = max(0, min(self._cursor, len(self._draft)))
         if btw:
             self.on_btw(btw)
         if key == "shift-tab" and self.on_mode_cycle is not None:
@@ -502,6 +569,29 @@ class TerminalUI(UI):
             self._emit_queue()
         if interrupt and self._turn_active:
             _thread.interrupt_main()   # same as Ctrl+C: the turn stops; the REPL sends what is queued
+
+    PASTE_LINES, PASTE_CHARS = 8, 1200
+
+    def _insert_paste(self, text: str) -> None:
+        """A paste while it works: in at the cursor, as text; a big one as "[Pasted text #1 +245 lines]"
+        (the full text is what gets sent), the same as the prompt does when idle."""
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        lines = text.count("\n") + 1
+        with self._keys:
+            if lines > self.PASTE_LINES or len(text) > self.PASTE_CHARS:
+                piece = f"[Pasted text #{len(self._pastes) + 1} +{lines} lines]"
+                self._pastes[piece] = text
+            else:
+                piece = text
+            cur = max(0, min(self._cursor, len(self._draft)))
+            self._draft = self._draft[:cur] + piece + self._draft[cur:]
+            self._cursor = cur + len(piece)
+            self._selected = None
+
+    def _expand(self, message: str) -> str:
+        for key, text in self._pastes.items():
+            message = message.replace(key, text)
+        return message
 
     def _history_step(self, step: int) -> None:
         """↑/↓ with nothing queued: your earlier prompts, into the box (called with the key lock held)."""
@@ -549,10 +639,12 @@ class TerminalUI(UI):
             self.ui = ui
 
         def __rich__(self):
+            self.ui._check_width()
+            self.ui._second_line_taken = False
             body = self.ui._stats_line()
-            tip = self.ui._tip_line()
-            if tip is not None:
-                body = Group(body, tip)
+            if not self.ui._second_line_taken and self.ui._turn_active:
+                # always two lines under a turn (a tip, or blank): a changing height made the input box jump
+                body = Group(body, self.ui._tip_line() or Text(""))
             tail = self.ui._stream_tail
             return self.ui._with_typing(Group(tail, body) if tail is not None else body)
 
@@ -601,6 +693,24 @@ class TerminalUI(UI):
         self._chars += len(chunk)
         self._turn_chars += len(chunk)
         self._stream.update(chunk)
+
+    def compact_started(self, messages: int, yours: int, tokens: int) -> None:
+        self._compacting = (messages, tokens)
+        self._start_live("Compacting")
+
+    def compact_finished(self, summary: str) -> None:
+        self._compacting = None
+        self._stop_live()
+        t = theme()
+        line = Text()
+        line.append("↺ ", style=f"bold {t.accent}")
+        line.append(summary, style=t.dim)
+        self._space("block")
+        self._out(line)
+        self._last = "block"
+        self._keep_working()
+
+    _compacting = None
 
     def busy(self, label: str) -> None:
         """Something is happening that prints nothing (a hook, the learning step): show it, animated."""
@@ -778,14 +888,17 @@ class TerminalUI(UI):
         return False
 
     def turn_footer(self, status: str, seconds: float, tool_calls: int, files_changed: int, ctx_pct: int,
-                    warnings: list[str] | None = None, cost: float = 0.0) -> None:
+                    warnings: list[str] | None = None, cost: float = 0.0, tokens: int = 0) -> None:
+        """✓ Worked 52s · ↓ 12.3k tokens · 3 tool calls · ... (context use is in the status line, bottom right)"""
         t = theme()
         self._stop_live()
         ok = status == "ok"
         mark = Text("✓ " if ok else "• ", style=t.ok if ok else t.warn)
         self._space("block")
         self._last = None
-        parts = [f"Worked {seconds:.0f}s" if ok else f"{seconds:.0f}s"]
+        parts = [f"Worked {_clock(seconds)}" if ok else _clock(seconds)]
+        if tokens:
+            parts.append(f"↓ {_tokens(tokens)} tokens")
         if tool_calls:
             parts.append(f"{tool_calls} tool call{'s' if tool_calls != 1 else ''}")
         if files_changed:
@@ -794,10 +907,12 @@ class TerminalUI(UI):
             from muyah_code.pricing import money
 
             parts.append(money(cost))
-        parts.append(f"ctx {ctx_pct}%")
         if not ok:
             parts.append(status)
-        self.console.print(mark + Text(" · ".join(parts), style=t.dim))
+        line = Text()
+        line.append_text(mark)
+        line.append(" · ".join(parts), style=t.dim)
+        self.console.print(line)
         if warnings:   # weakened tests are always pointed out, whatever the turn says about them
             self.console.print(Text("⚠ Tests weakened: " + "; ".join(warnings), style=t.warn))
 

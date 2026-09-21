@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 
 from muyah_code.agent.context import ContextManager
 from muyah_code.hooks import HookRunner
+from muyah_code.agent.context import is_real_user_message
 from muyah_code.llm.client import (
     AssistantMessage,
     ContextOverflowError,
@@ -55,9 +56,26 @@ class TurnResult:
 
 STOCK_OPENER = re.compile(
     r"^\s*(?:(?:you(?:'re| are) (?:absolutely|completely|totally|so|entirely) (?:right|correct)|"
+    r"you(?:'re| are) right(?: to [^.!?\n]{1,60})?(?=[.!,:;\u2014-])|"
     r"(?:great|excellent|good|fantastic) (?:question|catch|point|idea|call)|absolutely right|"
     r"i apologi[sz]e for (?:the|any) confusion|sorry for (?:the|any) confusion)[.!,:;]*\s*)+",
     re.IGNORECASE)
+
+
+def _k(n: int) -> str:
+    return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
+
+
+def compact_summary(last: dict, before: int, after: int) -> str:
+    """One clean line: what was compacted and what it saved."""
+    saved = f"{_k(before)} → {_k(after)} tokens" + (f" (−{100 - 100 * after // max(1, before)}%)" if after < before else "")
+    if last.get("kind") == "summary":
+        n, yours = last.get("count", 0), last.get("yours", 0)
+        return (f"Compacted {n} older message{'s' if n != 1 else ''} ({yours} of yours, {n - yours} from the AI and "
+                f"its tools) into a summary · {saved}")
+    count = last.get("count") or 0
+    what = f"{count} old tool output{'s' if count != 1 else ''}" if count else "the largest tool outputs"
+    return f"Shortened {what} · {saved}"
 
 
 def strip_stock_opener(text: str) -> str:
@@ -366,13 +384,14 @@ class Agent:
             self.hooks.run("PreCompact", self._hook_base() | {"trigger": "manual" if focus else "auto"})
         tools = None if self.text_mode else self.registry.schemas()
         before = self.context.count(self.messages, tools)
-        busy = getattr(self.ui, "busy", None)
-        if callable(busy):
-            busy(f"Compacting the conversation ({len(self.messages) - 1} messages, {before:,} tokens)")
-        new, desc = self.context.compact(self.messages, self.summarizer or self.llm, focus=focus, todos=self.ctx.todos,
-                                         tools=tools, emergency=emergency)
+        convo = self.messages[1:]
+        yours = sum(1 for m in convo if is_real_user_message(m))
+        self.ui.compact_started(len(convo), yours, before)
+        new, detail = self.context.compact(self.messages, self.summarizer or self.llm, focus=focus,
+                                           todos=self.ctx.todos, tools=tools, emergency=emergency)
         after = self.context.count(new, tools)
-        desc = f"Compacted the conversation: {before:,} → {after:,} tokens. {desc}"
+        desc = compact_summary(getattr(self.context, "last", {}) or {}, before, after)
+        self.ui.compact_finished(desc)
         self.messages = new
         self._new_epoch()
         if self.session:
@@ -614,8 +633,7 @@ class Agent:
         overflow_retries = 0
         while True:
             if self.context.needs_compaction(self.messages, None if self.text_mode else self.registry.schemas()):
-                self.ui.info("Context is getting full; compacting...")
-                self.ui.info(self.compact())
+                self.compact()
             tools = None if self.text_mode else self.registry.schemas()
             max_tokens = self.context.completion_budget(self.messages, tools)
             self.ui.assistant_start()
@@ -682,7 +700,7 @@ class Agent:
                     self.ui.error(self._last_error)
                     return None
                 self.ui.warn("The model's context window is full; compacting and retrying...")
-                self.ui.info(self.compact(emergency=True))
+                self.compact(emergency=True)
                 continue
             except KeyboardInterrupt as e:
                 self.ui.assistant_end()

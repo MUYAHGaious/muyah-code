@@ -334,7 +334,7 @@ def test_typing_while_working_queues_and_esc_sends_now(monkeypatch):
     shown = io.StringIO()
     Console(file=shown, width=120, color_system=None).print(ui._with_typing(Text("status")))
     screen = shown.getvalue()
-    assert "❯ also run the tests▌" in screen                  # the input box stays on screen while it works
+    assert "❯ also run the tests" in screen                   # the input box stays on screen while it works
     assert "⏵⏵ auto" in screen and "(shift+tab)" in screen    # with the mode status line under it
     ui._on_key("shift-tab")
     assert modes == ["cycled"]                                # Shift+Tab changes the mode mid-turn
@@ -424,3 +424,19 @@ def test_small_pastes_go_in_as_typed(project):
     assert repl._paste("two\nlines") == "two\nlines"
     big = repl._paste("x\n" * 20)
     assert big == "[Pasted text #1 +21 lines]" and repl._expand_pastes(f"see {big}") == "see " + "x\n" * 20
+
+
+def test_a_resumed_session_shows_messages_that_were_compacted_away(project, tmp_path):
+    from muyah_code.session import Session
+
+    s = Session(tmp_path)
+    s.start({"cwd": str(project)})
+    for m in ({"role": "user", "content": "first question"}, {"role": "assistant", "content": "first answer"},
+              {"role": "user", "content": "second question"}, {"role": "assistant", "content": "second answer"}):
+        s.log_message(m)
+    s.log_replace([{"role": "user", "content": "[Summary of the earlier conversation]"},
+                   {"role": "assistant", "content": "Understood."}], "compact")
+    s.close()
+    _, messages, meta = Session.resume(tmp_path, s.id)
+    assert "first question" not in str(messages)                    # the model continues from the summary
+    assert [m["content"] for m in meta["display"]][:2] == ["first question", "first answer"]   # you still see it

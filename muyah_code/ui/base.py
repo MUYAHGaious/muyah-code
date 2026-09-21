@@ -35,6 +35,11 @@ class UI:
     def model_status(self, state: str) -> None: ...   # "sent" (waiting for the provider) / "first_token"
     def busy(self, label: str) -> None: ...           # work with no output of its own (keep the spinner going)
     def handoff(self, command: str, targets: list[str]) -> None: ...  # a delete the user should run themselves
+    def compact_started(self, messages: int, yours: int, tokens: int) -> None: ...   # compaction begins
+
+    def compact_finished(self, summary: str) -> None:   # what it did, one line
+        self.info(summary)
+
     def tool_start(self, title: str) -> None: ...
     def tool_end(self, title: str, result: ToolResult) -> None: ...
     def on_todos(self, todos: list[dict]) -> None: ...

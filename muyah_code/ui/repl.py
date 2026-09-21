@@ -59,6 +59,8 @@ class RecentHistory(FileHistory):
     def recent(self, n: int = HISTORY_LIMIT) -> list[str]:
         """Oldest to newest, for ↑ while it works."""
         return list(reversed(list(self.load_history_strings())[:n]))
+
+
 PASTE_LINES = 8    # a paste longer than this (or PASTE_CHARS) shows as "[Pasted text #1 +245 lines]"
 PASTE_CHARS = 1200
 
@@ -71,11 +73,16 @@ class _CompactPromptSession(PromptSession):
     def _get_default_buffer_control_height(self) -> Dimension:
         buff = self.default_buffer
         try:
-            rows = get_app().output.get_size().rows
+            size = get_app().output.get_size()
+            rows, cols = size.rows, size.columns
         except Exception:
-            rows = 24
+            rows, cols = 24, 80
+        # rows as they appear: a long line wraps onto several (counting only logical lines gave it one row,
+        # so the text slid out of view sideways instead of wrapping like Claude Code)
+        usable = max(10, cols - 3)                        # the "❯ " prompt and a spare column
+        shown = sum(max(1, -(-(len(line) + 1) // usable)) for line in buff.document.lines)
         # never taller than the terminal: prompt_toolkit would show "Window too small"; the box scrolls instead
-        lines = max(1, min(buff.document.line_count, max(3, rows - 6)))
+        lines = max(1, min(shown, max(3, rows - 6)))
         if not get_app().is_done and buff.complete_state is not None:
             rows = min(MENU_ROWS, len(buff.complete_state.completions)) + 1
             return Dimension.exact(lines + rows)
@@ -470,7 +477,7 @@ class Repl:
         if getattr(self.app, "resumed", False):
             from muyah_code.ui.history import print_history
 
-            print_history(self.console, self.app.agent.messages[1:])
+            print_history(self.console, getattr(self.app, "resume_display", None) or self.app.agent.messages[1:])
         pending = initial_prompt
         while True:
             if pending is None:
@@ -510,7 +517,7 @@ class Repl:
             self._turn_started = time.monotonic()
             self.ui.begin_typing(carried=self._carry)
             self._carry = []
-            cost_before = self.app.ledger.cost
+            cost_before, out_before = self.app.ledger.cost, self.app.ledger.tokens_out
             try:
                 result = self.app.run_prompt(line)
             finally:
@@ -518,8 +525,12 @@ class Repl:
             changes: list = []
             try:
                 changes, weakened = self._turn_changes()
+                if changes and self.app.rewind.others_active():
+                    self.ui.info("Another MUYAH-CODE session is working in this folder: the changed files may "
+                                 "include its work.")
                 self.ui.turn_footer(result.status, result.duration, result.tool_calls, len(changes),
-                                    self._ctx_pct(), warnings=weakened, cost=self.app.ledger.cost - cost_before)
+                                    self._ctx_pct(), warnings=weakened, cost=self.app.ledger.cost - cost_before,
+                                    tokens=self.app.ledger.tokens_out - out_before)
                 self.console.print()
             except KeyboardInterrupt:  # an Esc that arrived just as the turn ended
                 pass

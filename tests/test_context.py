@@ -130,3 +130,12 @@ def test_compaction_never_grows_the_context_when_the_current_turn_is_the_big_par
     assert ctx.count(new) < before * 0.9, desc
     assert "shortened large tool outputs" in desc
     assert [m["role"] for m in new if m["role"] == "tool"]              # every tool result still answered
+
+
+def test_the_compaction_report_is_one_clear_line():
+    from muyah_code.agent.loop import compact_summary
+
+    line = compact_summary({"kind": "summary", "count": 34, "yours": 12}, 11400, 3200)
+    assert line == ("Compacted 34 older messages (12 of yours, 22 from the AI and its tools) into a summary · "
+                    "11.4k → 3.2k tokens (−72%)")
+    assert compact_summary({"kind": "pruned", "count": 5}, 9000, 6000) == "Shortened 5 old tool outputs · 9.0k → 6.0k tokens (−34%)"

@@ -6,7 +6,7 @@ auto picks what your terminal understands:
   * iTerm2, WezTerm, Ghostty: OSC 9 (a desktop notification from the terminal itself)
   * kitty: OSC 99
   * GNOME Terminal / other VTE terminals, foot: OSC 777
-  * Windows: a Windows toast notification (plus the terminal bell, which flashes the taskbar)
+  * Windows: a Windows toast notification with a soft chime ("notify_sound": im, default, mail, reminder, silent)
   * macOS Terminal.app: a notification through osascript
   * anything else: the terminal bell
 
@@ -25,6 +25,11 @@ import subprocess
 import sys
 
 MODES = ("auto", "osc9", "osc777", "osc99", "bell", "native", "off")
+# "notify_sound": the chime of a system notification. Windows toast sounds; macOS uses a system sound name.
+WINDOWS_SOUNDS = {"im": "ms-winsoundevent:Notification.IM", "default": "ms-winsoundevent:Notification.Default",
+                  "mail": "ms-winsoundevent:Notification.Mail", "reminder": "ms-winsoundevent:Notification.Reminder",
+                  "sms": "ms-winsoundevent:Notification.SMS"}
+MAC_SOUNDS = {"im": "Glass", "default": "Ping", "mail": "Pop", "reminder": "Hero", "sms": "Tink"}
 
 
 def auto_mode(env: dict | None = None, platform: str | None = None) -> str:
@@ -51,12 +56,12 @@ def sequence(mode: str, title: str, message: str) -> str:
         return f"\x1b]777;notify;{title};{clean}\x07"
     if mode == "osc99":
         return f"\x1b]99;;{title}: {clean}\x1b\\"
-    if mode in ("bell", "native"):
+    if mode == "bell":
         return "\x07"
-    return ""
+    return ""                  # native: the system notification brings its own sound (no terminal beep)
 
 
-def _native(title: str, message: str) -> bool:
+def _native(title: str, message: str, sound: str = "im") -> bool:
     """A system notification without extra packages. Runs in the background; returns False if unavailable."""
     flags = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
     try:
@@ -70,6 +75,10 @@ def _native(title: str, message: str) -> bool:
                 "$x = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02);"
                 f"$n = $x.GetElementsByTagName('text'); $n.Item(0).AppendChild($x.CreateTextNode('{t}')) > $null;"
                 f"$n.Item(1).AppendChild($x.CreateTextNode('{m}')) > $null;"
+                "$a = $x.CreateElement('audio');"
+                + ("$a.SetAttribute('silent', 'true');" if sound == "silent" else
+                   f"$a.SetAttribute('src', '{WINDOWS_SOUNDS.get(sound, WINDOWS_SOUNDS['im'])}');")
+                + "$x.DocumentElement.AppendChild($a) > $null;"
                 "$id = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe';"
                 "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($id).Show("
                 "[Windows.UI.Notifications.ToastNotification]::new($x))")
@@ -78,7 +87,8 @@ def _native(title: str, message: str) -> bool:
             return True
         if sys.platform == "darwin" and shutil.which("osascript"):
             esc = message.replace('"', "'")
-            subprocess.Popen(["osascript", "-e", f'display notification "{esc}" with title "{title}"'],
+            chime = "" if sound == "silent" else f' sound name "{MAC_SOUNDS.get(sound, "Glass")}"'
+            subprocess.Popen(["osascript", "-e", f'display notification "{esc}" with title "{title}"{chime}'],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return True
         if shutil.which("notify-send"):
@@ -98,6 +108,7 @@ class Notifier:
         if self.mode == "auto":
             self.mode = auto_mode()
         self.after = float(cfg.get("notify_after", 20) or 20)
+        self.sound = str(cfg.get("notify_sound", "im") or "im").lower()
         self.write = write
         self.hooks = hooks
         self.native = native
@@ -119,5 +130,5 @@ class Notifier:
         seq = sequence(self.mode, title, message)
         if seq:
             self.write(seq)
-        if self.mode == "native":
-            self.native(title, message)
+        if self.mode == "native" and not self.native(title, message, self.sound):
+            self.write("\x07")    # no notification system here: at least the bell

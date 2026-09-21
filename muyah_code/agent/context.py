@@ -138,6 +138,7 @@ class ContextManager:
         emergency=True is used after the server rejected a prompt as too long: our estimate was low,
         so the ratio is bumped and the target is stricter.
         """
+        self.last: dict = {}                     # what this compaction did, for the one-line report
         if emergency:
             self.ratio = min(3.0, self.ratio * 1.25)
         work = [dict(m) for m in messages]
@@ -146,6 +147,7 @@ class ContextManager:
         pruned = self.prune(work, keep_recent=1 if emergency else None)
         # In an emergency the server just proved our estimate too low, so never stop at the cheap step.
         if not focus and not emergency and self.count(work, tools) <= target:
+            self.last = {"kind": "pruned", "count": pruned}
             return work, f"pruned {pruned} old tool outputs ({before} -> {self.count(work, tools)} tokens)"
 
         split = self.split_point(work, tail_budget=int(self.usable * 0.3))
@@ -154,6 +156,7 @@ class ContextManager:
             # a single enormous turn: shrink every tool result, harder in an emergency
             keep = 0 if emergency else 2
             self.prune(work, keep_recent=keep, max_chars=1000 if emergency else 1500)
+            self.last = {"kind": "pruned", "count": 0}
             return work, f"pruned tool outputs inside the current turn ({before} -> {self.count(work, tools)} tokens)"
 
         summary = self._summarize(head, llm, focus)
@@ -181,7 +184,11 @@ class ContextManager:
             # summarizing cost more than it saved: keep the conversation, with its tool outputs shortened
             self.prune(work, keep_recent=1, max_chars=1000)
             new, desc = work, "shortened large tool outputs (a summary would not have been smaller)"
+            self.last = {"kind": "pruned", "count": 0}
             after = self.count(new, tools)
+        if self.last.get("kind") != "pruned":
+            self.last = {"kind": "summary", "count": len(head),
+                         "yours": sum(1 for m in head if is_real_user_message(m))}
         return new, f"{desc} ({before} -> {after} tokens)"
 
     def _summarize(self, head: list[dict], llm, focus: str) -> str | None:

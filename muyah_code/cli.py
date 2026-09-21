@@ -47,9 +47,14 @@ def _console():
 def main(argv: list[str] | None = None) -> int:
     _utf8_stdio()
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] in SUBCOMMANDS:
-        return _subcommand(argv[0], argv[1:])
-    return _main(argv)
+    try:
+        if argv and argv[0] in SUBCOMMANDS:
+            return _subcommand(argv[0], argv[1:])
+        return _main(argv)
+    except KeyboardInterrupt:
+        # Ctrl+C at any moment (starting up, a question, a menu): leave quietly, never with a traceback
+        print("\nInterrupted.", file=sys.stderr)
+        return 130
 
 
 def _parser() -> argparse.ArgumentParser:

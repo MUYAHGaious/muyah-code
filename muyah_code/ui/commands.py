@@ -155,8 +155,7 @@ class CommandRouter:
         self.console.print("[dim]Conversation cleared.[/]")
 
     def compact(self, arg):
-        with self.console.status("Compacting..."):
-            self.console.print(f"[dim]{escape(self.app.compact(arg))}[/]")
+        self.app.compact(arg)          # the progress bar and the one-line result come from the UI
 
     def context(self, arg):
         used, usable = self.app.context_usage()
@@ -309,6 +308,9 @@ class CommandRouter:
             else:
                 verbs = {"M": "restore", "A": "bring back", "D": "remove"}
                 self.console.print(f"This will change {len(changes)} file{'s' if len(changes) != 1 else ''}:")
+                if self.app.rewind.others_active():
+                    self.console.print("[yellow]Another MUYAH-CODE session is working in this folder: some of these "
+                                       "changes may be its work, and rewinding restores them too.[/]")
                 for status, path in changes[:15]:
                     self.console.print(f"  [dim]{verbs[status]}[/] {escape(path)}")
                 if len(changes) > 15:
@@ -530,7 +532,7 @@ class CommandRouter:
                 self.console.print("[dim]No earlier conversations in this folder.[/]")
                 return
         try:
-            session, messages, _ = Session.resume(sdir, arg)
+            session, messages, meta = Session.resume(sdir, arg)
         except FileNotFoundError as e:
             self.console.print(f"[red]{escape(str(e))}[/]")
             return
@@ -539,7 +541,7 @@ class CommandRouter:
         self.app.agent.load_history(messages)
         from muyah_code.ui.history import print_history
 
-        print_history(self.console, messages)
+        print_history(self.console, meta.get("display") or messages)   # the whole conversation, not the compacted copy
         self.console.print(f"[dim]Resumed {session.id} ({len(messages)} messages).[/]")
 
     def sessions(self, arg):

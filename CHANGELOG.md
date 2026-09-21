@@ -5,6 +5,30 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **Pasting while it works** no longer sends each pasted line as its own message.
+  - While a turn runs, MUYAH-CODE turns on bracketed paste, so Windows Terminal also skips its "paste anyway?" warning.
+  - A paste arrives as one piece; terminals without bracketed paste are detected by the burst.
+  - A big paste shows as `[Pasted text #1 +50 lines]` and is sent in full. Ctrl+C is no longer lost in a flood of pasted keys.
+- **The box while it works:** long text wraps; ←/→/Home/End move the cursor, typing inserts at it, and Backspace/Delete edit there.
+- **The normal prompt:** a long line wraps instead of sliding out of view.
+- **Several sessions at once**, in the same folder or different ones.
+  - Rewind snapshots are per session (own git index and ref, `write-tree` + `commit-tree`), so concurrent sessions never collide.
+  - When another session works in the same folder, the changed-files line and the rewind preview say that some changes may be its.
+- **Resuming shows the whole conversation**, including messages compaction had removed from the model's copy.
+  - It shows the last 20 exchanges, drawn in the same grey prompt blocks as a live session.
+  - Added context (lessons, files, notes) is kept out of the displayed prompts.
+- **Compaction reads cleanly:**
+  - an animated bar while it runs, with the message and token counts;
+  - then one line, e.g. `↺ Compacted 34 older messages (12 of yours, 22 from the AI and its tools) into a summary · 11.4k → 3.2k tokens (−72%)`.
+- **The spinner:** the turn's time with the tokens right beside it (`1m 35s · ↓ 93.4k tokens`).
+  - Context use moves to the bottom right while it works, as when idle.
+  - The finished line shows the tokens (`✓ Worked 52s · ↓ 12.3k tokens · …`) and no longer repeats the context.
+- **Windows notifications** play a soft chime instead of the terminal beep; `notify_sound` picks another or silent.
+- **Fixes:**
+  - Starting in your home folder froze on listing every file for the live view's explorer. The listing now runs in the background, stops after a few thousand files or a second, and is skipped for your home folder and drive roots.
+  - Ctrl+C at any moment (starting up, a question, a menu) exits cleanly, with no traceback.
+  - Resizing while it works redraws the conversation at the new width.
+  - "You're right to push me…" openers are now removed too.
 - **`muyah acp`:** MUYAH-CODE in Zed, JetBrains IDEs and Neovim over the Agent Client Protocol (v1).
   - It streams answers and thinking, tool calls with real before/after diffs, and the plan.
   - Approvals happen in the editor's own UI, and the agent reads your unsaved buffers.
