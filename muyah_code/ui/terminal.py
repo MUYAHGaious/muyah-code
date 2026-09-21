@@ -10,8 +10,10 @@ Improvements over a plain streaming CLI:
 
 from __future__ import annotations
 
+import _thread
 import io
 import re
+import threading
 import time
 from contextlib import contextmanager, nullcontext
 
@@ -214,6 +216,12 @@ class TerminalUI(UI):
         self._sub_current = ""   # a sub-agent's current step (shown under its Agent line while it runs)
         self._sub_steps = 0
         self._sub_errors = 0
+        # typing while it works (see ui/typeahead.py)
+        self._draft = ""
+        self._queued: list[str] = []
+        self._keys = threading.Lock()
+        self._reader = None
+        self._turn_active = False
 
     # ------------------------------------------------------------------ live status
 
@@ -224,7 +232,7 @@ class TerminalUI(UI):
             tt, _ = self._tool
             line = blocks.header(tt, True, self.cwd, self.console.width - 22)
             line.append(f"  {elapsed:.0f}s", style=t.dim)
-            line.append("  (ctrl+c to interrupt)", style=t.dim)
+            line.append("  (esc to interrupt · type to queue a message)", style=t.dim)
             spin = Spinner("dots", text=line, style=t.accent)
             if tt.name == "Agent" and self._sub_current:
                 step = Text("  ⎿ ", style=t.dim)
@@ -250,8 +258,97 @@ class TerminalUI(UI):
         if self.context_pct is not None:
             parts.append(f"ctx {self.context_pct}%")
         spinner = Spinner("dots", text=Text.assemble((f"{label}… ", t.accent), (" · ".join(parts), t.dim),
-                                                     ("  (ctrl+c to interrupt)", t.dim)), style=t.accent)
+                                                     ("  (esc to interrupt · type to queue a message)", t.dim)),
+                          style=t.accent)
         return spinner
+
+    def _with_typing(self, renderable):
+        """Add your draft and queued messages under the live status."""
+        with self._keys:
+            draft, queued = self._draft, list(self._queued)
+        if not draft and not queued:
+            return renderable
+        t = theme()
+        rows = [renderable]
+        for msg in queued:
+            line = Text("› ", style=t.dim)
+            line.append(msg, style=t.dim)
+            line.append("  · queued, goes in at the next step (esc: send now)", style=f"italic {t.dim}")
+            line.no_wrap, line.overflow = True, "ellipsis"
+            rows.append(line)
+        if draft:
+            line = Text("› ", style=f"bold {t.accent}")
+            line.append(draft)
+            line.append("▌", style=t.accent)
+            line.append("   enter: queue · esc: send now", style=t.dim)
+            line.no_wrap, line.overflow = True, "ellipsis"
+            rows.append(line)
+        return Group(*rows)
+
+    # ------------------------------------------------------------------ typing while it works
+
+    def begin_typing(self) -> None:
+        """A turn is starting: listen for keys (if this is a real terminal)."""
+        from muyah_code.ui.typeahead import KeyReader
+
+        self._turn_active = True
+        if self.animate and KeyReader.available():
+            self._reader = KeyReader(self._on_key)
+            self._reader.start()
+
+    def end_typing(self) -> tuple[list[str], str]:
+        """The turn ended: stop listening. Returns (queued messages not yet delivered, unsent draft)."""
+        self._turn_active = False
+        if self._reader is not None:
+            self._reader.stop()
+            self._reader = None
+        with self._keys:
+            queued, draft = self._queued, self._draft
+            self._queued, self._draft = [], ""
+        return queued, draft
+
+    def take_queued(self) -> list[str]:
+        """Messages you queued while it worked: the agent takes them at its next step."""
+        with self._keys:
+            queued, self._queued = self._queued, []
+        for msg in queued:
+            self._space("block")
+            self._out(blocks.user_prompt(msg))
+            self._last = "block"
+        return queued
+
+    def _on_key(self, key: str) -> None:
+        interrupt = False
+        with self._keys:
+            if key == "enter":
+                if self._draft.strip():
+                    self._queued.append(self._draft.strip())
+                self._draft = ""
+            elif key == "backspace":
+                self._draft = self._draft[:-1]
+            elif key in ("esc", "ctrl-c"):
+                if self._draft.strip():
+                    self._queued.append(self._draft.strip())
+                self._draft = ""
+                interrupt = True
+            elif len(key) == 1:
+                self._draft += key
+        if interrupt and self._turn_active:
+            _thread.interrupt_main()   # same as Ctrl+C: the turn stops; the REPL sends what is queued
+
+    def _keyboard_to_prompt(self):
+        """Hand the keyboard to a menu/question for a moment."""
+        reader = self._reader
+
+        class _Pause:
+            def __enter__(self_inner):
+                if reader is not None:
+                    reader.pause()
+
+            def __exit__(self_inner, *exc):
+                if reader is not None:
+                    reader.resume()
+        return _Pause()
 
     def _start_live(self, phase: str) -> None:
         self._stop_live()
@@ -267,7 +364,7 @@ class TerminalUI(UI):
             self.ui = ui
 
         def __rich__(self):
-            return self.ui._stats_line()
+            return self.ui._with_typing(self.ui._stats_line())
 
     def _stop_live(self) -> None:
         if self._live is not None:
@@ -506,19 +603,27 @@ class TerminalUI(UI):
         self.console.print(Panel(body, title=f"[bold {t.warn}]{heading}[/]", title_align="left",
                                  border_style=t.warn, expand=False, padding=(0, 1)))
         if self.prompter is not None:
-            picked = self.prompter.select("Do you want to proceed?", [
-                ("yes", "Yes"),
-                ("always", f"Yes, and don't ask again this session for {req.suggested_rule}"),
-                ("project", "Yes, always in this project"),
-                ("feedback", "No, and tell MUYAH-CODE what to do instead"),
-                ("no", "No"),
-            ], default="yes")
-            if picked == "feedback":
-                reply = PermissionReply("no", feedback=self.prompter.ask("What should it do instead? ").strip())
-            else:
-                reply = PermissionReply(picked or "no")
-            self._decision(reply, req)
-            return reply
+            with self._keyboard_to_prompt():
+                return self._ask_permission_menu(req)
+        return self._ask_permission_plain(req)
+
+    def _ask_permission_menu(self, req: PermissionRequest) -> PermissionReply:
+        picked = self.prompter.select("Do you want to proceed?", [
+            ("yes", "Yes"),
+            ("always", f"Yes, and don't ask again this session for {req.suggested_rule}"),
+            ("project", "Yes, always in this project"),
+            ("feedback", "No, and tell MUYAH-CODE what to do instead"),
+            ("no", "No"),
+        ], default="yes")
+        if picked == "feedback":
+            reply = PermissionReply("no", feedback=self.prompter.ask("What should it do instead? ").strip())
+        else:
+            reply = PermissionReply(picked or "no")
+        self._decision(reply, req)
+        return reply
+
+    def _ask_permission_plain(self, req: PermissionRequest) -> PermissionReply:
+        t = theme()
         self.console.print(
             f"  [bold]⏎/y[/] yes   [bold]a[/] always this session [{t.dim}]({escape(req.suggested_rule)})[/]   "
             f"[bold]p[/] always in project   [bold]n[/] no   [{t.dim}]or type what to do instead[/]")
@@ -554,6 +659,10 @@ class TerminalUI(UI):
         self._last = "block"
 
     def ask_user(self, question: str, options: list[str]) -> str:
+        with self._keyboard_to_prompt():
+            return self._ask_user(question, options)
+
+    def _ask_user(self, question: str, options: list[str]) -> str:
         t = theme()
         self._stop_live()
         self.console.print(Panel(Text(question), title=f"[bold {t.accent}]Question[/]", border_style=t.accent,

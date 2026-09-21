@@ -15,6 +15,7 @@ Robustness features for open-weights models:
 from __future__ import annotations
 
 import json
+import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -83,6 +84,50 @@ class _TagHider:
             self.sink(self.buf)
         self.buf = ""
 
+
+
+
+class _Cancelled(Exception):
+    """Raised inside an abandoned model request so it stops at its next chunk."""
+
+
+def interruptible_call(chat, messages, on_text=None, on_reasoning=None, **kwargs):
+    """Run a model request on a worker thread and wait in short slices.
+
+    A blocked network read cannot be interrupted in Python, so Ctrl+C / Esc used to take effect only when
+    the server sent its next bytes (seconds, while a model thinks). Waiting here instead lets the interrupt
+    land within ~0.1 s; the abandoned request stops at its next chunk and its output is dropped."""
+    cancelled = threading.Event()
+
+    def guard(callback):
+        if callback is None:
+            return None
+
+        def wrapped(chunk):
+            if cancelled.is_set():
+                raise _Cancelled()
+            callback(chunk)
+        return wrapped
+
+    box: dict = {}
+
+    def work():
+        try:
+            box["result"] = chat(messages, on_text=guard(on_text), on_reasoning=guard(on_reasoning), **kwargs)
+        except BaseException as e:  # handed to the waiting thread below
+            box["error"] = e
+
+    worker = threading.Thread(target=work, name="muyah-llm", daemon=True)
+    worker.start()
+    try:
+        while worker.is_alive():
+            worker.join(0.1)
+    except KeyboardInterrupt:
+        cancelled.set()
+        raise
+    if "error" in box:
+        raise box["error"]
+    return box["result"]
 
 
 LONG_ARG_KEYS = ("content", "new_string", "old_string", "edits", "prompt")
@@ -303,6 +348,8 @@ class Agent:
 
         for step in range(1, self.max_steps + 1):
             result.steps = step
+            if step > 1:
+                self._take_queued_messages()
             resp = self._call_llm()
             if resp is None:
                 result.status = "error"
@@ -397,8 +444,8 @@ class Agent:
             if meter is not None and hasattr(self.llm, "on_status"):
                 self.llm.on_status = lambda state: self._emit("llm_status", state=state)
             try:
-                resp = self.llm.chat(self.messages, tools=tools, on_text=on_text, on_reasoning=on_reasoning,
-                                     max_tokens=max_tokens)
+                resp = interruptible_call(self.llm.chat, self.messages, tools=tools, on_text=on_text,
+                                          on_reasoning=on_reasoning, max_tokens=max_tokens)
                 if hider:
                     hider.flush()
                 if meter is not None:
@@ -446,6 +493,14 @@ class Agent:
             if prompt_tokens:
                 self.context.calibrate(self.messages, tools, prompt_tokens)
             return resp
+
+    def _take_queued_messages(self) -> None:
+        """Messages you typed while it worked arrive between steps, as soon as the current step is done."""
+        take = getattr(self.ui, "take_queued", None)
+        messages = take() if callable(take) else []
+        for msg in messages:
+            self._emit("user_message", text=msg[:2000], queued=True)
+            self._append({"role": "user", "content": msg})
 
     def _llm_failed(self, meter, started: float, error: BaseException) -> None:
         if meter is not None:

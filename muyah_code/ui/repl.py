@@ -315,10 +315,24 @@ class Repl:
                 else:
                     continue
             self.ui.context_pct = self._ctx_pct()
-            result = self.app.run_prompt(line)
-            self.ui.turn_footer(result.status, result.duration, result.tool_calls, self._files_changed(),
-                                self._ctx_pct())
-            self.console.print()
+            self.ui.begin_typing()
+            try:
+                result = self.app.run_prompt(line)
+            finally:
+                queued, draft = self.ui.end_typing()
+            try:
+                self.ui.turn_footer(result.status, result.duration, result.tool_calls, self._files_changed(),
+                                    self._ctx_pct())
+                self.console.print()
+            except KeyboardInterrupt:  # an Esc that arrived just as the turn ended
+                pass
+            if queued:  # typed while it worked but not yet delivered: send it now
+                pending = "\n\n".join(queued)
+                self.console.print(blocks.user_prompt(pending))
+                self.ui.mark_prompt()
+                continue
+            if draft:
+                self._resume_text = draft
         self.console.print(f"[dim]Bye. Resume this session with: muyah -r {escape(self.app.session_id)}[/]")
         return 0
 

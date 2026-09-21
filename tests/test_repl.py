@@ -279,3 +279,54 @@ def test_pick_session_lists_recent_sessions_newest_first(tmp_path):
     kind, message, ids = user.asked[0]
     assert kind == "select" and ids == [new.id, old.id]
     assert ago(time.time() - 7200) == "2 hours ago" and ago(time.time()) == "just now"
+
+
+def test_model_request_can_be_interrupted_while_the_server_is_silent():
+    import threading
+    import time
+
+    import pytest
+
+    from muyah_code.agent.loop import interruptible_call
+
+    release = threading.Event()
+    streamed = []
+
+    def slow_chat(messages, on_text=None, on_reasoning=None, **kw):
+        release.wait(5)            # the server is "thinking": a blocked network read
+        on_text("late text")       # arrives after the user interrupted: must be dropped
+        return "done"
+
+    threading.Timer(0.2, lambda: __import__("_thread").interrupt_main()).start()
+    t0 = time.monotonic()
+    with pytest.raises(KeyboardInterrupt):
+        interruptible_call(slow_chat, [], on_text=streamed.append)
+    assert time.monotonic() - t0 < 1.0            # not after the server's 5 s
+    release.set()
+    time.sleep(0.2)
+    assert streamed == []
+    assert interruptible_call(lambda m, **kw: "ok", []) == "ok"
+
+
+def test_typing_while_working_queues_and_esc_sends_now(monkeypatch):
+    ui = TerminalUI(Console(file=io.StringIO(), width=100, force_terminal=False, color_system=None), animate=False)
+    interrupts = []
+    monkeypatch.setattr("_thread.interrupt_main", lambda: interrupts.append(1))
+    ui.begin_typing()
+    for ch in "also run the tests":
+        ui._on_key(ch)
+    ui._on_key("backspace")
+    ui._on_key("s")
+    from rich.text import Text
+
+    shown = io.StringIO()
+    Console(file=shown, width=120, color_system=None).print(ui._with_typing(Text("status")))
+    assert "› also run the tests▌" in shown.getvalue() and "enter: queue" in shown.getvalue()
+    ui._on_key("enter")
+    assert ui._queued == ["also run the tests"] and ui._draft == ""
+    assert ui.take_queued() == ["also run the tests"] and ui._queued == []   # delivered at the next step
+    ui._on_key("x")
+    ui._on_key("esc")                                                      # send now
+    assert interrupts == [1]
+    queued, draft = ui.end_typing()
+    assert queued == ["x"] and draft == ""
