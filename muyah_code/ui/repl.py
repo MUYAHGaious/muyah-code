@@ -99,6 +99,7 @@ class Repl:
         self.prompter = prompter or Prompter()
         self.ui.prompter = self.prompter
         self.ui.cwd = app.cwd
+        self.ui.events = app.events
         self.router = CommandRouter(self)
         self._last_interrupt = 0.0
         self._layout_width: int | None = None   # width the transcript was last laid out at
@@ -168,6 +169,9 @@ class Repl:
         style = f"fg:{self._mode_color()} bold"
         status = [("", "  "), (style, label), ("fg:ansibrightblack", f" · {what} (shift+tab)")]
         status.append(("fg:ansibrightblack", f" · ctx {self._ctx_pct()}%"))
+        viz = getattr(self.app, "viz", None)
+        if viz is not None and viz.running:
+            status.append((f"fg:{t.accent}", " · ● live view on (/viz reopens it)"))
         return rule + status
 
     def _prompt_message(self):
@@ -280,8 +284,28 @@ class Repl:
                 self.ui.mark_prompt()
             return line
 
+    def offer_viz(self) -> None:
+        """At startup: open the live view? Asked until you pick Always or Never (setting viz.autostart)."""
+        choice = self.app.cfg.get("viz.autostart")
+        if choice is False:
+            return
+        if choice is not True:
+            picked = self.prompter.select("Open the live view in your browser? It shows what MUYAH-CODE is doing", [
+                ("yes", "Yes, open it"),
+                ("always", "Always open it (don't ask again)"),
+                ("no", "Not now"),
+                ("never", "Never ask again (/viz still opens it)"),
+            ], default="no")
+            if picked in ("always", "never"):
+                self.app.cfg.persist("viz.autostart", picked == "always")
+            if picked not in ("yes", "always"):
+                return
+        self.router.viz("")
+
     def run(self, initial_prompt: str | None = None) -> int:
         self.header()
+        if self.console.is_terminal and _interactive_stdin():
+            self.offer_viz()
         if getattr(self.app, "resumed", False):
             from muyah_code.ui.history import print_history
 
@@ -335,6 +359,15 @@ class Repl:
                 self._resume_text = draft
         self.console.print(f"[dim]Bye. Resume this session with: muyah -r {escape(self.app.session_id)}[/]")
         return 0
+
+
+def _interactive_stdin() -> bool:
+    import sys
+
+    try:
+        return sys.stdin is not None and sys.stdin.isatty()
+    except (ValueError, OSError):
+        return False
 
 
 def run_repl(app, ui: TerminalUI, initial_prompt: str | None = None) -> int:

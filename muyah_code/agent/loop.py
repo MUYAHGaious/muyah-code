@@ -147,14 +147,38 @@ def brief_args(args: dict | None) -> dict:
     return out
 
 
+FILE_CONTENT_LIMIT = 12000   # characters of a file / diff the live view gets per event
+
+
+def file_detail(name: str, args: dict | None) -> dict:
+    """For the live view's file panels: what is being written, or the edit (old -> new), as it starts."""
+    args = args or {}
+    if name == "Write":
+        return {"file": {"path": args.get("file_path", ""), "content": str(args.get("content", ""))[:FILE_CONTENT_LIMIT]}}
+    if name in ("Edit", "MultiEdit"):
+        edits = args.get("edits") if isinstance(args.get("edits"), list) else [args]
+        return {"file": {"path": args.get("file_path", ""), "edits": [
+            {"old": str(e.get("old_string", ""))[:4000], "new": str(e.get("new_string", ""))[:4000]}
+            for e in edits[:20] if isinstance(e, dict)]}}
+    if name == "Read":
+        return {"file": {"path": args.get("file_path", "")}}
+    return {}
+
+
 def result_detail(name: str, res: ToolResult) -> dict:
-    """What the live view shows about a finished tool: output (tail for commands), exit code, diff size."""
+    """What the live view shows about a finished tool: output (tail for commands), file text, diff, exit code."""
     detail: dict = {}
     content = res.content or ""
     if name in ("Bash", "BashOutput") or name.startswith("mcp__"):
-        detail["output"] = content[-1500:]
-    elif name not in ("Read", "Write", "Edit"):
-        detail["output"] = content[:1200]
+        detail["output"] = content[-3000:]
+    elif name == "Read":
+        detail["output"] = content[:FILE_CONTENT_LIMIT]     # the file as the model saw it (line-numbered)
+    elif name == "Skill":
+        detail["output"] = content[:6000]                   # the skill's instructions
+    elif name not in ("Write", "Edit", "MultiEdit"):
+        detail["output"] = content[:2000]
+    if res.display:
+        detail["diff"] = res.display[:FILE_CONTENT_LIMIT]
     if "exit_code" in res.meta:
         detail["exit_code"] = res.meta["exit_code"]
     if res.display:
@@ -235,7 +259,8 @@ class Agent:
 
     def _emit_tool_start(self, tool_id: int, name: str, title: str, args: dict | None) -> None:
         """The tool is actually starting to run, right now."""
-        self._emit("tool_start", id=tool_id, name=name, title=title[:200], args=brief_args(args))
+        self._emit("tool_start", id=tool_id, name=name, title=title[:200], args=brief_args(args),
+                   **file_detail(name, args))
 
     def _emit_tool_end(self, tool_id: int, name: str, res: ToolResult, duration: float) -> None:
         self._emit("tool_end", id=tool_id, name=name, ok=not res.is_error, summary=(res.summary or "")[:160],

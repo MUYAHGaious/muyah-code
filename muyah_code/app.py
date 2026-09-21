@@ -169,6 +169,8 @@ class App:
         self.events.emit("session", model=self.llm.model, provider=prov.name if prov else self.llm.base_url,
                          window=self.window, cwd=str(self.cwd), mode=self.permissions.mode,
                          session_id=self.session_id, tools=self.registry.names(), mcp=self._mcp_inventory(),
+                         lessons_path={k: str(v) for k, v in self.lessons.paths.items() if v is not None},
+                         memory_files=[str(f.path) for f in self.instructions],
                          skills=[{"name": s.name, "description": s.description[:160], "source": s.source}
                                  for s in self.skills.all()],
                          agents=[{"name": d.name, "description": d.description[:160]}

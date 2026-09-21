@@ -7,11 +7,16 @@ a resumed session continues its clock). Agent events also carry "agent" ("main" 
     turn_start    prompt                         turn_end     status, duration, tool_calls
     llm_start     model                          llm_tokens   chars, text, thinking (batched ~10/s)
     llm_end       prompt_tokens, completion_tokens, duration, calls
-    tool_start    id, name, title                tool_end     id, name, ok, summary, duration, chars
+    tool_request  id, name, title, args          (the model asked; nothing runs yet)
+    tool_permission id, state: asking|approved|denied
+    tool_start    id, name, title, args, file{path, content | edits[{old,new}]} (it runs now)
+    tool_end      id, name, ok, summary, duration, chars, output, diff, exit_code, added, removed
+    llm_status    state: sent | first_token      user_message text, queued (typed while it worked)
     context       used, usable, window, parts{system, conversation, tools}
     compact       description, emergency         lessons      items
     subagent_start prompt                        subagent_end status, duration, tool_calls
     todos         items                          hook         event, command, outcome, duration
+    queue         items (messages typed while it works, waiting for the next step)
     reset         (a viewer following a folder switched to a newer session)
 
 Publishing is cheap when nobody listens, so the agent always emits. Every event is also appended to the

@@ -16,6 +16,7 @@ import re
 import threading
 import time
 from contextlib import contextmanager, nullcontext
+from pathlib import Path
 
 from rich.console import Console, Group
 from rich.control import Control
@@ -27,8 +28,6 @@ from rich.markup import escape
 from rich.panel import Panel
 from rich.spinner import Spinner
 from rich.text import Text
-
-from pathlib import Path
 
 from muyah_code.tools.base import ToolResult
 from muyah_code.ui import blocks
@@ -222,6 +221,7 @@ class TerminalUI(UI):
         self._keys = threading.Lock()
         self._reader = None
         self._turn_active = False
+        self.events = None       # EventBus (set by the REPL): the live view shows the queue
 
     # ------------------------------------------------------------------ live status
 
@@ -311,14 +311,23 @@ class TerminalUI(UI):
         """Messages you queued while it worked: the agent takes them at its next step."""
         with self._keys:
             queued, self._queued = self._queued, []
+        if queued:
+            self._emit_queue()
         for msg in queued:
             self._space("block")
             self._out(blocks.user_prompt(msg))
             self._last = "block"
         return queued
 
+    def _emit_queue(self) -> None:
+        if self.events is not None:
+            with self._keys:
+                items = list(self._queued)
+            self.events.emit("queue", items=items)
+
     def _on_key(self, key: str) -> None:
         interrupt = False
+        before = len(self._queued)
         with self._keys:
             if key == "enter":
                 if self._draft.strip():
@@ -333,6 +342,8 @@ class TerminalUI(UI):
                 interrupt = True
             elif len(key) == 1:
                 self._draft += key
+        if len(self._queued) != before:
+            self._emit_queue()
         if interrupt and self._turn_active:
             _thread.interrupt_main()   # same as Ctrl+C: the turn stops; the REPL sends what is queued
 

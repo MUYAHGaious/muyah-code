@@ -330,3 +330,33 @@ def test_typing_while_working_queues_and_esc_sends_now(monkeypatch):
     assert interrupts == [1]
     queued, draft = ui.end_typing()
     assert queued == ["x"] and draft == ""
+
+
+def test_startup_offers_the_live_view_and_remembers_always_or_never(project, monkeypatch):
+    with create_pipe_input() as pipe, create_app_session(input=pipe, output=DummyOutput()):
+        _check_startup_offer(project, monkeypatch)
+
+
+def _check_startup_offer(project, monkeypatch):
+    from test_providers import Answers
+
+    opened = []
+    for answer, expected_setting, opens in (("never", False, False), ("always", True, True), ("no", None, False)):
+        cfg = load_config(cwd=project, overrides={"base_url": "http://127.0.0.1:9/v1", "model": "m"})
+        cfg.persist("viz.autostart", None)
+        ui = TerminalUI(Console(file=io.StringIO(), width=100, color_system=None), animate=False)
+        app = App(cfg, ui, cwd=project, mode="default", enable_mcp=False)
+        repl = Repl(app, ui, prompter=Answers(answer))
+        monkeypatch.setattr(repl.router, "viz", lambda arg, a=answer: opened.append(a))
+        repl.offer_viz()
+        assert load_config(cwd=project).get("viz.autostart") == expected_setting
+        assert (answer in opened) == opens
+        app.shutdown()
+    cfg.persist("viz.autostart", False)          # "Never": no question at all
+    asked = Answers()
+    ui = TerminalUI(Console(file=io.StringIO(), width=100, color_system=None), animate=False)
+    app = App(load_config(cwd=project, overrides={"base_url": "http://127.0.0.1:9/v1", "model": "m"}), ui,
+              cwd=project, mode="default", enable_mcp=False)
+    Repl(app, ui, prompter=asked).offer_viz()
+    assert asked.asked == []
+    app.shutdown()
