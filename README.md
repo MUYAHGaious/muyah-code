@@ -1,134 +1,245 @@
-# 🚀 Ultimate AI Coding Agent (2026 Edition)
+# MUYAH-CODE
 
-A **state-of-the-art autonomous CLI coding agent** powered by open-weights LLMs running on **Google Colab (A100/L4 GPU)**. Modeled after Claude Code, Aider, and OpenHands — but free and self-hosted.
+An agentic coding CLI that reads, searches, edits and runs your code from the terminal, like Claude Code, **with any model you choose**:
+- a hosted provider: Claude, OpenAI, Gemini, OpenRouter, Groq, DeepSeek, Mistral, xAI and 8 more. Run `muyah login` and paste your key.
+- a local server: Ollama, LM Studio, llama.cpp, vLLM, colibri or Soup.
+- your own GPU in Colab: vLLM or colibri behind a Pinggy or Cloudflare tunnel.
 
----
+It works well with smaller open-weights models too:
+- **Tool calling:** strict native function calling, with an automatic fallback to a text tool protocol.
+- **Context:** compaction that adapts to any window size, from 8k to 1M.
+- **Safety:** permission-gated actions, plus checkpoints so you can `/undo`.
+- **Learning:** it learns from its own failures and fixes, and you can measure the effect with `muyah eval`.
 
-## ⚡ What Makes This Special
+```
+███╗   ███╗██╗   ██╗██╗   ██╗ █████╗ ██╗  ██╗
+████╗ ████║██║   ██║╚██╗ ██╔╝██╔══██╗██║  ██║
+██╔████╔██║██║   ██║ ╚████╔╝ ███████║███████║
+██║╚██╔╝██║██║   ██║  ╚██╔╝  ██╔══██║██╔══██║
+██║ ╚═╝ ██║╚██████╔╝   ██║   ██║  ██║██║  ██║
+╚═╝     ╚═╝ ╚═════╝    ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝  C O D E
+```
 
-| Feature | Description |
-| :--- | :--- |
-| 🛠️ **17 Tools** | File ops, web search, web scraping, git, code search, sub-agents, memory |
-| 🌐 **Web Research** | DuckDuckGo search + webpage scraping — no API keys needed |
-| 🔀 **Git Integration** | Auto-commit, diff review, undo, branch-aware |
-| 🧠 **Persistent Memory** | `AGENT.md` remembers project conventions across sessions |
-| 🤖 **Sub-Agent Spawning** | Delegates research tasks to isolated contexts |
-| 🗜️ **Context Compaction** | Auto-summarizes when context grows too large |
-| 🔌 **Dual Tool Calling** | Native OpenAI function calling + XML/text fallback |
-| 🎨 **Rich Terminal UI** | Syntax-highlighted diffs, tree views, markdown, spinners |
+## Install
 
----
-
-## 📁 Project Files
-
-| File | Description |
-| :--- | :--- |
-| `code_agent.py` | The main CLI coding agent |
-| `colab_server.ipynb` | Jupyter notebook for Google Colab |
-| `colab_script.py` | Single-cell script to paste in Colab |
-| `test_connection.py` | Quick test for API connectivity |
-| `install_global.py` | Install `ccode` as a global command |
-| `requirements.txt` | Python dependencies |
-
----
-
-## ⚡ Quickstart Guide
-
-### Step 1: Start Model Server in Google Colab
-
-1. Open [Google Colab](https://colab.research.google.com).
-2. Upload `colab_server.ipynb` or paste `colab_script.py` in a cell.
-3. Set runtime: **A100 GPU** + **High-RAM**.
-4. Run all cells. Wait for the tunnel URL:
-   ```
-   🎉 TUNNEL ACTIVE!
-   API Base URL: https://xxxx.trycloudflare.com/v1
-   ```
-
-### Step 2: Install Local Dependencies
+You need Python 3.10 or newer.
 
 ```bash
-pip install -r requirements.txt
+pipx install muyah-code          # recommended: isolated install, `muyah` lands on your PATH
+# or: uv tool install muyah-code
+# or: pip install muyah-code
+
+muyah login                      # pick a provider, paste your API key
+muyah                            # start coding
 ```
 
-### Step 3: Run the Agent
+**Update:** `pipx upgrade muyah-code`. **Don't have pipx?** Run `python -m pip install --user pipx`, then `python -m pipx ensurepath`.
+
+**From source (development):** `git clone https://github.com/MUYAHGaious/muyah-code && cd muyah-code && pip install -e ".[dev]"`.
+
+> **Windows:** `python -m muyah_code` always works, even if `muyah` is not on your PATH yet.
+
+## Connect a model
+
+**The easy way: pick a provider and paste your key.**
 
 ```bash
-python code_agent.py
+muyah login            # or /provider inside a session
 ```
 
-Or install globally:
+1. Choose a provider from the list. It includes Anthropic (Claude), OpenAI, Google Gemini, OpenRouter, Groq, DeepSeek, Mistral, xAI, Together, Fireworks, Cerebras, Moonshot (Kimi), Z.ai (GLM), Qwen, NVIDIA NIM, Hugging Face, plus local Ollama, LM Studio, llama.cpp and vLLM.
+2. Paste your API key. The input is hidden.
+3. Pick a model. The best coding models are listed first, and pressing Enter takes the default.
+
+MUYAH-CODE then checks the key, tests one reply, saves everything and switches your session to it.
+
+Useful details:
+- **Keys you already have are detected.** If `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` or similar is set, it offers to use it. Those keys are never copied to disk.
+- **Where pasted keys go:** `~/.muyah/credentials.json`, never `settings.json`.
+- **Switching providers:** `/profile anthropic` or `muyah --profile openai`.
+- **Removing a key:** `/logout <provider>` or `muyah logout <provider>`.
+- **Skipping the prompts:** `muyah login anthropic --key sk-ant-... -m claude-opus-5`.
+- **Claude** is used through Anthropic's native API rather than a compatibility layer. That gives it adaptive thinking, prompt caching (cheaper repeat turns) and automatic refusal fallbacks. The default model is `claude-opus-5`.
+
+Or, for your own GPU or a custom server, choose one of the following.
+
+**A. Your Colab GPU (or RunPod / any Linux GPU box).**
+1. Open `backend/muyah_server.ipynb` in Colab and pick a GPU runtime.
+2. Choose the engine and model in the settings cell, then run all cells.
+3. The notebook starts the server, opens a tunnel, runs a PONG test and prints a command like this, which you then run on your computer:
+
 ```bash
-python install_global.py
-ccode  # Run from anywhere!
+muyah connect https://xyz.a.pinggy.link/v1 --model Qwen/Qwen2.5-Coder-32B-Instruct-AWQ --engine vllm --context-window 32768
 ```
 
-Paste your Colab URL when prompted, or use `/url` inside the CLI.
+**B. A server on your machine.**
 
----
-
-## 🎮 Commands
-
-| Command | Description |
-| :--- | :--- |
-| `/url <url>` | Set Colab Cloudflare tunnel URL |
-| `/model <name>` | Switch model |
-| `/models` | List available models on server |
-| `/auto` | Toggle auto-approve commands (YOLO mode) |
-| `/compact` | Force context compaction |
-| `/memory` | View AGENT.md persistent memory |
-| `/stats` | Show session statistics |
-| `/git` | Show git status |
-| `/undo` | Undo last git commit |
-| `/clear` | Clear conversation history |
-| `/exit` | Quit |
-
----
-
-## 🛠️ All 17 Tools
-
-| Tool | Description |
-| :--- | :--- |
-| `read_file` | Read file contents with line numbers |
-| `write_file` | Create or overwrite files (auto-creates directories) |
-| `edit_file` | Targeted find-and-replace with diff display |
-| `list_directory` | List files and folders |
-| `tree` | Recursive directory tree view |
-| `find_files` | Glob-based file search |
-| `search_code` | Grep-like code search across workspace |
-| `run_command` | Execute shell commands (with permission) |
-| `web_search` | DuckDuckGo web search (no API key) |
-| `fetch_webpage` | Scrape and clean a URL |
-| `git_status` | Branch, modified files, recent commits |
-| `git_diff` | Show code diffs |
-| `git_commit` | Stage all + commit |
-| `git_undo` | Undo last commit (soft reset) |
-| `spawn_agent` | Spawn sub-agent for isolated tasks |
-| `read_memory` | Read AGENT.md persistent memory |
-| `write_memory` | Write to AGENT.md persistent memory |
-
----
-
-## 🧠 AGENT.md — Persistent Memory
-
-Create an `AGENT.md` file in your workspace root (or let the agent create it). The agent reads it at session start and can write to it. Use it for:
-- Project conventions ("use pytest", "prefer async")
-- Architecture notes ("auth logic in `src/auth/`")
-- Known issues and gotchas
-- Build/deploy instructions
-
----
-
-## 💡 Example Usage
-
+```bash
+muyah connect --scan                      # finds Ollama (11434), LM Studio (1234), vLLM/colibri/Soup (8000), llama.cpp (8080)
+muyah serve ollama  -m qwen2.5-coder:14b --ctx 32768          # or start one: it waits until ready, then connects
+muyah serve colibri -m /nvme/glm52_i4 --ctx 65536
+muyah serve soup    -m ./output                                # your fine-tuned model
+muyah serve llamacpp -m ./qwen2.5-coder-7b-q4_k_m.gguf --ctx 32768
+muyah serve --status | --stop
 ```
-> Create a REST API with FastAPI that has user CRUD endpoints
 
-🤖 Agent will:
-  1. Search existing project structure (tree, list_directory)
-  2. Create main.py with FastAPI app
-  3. Create models.py, schemas.py, routes/
-  4. Install dependencies (run_command: pip install fastapi uvicorn)
-  5. Verify syntax (run_command: python -m py_compile main.py)
-  6. Commit changes (git_commit)
+**C. A hosted API.**
+
+```bash
+muyah connect https://openrouter.ai/api/v1 --api-key sk-or-... --model qwen/qwen3-coder
 ```
+
+Every `connect` or `serve` saves a **profile**. Switch between profiles with `muyah --profile colab` or `/profile ollama` inside a session. `muyah doctor --deep` checks the whole setup, including a real completion and a tool-calling test.
+
+### Engine modes
+
+Each engine gets a tuned preset. You select it with `--engine` or `muyah serve <engine>`.
+
+| engine | preset | notes |
+|---|---|---|
+| `vllm` | timeout 600s | serve with `--enable-auto-tool-choice --tool-call-parser hermes` (Qwen) for native tools |
+| `colibri` | **no timeout**, no reflection calls, 4k output | huge MoE on NVMe/RAM; first token can take minutes; one request at a time |
+| `soup` | timeout 600s, 4k output | fine-tuned models via `soup serve`; runs in its own Python 3.10-3.12 env |
+| `ollama` | started with `OLLAMA_CONTEXT_LENGTH` | Ollama silently truncates at its small default context otherwise |
+| `llamacpp` | `--jinja` | native tool calling from the model's chat template |
+
+> **Tunnels:** Cloudflare quick tunnels drop requests that stay silent for about 100s (HTTP 524). A big model working through a long prompt can hit that before its first token. MUYAH-CODE detects a 524 and tells you to switch to the **Pinggy** URL, which has no such limit. The server notebook prints both.
+
+## Use it
+
+```bash
+muyah                                   # interactive
+muyah "fix the failing test in tests/test_api.py"
+muyah -p "summarize this repo" --output-format json      # headless (CI, scripts)
+git diff | muyah -p "review this diff"                   # stdin is attached to the prompt
+muyah -c                                # continue the last session;  muyah -r <id> to resume one
+```
+
+**Interactive shortcuts:**
+- `@path` attaches a file.
+- `#note` saves a note to `MUYAH.md`.
+- **Shift+Tab** cycles permission modes.
+- **Alt+Enter** / **Ctrl+J** inserts a newline.
+- **Ctrl+C** interrupts.
+
+| command | what it does |
+|---|---|
+| `/help` | all commands |
+| `/provider` (or `/login`), `/logout <provider>` | pick a provider + paste an API key; remove a saved key |
+| `/model [id]`, `/models`, `/profile [name]`, `/connect <url>` | switch backends at runtime (the context window is re-detected) |
+| `/mode [default\|acceptEdits\|plan\|bypassPermissions]`, `/plan` | permission modes |
+| `/undo` | revert every file change from the last turn |
+| `/compact [focus]`, `/context` | context management |
+| `/skills`, `/<skill> [args]`, `/agents` | workflows and sub-agents |
+| `/lessons`, `/good [note]`, `/bad [what was wrong]`, `/learn on\|off` | the learning system |
+| `/init`, `/memory` | project instructions (`MUYAH.md`) |
+| `/resume`, `/sessions`, `/export` | sessions |
+| `/theme [teal\|muyah\|ocean\|forest\|mono\|light]` | color theme (saved; default: light teal) |
+| `/doctor`, `/config`, `/permissions`, `/tools`, `/mcp`, `/cost` | inspection |
+
+### Permission modes
+
+- **default** asks before edits, commands and network access. Read-only commands such as `git status` or `ls` never ask.
+- **acceptEdits** auto-approves file edits inside the project.
+- **plan** is read-only: the agent explores and proposes a plan.
+- **bypassPermissions** never asks, so use it only in throwaway environments.
+
+When asked, you can answer **y**, **a** (always allow this session), **p** (always allow in this project, saved to `.muyah/settings.local.json`), **n**, or type what to do instead.
+
+Rules use the Claude Code syntax:
+
+```json
+{"permissions": {"allow": ["Bash(npm run test:*)", "Edit(src/**)", "WebFetch(domain:docs.python.org)"],
+                 "deny":  ["Bash(rm -rf *)", "Write(**/.env)"]}}
+```
+
+## How it thinks
+
+These habits are written into the system prompt:
+- It explores before it edits, and it must **Read a file before editing it**.
+- It plans anything with 3 or more steps in a **todo list**.
+- It **verifies with real commands** before claiming success, and it reports failures honestly.
+
+**Skills** are workflows it loads on demand. The bundled ones are `debugging`, `planning`, `verification`, `tdd`, `code-review`, `brainstorming` and `commit`. You can add your own:
+- Put them in `.muyah/skills/<name>/SKILL.md` or `~/.muyah/skills/`.
+- Claude Code `.claude/skills` also load.
+
+**Sub-agents** (`explore`, `general`, or your own in `.muyah/agents/*.md`) work in a fresh context and hand back only a report. That keeps a small context window clean.
+
+## It learns
+
+1. **Signals.** During each turn MUYAH-CODE records what happened: tool errors, *errors that were later fixed*, loops and step limits. It also records your feedback: `/good`, `/bad`, and corrections such as "no, that's wrong…".
+2. **Reflection.** When a turn produced meaningful signals, one small model call extracts 0–3 generalizable **lessons**. They're stored in `~/.muyah/lessons.jsonl` (global) and `.muyah/lessons.jsonl` (this project), and near-duplicates are merged.
+3. **Recall.** For each new request, the most relevant lessons (BM25 × usefulness score) are attached to your message.
+4. **Scoring.** Lessons used in turns you accept gain score. Lessons used in turns you correct lose score, and consistently harmful ones are pruned. `/lessons` shows them and lets you delete any.
+
+**Measure it.** `muyah eval` runs the bundled benchmark tasks (fix a bug, add a CLI flag, implement a function, a multi-file rename, a traceback fix) headless against your current model and records the pass rate in `~/.muyah/evals.jsonl`. `muyah eval --no-learn` gives a baseline without lessons.
+
+## Configuration
+
+Settings are layered. Each layer overrides the one before it:
+1. defaults
+2. `~/.muyah/settings.json`
+3. `.muyah/settings.json`
+4. `.muyah/settings.local.json`
+5. `--settings`
+6. the active profile
+7. `MUYAH_*` environment variables
+8. CLI flags
+
+Your old colab-code config is imported automatically on first run.
+
+```json
+{
+  "base_url": "http://localhost:8000/v1", "model": "…", "api_key": "none",
+  "context_window": 0,          // 0 = ask the server, then the model table, then 16384
+  "max_tokens": 4096, "temperature": 0.2, "request_timeout": 300,   // 0 = never time out
+  "tool_mode": "auto",          // auto | native | text
+  "compact_threshold": 0.8, "max_steps": 60, "bash_timeout": 120, "shell": "auto",
+  "theme": "teal",
+  "learning": {"enabled": true, "reflect": true, "max_lessons_in_prompt": 5},
+  "permissions": {"mode": "default", "allow": [], "ask": [], "deny": []},
+  "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "python guard.py"}]}]},
+  "profiles": {"colab": {"base_url": "https://…/v1", "model": "…", "engine": "vllm"}}
+}
+```
+
+**Context handling for any model size:**
+- **Window size:** taken from your setting, else the server's `/v1/models`, else a table of known models.
+- **Estimate calibration:** the token estimate is corrected using the real `prompt_tokens` the server reports.
+- **When to compact:** at 80% of the window. Old tool outputs are pruned first, then older turns are summarized.
+- **Overflow errors:** if the server still reports a context overflow, an emergency compaction runs and the request is retried.
+- **Scaled budgets:** output and tool-output limits scale with the window.
+- **Prefix caching:** the system prompt stays byte-stable between turns, so vLLM, colibri and llama.cpp can reuse their prefix cache.
+
+**Hooks** follow Claude Code's format: `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `Stop` and more.
+- The hook gets JSON on stdin.
+- Exit code `2` blocks the action.
+- To modify the action, print JSON such as `{"hookSpecificOutput": {"permissionDecision": "deny"}}`.
+
+**MCP servers** are configured in `.mcp.json` or `~/.muyah/mcp.json` (stdio or HTTP). Their tools appear as `mcp__<server>__<tool>`.
+
+## Development
+
+```bash
+pip install -e ".[dev]"
+python -m pytest -q          # 156 tests: parser, tools, permissions, context, learning, hooks, full agent loop
+python -m ruff check .       #   against a scripted fake OpenAI server, headless CLI, REPL, eval harness
+```
+
+**Layout:**
+- `muyah_code/llm`: client and text tool-call parser.
+- `tools/`: the built-in tools.
+- `agent/`: the loop, context management and prompts.
+- `permissions.py`, `hooks.py`, `session.py`, `subagents.py`
+- `learning/`: lessons and eval.
+- `ui/`: terminal, REPL and commands.
+- `mcp/`
+- `backends.py` / `serve.py`: model servers.
+- `backend/`: the server notebook.
+- `evals/`: benchmark tasks.
+
+## Roadmap
+
+- **Self-training loop:** MUYAH-CODE's session transcripts and lessons are a record of its own successful work. Once there's enough of it, [Soup](https://github.com/MakazhanAlpamys/Soup) can fine-tune a LoRA on that data, and `muyah serve soup` can serve the result.
+- More eval tasks, per language.

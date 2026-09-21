@@ -1,20 +1,76 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "colab-code"
-version = "0.1.0"
-description = "A Claude Code-style local CLI pair programmer powered by Google Colab GPU backend"
+name = "muyah-code"
+dynamic = ["version"]
+description = "MUYAH-CODE: an agentic coding CLI for any model - Claude, OpenAI, Gemini, OpenRouter, or your own GPU"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "MUYAHGaious" }]
+keywords = ["ai", "coding-agent", "cli", "llm", "claude", "openai", "ollama", "vllm", "agent"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
-    "openai>=1.30.0",
-    "rich>=13.7.0",
+    "openai>=1.40",
+    "rich>=13.7",
     "prompt_toolkit>=3.0.40",
-    "python-dotenv>=1.0.0"
+    "httpx>=0.27",
+    "beautifulsoup4>=4.12",
+    "pyyaml>=6.0",
+    "duckduckgo_search>=6.0",
+    "anthropic>=1.7",
 ]
 
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.5", "build>=1.2"]
+
+[project.urls]
+Homepage = "https://github.com/MUYAHGaious/muyah-code"
+Source = "https://github.com/MUYAHGaious/muyah-code"
+Issues = "https://github.com/MUYAHGaious/muyah-code/issues"
+Changelog = "https://github.com/MUYAHGaious/muyah-code/blob/main/CHANGELOG.md"
+
 [project.scripts]
-colab-code = "code_agent:main"
-ccode = "code_agent:main"
+muyah = "muyah_code.cli:main"
+muyah-code = "muyah_code.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "muyah_code.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["muyah_code*"]
+
+[tool.setuptools.package-data]
+muyah_code = ["skills/bundled/*/SKILL.md", "agents/bundled/*.md", "evals/tasks/**/*"]
+
+[tool.setuptools.exclude-package-data]
+muyah_code = ["**/__pycache__/*", "**/*.pyc", "**/.pytest_cache/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+extend-exclude = ["muyah_code/evals/tasks/*/fixture"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "UP", "SIM"]
+ignore = ["E501", "SIM105", "SIM108", "SIM112", "SIM115", "SIM905", "B008", "UP007", "UP045"]

@@ -1,0 +1,398 @@
+"""Slash commands for the interactive REPL."""
+
+from __future__ import annotations
+
+import copy
+import json
+import os
+import subprocess
+import time
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+
+from rich.markup import escape
+from rich.table import Table
+
+from muyah_code.memory import INIT_TEMPLATE
+from muyah_code.permissions import MODES
+from muyah_code.session import Session, sessions_dir
+
+EXIT = object()
+
+
+def mask_secret(value):
+    if not value or value in ("none", "dummy") or not isinstance(value, str):
+        return value
+    return value[:4] + "..." + value[-2:] if len(value) > 8 else "***"
+
+
+@dataclass
+class Command:
+    name: str
+    help: str
+    handler: Callable
+    usage: str = ""
+
+
+INIT_PROMPT = """Analyze this codebase and create (or improve) a MUYAH.md file at the project root. It gives future \
+sessions the essential project knowledge. Explore first: README, build/config files (pyproject.toml, package.json, \
+Makefile...), the source layout, tests, and existing AGENTS.md/CLAUDE.md. Then write a concise MUYAH.md (under ~80 \
+lines) with: a 1-3 sentence overview; exact commands to install, test (including a single test), lint and run; \
+architecture notes a newcomer would not guess from file names; conventions and gotchas. Only include facts you \
+verified. Use this shape:
+
+""" + INIT_TEMPLATE
+
+
+class CommandRouter:
+    def __init__(self, repl):
+        self.repl = repl
+        self.commands: dict[str, Command] = {}
+        for c in [
+            Command("help", "Show commands", self.help),
+            Command("exit", "Quit (also /quit, Ctrl+D)", lambda a: EXIT),
+            Command("quit", "Quit", lambda a: EXIT),
+            Command("clear", "Start a fresh conversation (history is kept in the session file)", self.clear),
+            Command("compact", "Summarize the conversation to free context", self.compact, "[focus]"),
+            Command("context", "Show context window usage", self.context),
+            Command("model", "Show or switch the model", self.model, "[name]"),
+            Command("models", "List models served by the endpoint", self.models),
+            Command("provider", "Pick an AI provider, paste your API key, choose a model (also /login)",
+                    self.provider, "[name] [model]"),
+            Command("login", "Same as /provider", self.provider, "[name] [model]"),
+            Command("logout", "Remove a provider's saved API key", self.logout, "<provider>"),
+            Command("profile", "Show or switch backend profile", self.profile, "[name]"),
+            Command("connect", "Point at a new endpoint (URL) and pick a model", self.connect, "<url> [model]"),
+            Command("mode", "Permission mode: default | acceptEdits | plan | bypassPermissions", self.mode, "[mode]"),
+            Command("plan", "Toggle plan mode (read-only exploration, then a plan)", self.plan),
+            Command("undo", "Revert the file changes of the last turn", self.undo),
+            Command("todos", "Show the current todo list", self.todos),
+            Command("skills", "List skills (run one with /<skill-name> [args])", self.skills),
+            Command("agents", "List sub-agent types", self.agents),
+            Command("lessons", "List, show or delete learned lessons", self.lessons, "[rm <id> | show <id>]"),
+            Command("good", "Tell MUYAH-CODE the last turn went well", self.good, "[note]"),
+            Command("bad", "Tell MUYAH-CODE the last turn went badly (it will learn why)", self.bad, "[what was wrong]"),
+            Command("learn", "Turn learning on/off for this session", self.learn, "on|off"),
+            Command("memory", "Show instruction files; '/memory add <text>' appends to MUYAH.md", self.memory,
+                    "[add <text>]"),
+            Command("init", "Generate a MUYAH.md for this project", self.init),
+            Command("permissions", "Show permission rules", self.permissions),
+            Command("tools", "List available tools", self.tools),
+            Command("mcp", "Show MCP server status", self.mcp),
+            Command("resume", "Resume an earlier session", self.resume, "[id]"),
+            Command("sessions", "List recent sessions for this project", self.sessions),
+            Command("export", "Export the conversation to a markdown file", self.export, "[file]"),
+            Command("cost", "Token usage for this session", self.cost),
+            Command("config", "Show effective configuration", self.config),
+            Command("doctor", "Check the setup", self.doctor),
+            Command("theme", "Switch color theme (saved): teal | muyah | ocean | forest | mono | light", self.theme,
+                    "[name]"),
+        ]:
+            self.commands[c.name] = c
+
+    @property
+    def app(self):
+        return self.repl.app
+
+    @property
+    def console(self):
+        return self.repl.console
+
+    def names(self) -> list[str]:
+        return list(self.commands) + [s.name for s in self.app.skills.all() if s.user_invocable]
+
+    def dispatch(self, line: str):
+        name, _, arg = line[1:].partition(" ")
+        name, arg = name.strip(), arg.strip()
+        cmd = self.commands.get(name)
+        if cmd:
+            return cmd.handler(arg)
+        skill = self.app.skills.get(name)
+        if skill and skill.user_invocable:
+            prompt = (f"Follow the '{skill.name}' skill below for this task.\n\n{skill.render(arg)}"
+                      + (f"\n\nTask: {arg}" if arg else ""))
+            return ("prompt", prompt)
+        self.console.print(f"[red]Unknown command /{escape(name)}[/]. Type /help.")
+        return None
+
+    # ------------------------------------------------------------------ handlers
+
+    def help(self, arg):
+        t = Table(show_header=False, box=None, padding=(0, 2))
+        for c in self.commands.values():
+            if c.name in ("quit", "login"):
+                continue
+            t.add_row(f"[bold]/{c.name}[/] {escape(c.usage)}", c.help)
+        self.console.print(t)
+        self.console.print("[dim]Tips: @path adds a file to your message · '#text' saves a note to MUYAH.md · "
+                           "Shift+Tab cycles modes · Alt+Enter or Ctrl+J for a new line · Ctrl+C interrupts.[/]")
+
+    def clear(self, arg):
+        self.app.agent.clear()
+        self.console.print("[dim]Conversation cleared.[/]")
+
+    def compact(self, arg):
+        with self.console.status("Compacting..."):
+            self.console.print(f"[dim]{escape(self.app.compact(arg))}[/]")
+
+    def context(self, arg):
+        used, usable = self.app.context_usage()
+        pct = 100 * used / max(1, usable)
+        c = self.app.context
+        self.console.print(
+            f"Context: [bold]{used:,}[/] / {usable:,} usable tokens ({pct:.0f}%) · window {c.window:,} "
+            f"({self.app.window_source}) · output reserve {c.max_output:,} · auto-compact at "
+            f"{int(c.threshold * 100)}% · estimate calibration x{c.ratio:.2f}"
+            f"{'' if c.calibrated else ' (not yet calibrated)'} · {len(self.app.agent.messages)} messages")
+
+    def model(self, arg):
+        if not arg:
+            self.console.print(f"Model: [bold]{escape(self.app.llm.model)}[/] at {escape(self.app.llm.base_url)} "
+                               f"(window {self.app.window:,}, {self.app.window_source})")
+            return
+        with self.console.status("Switching model..."):
+            self.console.print(escape(self.app.set_model(arg)))
+
+    def models(self, arg):
+        try:
+            ids = [m.get("id") for m in self.app.llm.list_models()]
+        except Exception as e:
+            self.console.print(f"[red]Could not list models: {escape(str(e))}[/]")
+            return
+        for i in ids:
+            mark = " [green](current)[/]" if i == self.app.llm.model else ""
+            self.console.print(f"  {escape(str(i))}{mark}")
+
+    def profile(self, arg):
+        profiles = self.app.cfg.profiles()
+        if not arg:
+            if not profiles:
+                self.console.print("No profiles. Create one with `muyah connect <url>` or `muyah connect --scan`.")
+            for name, p in profiles.items():
+                cur = " [green](active)[/]" if name == self.app.cfg.get("profile") else ""
+                self.console.print(f"  [bold]{escape(name)}[/]{cur}: {escape(p.get('base_url', ''))} "
+                                   f"{escape(p.get('model', ''))}")
+            return
+        if arg not in profiles:
+            self.console.print(f"[red]Unknown profile {escape(arg)}[/]")
+            return
+        with self.console.status("Switching..."):
+            msg = self.app.switch_profile(arg)
+        self.console.print(escape(msg))
+
+    def provider(self, arg):
+        """Pick a provider, paste a key, choose a model - then switch this session to it."""
+        from muyah_code.provider_setup import setup_provider
+
+        parts = arg.split()
+        name = setup_provider(self.app.cfg, self.console, self.repl.ask, choice=parts[0] if parts else None,
+                              model=parts[1] if len(parts) > 1 else None)
+        if name:
+            with self.console.status("Switching this session..."):
+                msg = self.app.switch_profile(name)
+            self.console.print(f"[dim]{escape(msg)}[/]")
+
+    def logout(self, arg):
+        from muyah_code.providers import get_provider, remove_credential
+
+        p = get_provider(arg) if arg else None
+        if p is None:
+            self.console.print("Usage: /logout <provider>   (removes its saved API key)")
+            return
+        removed = remove_credential(self.app.cfg.home, p.id)
+        self.console.print(f"Removed the saved {p.name} key." if removed else f"No saved key for {p.name}.")
+
+    def connect(self, arg):
+        from muyah_code.backends import probe
+
+        parts = arg.split()
+        if not parts:
+            self.console.print("Usage: /connect <url> [model]")
+            return
+        ep = probe(parts[0], self.app.cfg.get("api_key", "none"))
+        if not ep.ok:
+            self.console.print(f"[red]{escape(ep.base_url)}: {escape(ep.error or '')}[/]")
+            return
+        model = parts[1] if len(parts) > 1 else (ep.models[0] if ep.models else self.app.llm.model)
+        self.console.print(escape(self.app.set_endpoint(ep.base_url, None, model)))
+
+    def mode(self, arg):
+        if not arg:
+            self.console.print(f"Mode: [bold]{self.app.permissions.mode}[/]  (options: {', '.join(MODES)})")
+            return
+        try:
+            self.console.print(f"Mode: [bold]{self.app.set_mode(arg)}[/]")
+        except ValueError as e:
+            self.console.print(f"[red]{escape(str(e))}[/]")
+
+    def plan(self, arg):
+        new = "default" if self.app.permissions.mode == "plan" else "plan"
+        self.console.print(f"Mode: [bold]{self.app.set_mode(new)}[/]")
+
+    def undo(self, arg):
+        self.console.print(escape(self.app.undo()))
+
+    def todos(self, arg):
+        if not self.app.ctx.todos:
+            self.console.print("[dim]No todos.[/]")
+        else:
+            self.repl.ui.on_todos(self.app.ctx.todos)
+
+    def skills(self, arg):
+        for s in self.app.skills.all():
+            flag = "" if not s.disable_model_invocation else " [dim](user only)[/]"
+            self.console.print(f"  [bold]/{escape(s.name)}[/] [dim]({s.source})[/]{flag} {escape(s.description[:110])}")
+        for e in self.app.skills.errors:
+            self.console.print(f"  [yellow]{escape(e)}[/]")
+
+    def agents(self, arg):
+        for d in self.app.agent_defs.values():
+            self.console.print(f"  [bold]{escape(d.name)}[/] [dim]({d.source})[/] {escape(d.description[:110])}")
+
+    def lessons(self, arg):
+        store = self.app.lessons
+        sub, _, rest = arg.partition(" ")
+        if sub == "rm" and rest:
+            self.console.print("Deleted." if store.remove(rest.strip()) else "[red]No such lesson.[/]")
+            return
+        if sub == "show" and rest:
+            lesson = store.get(rest.strip())
+            if lesson:
+                self.console.print_json(json.dumps(lesson.__dict__, default=str))
+            else:
+                self.console.print("[red]No such lesson.[/]")
+            return
+        if not store.lessons:
+            self.console.print("[dim]No lessons yet. They are learned from failures, fixes and your /good /bad "
+                               "feedback.[/]")
+            return
+        t = Table(header_style="bold")
+        for col in ("id", "scope", "score", "used", "lesson"):
+            t.add_column(col, overflow="fold")
+        for x in sorted(store.lessons, key=lambda z: z.score, reverse=True):
+            t.add_row(x.id, x.scope, f"{x.score:.2f}", str(x.uses), escape(x.render()[2:]))
+        self.console.print(t)
+
+    def good(self, arg):
+        self.console.print(escape(self.app.feedback(True, arg)))
+
+    def bad(self, arg):
+        with self.console.status("Learning from the feedback..."):
+            msg = self.app.feedback(False, arg)
+        self.console.print(escape(msg))
+
+    def learn(self, arg):
+        if arg in ("on", "off"):
+            self.app.learning_enabled = arg == "on"
+        self.console.print(f"Learning: [bold]{'on' if self.app.learning_enabled else 'off'}[/]")
+
+    def memory(self, arg):
+        if arg.startswith("add "):
+            self.console.print(escape(self.repl.add_memory(arg[4:])))
+            return
+        if not self.app.instructions:
+            self.console.print("No instruction files loaded. Create one with /init or '#note'.")
+        for f in self.app.instructions:
+            self.console.print(f"  [bold]{escape(str(f.path))}[/] ({len(f.text):,} chars)")
+        editor = os.environ.get("EDITOR") or os.environ.get("VISUAL")
+        target = self.app.root / "MUYAH.md"
+        if arg == "edit":
+            if editor:
+                subprocess.call([editor, str(target)])
+            else:
+                self.console.print(f"Set $EDITOR, or open {escape(str(target))} yourself.")
+
+    def init(self, arg):
+        return ("prompt", INIT_PROMPT)
+
+    def permissions(self, arg):
+        p = self.app.permissions
+        self.console.print(f"Mode: [bold]{p.mode}[/]")
+        for kind in ("allow", "ask", "deny"):
+            rules = getattr(p, kind)
+            self.console.print(f"  {kind}: " + (", ".join(escape(str(r)) for r in rules) or "[dim](none)[/]"))
+
+    def tools(self, arg):
+        for t in self.app.registry.tools():
+            self.console.print(f"  [bold]{escape(t.name)}[/] [dim]{t.kind}[/]")
+
+    def mcp(self, arg):
+        if not self.app.mcp:
+            self.console.print("No MCP servers configured (.mcp.json or ~/.muyah/mcp.json).")
+            return
+        for name, status in self.app.mcp.status.items():
+            self.console.print(f"  [bold]{escape(name)}[/]: {escape(status)}")
+
+    def resume(self, arg):
+        sdir = sessions_dir(self.app.home, self.app.root)
+        if not arg:
+            return self.sessions("")
+        try:
+            session, messages, _ = Session.resume(sdir, arg)
+        except FileNotFoundError as e:
+            self.console.print(f"[red]{escape(str(e))}[/]")
+            return
+        self.app.session = session
+        self.app.agent.session = session
+        self.app.agent.load_history(messages)
+        self.console.print(f"Resumed {session.id} ({len(messages)} messages).")
+
+    def sessions(self, arg):
+        infos = Session.list_sessions(sessions_dir(self.app.home, self.app.root))
+        if not infos:
+            self.console.print("[dim]No sessions yet.[/]")
+        for s in infos:
+            when = time.strftime("%Y-%m-%d %H:%M", time.localtime(s.modified))
+            self.console.print(f"  [bold]{s.id}[/] {when} ({s.messages} msgs) {escape(s.title)}")
+        if infos:
+            self.console.print("[dim]Resume with /resume <id> or `muyah --resume <id>`.[/]")
+
+    def export(self, arg):
+        path = Path(arg or f"muyah-session-{self.app.session_id or 'export'}.md")
+        lines = [f"# MUYAH-CODE session {self.app.session_id}\n"]
+        for m in self.app.agent.messages[1:]:
+            role = m.get("role")
+            content = m.get("content") or ""
+            if role == "tool":
+                lines.append(f"<details><summary>tool result</summary>\n\n```\n{content[:4000]}\n```\n</details>\n")
+            elif m.get("tool_calls"):
+                calls = ", ".join(tc["function"]["name"] for tc in m["tool_calls"])
+                lines.append(f"**assistant** ({calls}):\n\n{content}\n")
+            else:
+                lines.append(f"**{role}**:\n\n{content}\n")
+        path.write_text("\n".join(lines), encoding="utf-8")
+        self.console.print(f"Exported to {escape(str(path.resolve()))}")
+
+    def cost(self, arg):
+        u = self.app.llm.total_usage
+        self.console.print(f"Requests: {u['requests']} · prompt tokens: {u['prompt_tokens']:,} · completion tokens: "
+                           f"{u['completion_tokens']:,}")
+
+    def config(self, arg):
+        data = copy.deepcopy(self.app.cfg.data)
+        for holder in [data, *[p for p in (data.get("profiles") or {}).values() if isinstance(p, dict)]]:
+            holder["api_key"] = mask_secret(holder.get("api_key"))
+        self.console.print_json(json.dumps(data, default=str))
+        self.console.print("[dim]Sources: " + escape(" -> ".join(self.app.cfg.sources)) + "[/]")
+
+    def doctor(self, arg):
+        from muyah_code.doctor import run_doctor
+
+        run_doctor(self.app.cfg, self.console, deep=arg == "--deep")
+
+    def theme(self, arg):
+        from muyah_code.ui.terminal import banner_text
+        from muyah_code.ui.theme import THEMES, set_theme, theme
+
+        if not arg:
+            self.console.print(f"Theme: [bold]{theme().name}[/]  (available: {', '.join(THEMES)})")
+            return
+        try:
+            set_theme(arg)
+        except ValueError as e:
+            self.console.print(f"[red]{escape(str(e))}[/]")
+            return
+        self.app.cfg.persist("theme", arg, scope="user")
+        self.console.print(banner_text())
+        self.console.print(f"Theme set to [bold]{arg}[/] (saved).")

@@ -1,0 +1,4 @@
+{
+  "prompt": "The tests in test_stats.py are failing. Find and fix the bug in stats.py. Do not modify the tests.",
+  "max_steps": 30
+}

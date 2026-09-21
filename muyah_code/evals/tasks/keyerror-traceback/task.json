@@ -1,0 +1,4 @@
+{
+  "prompt": "Running `python app.py` crashes with a traceback. Fix it so that a missing timeout in the config falls back to a default of 30. Keep the existing output format.",
+  "max_steps": 30
+}

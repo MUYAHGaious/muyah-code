@@ -1,0 +1,4 @@
+{
+  "prompt": "Implement slugify() in slugify.py according to its docstring so that test_slugify.py passes. Do not modify the tests.",
+  "max_steps": 30
+}

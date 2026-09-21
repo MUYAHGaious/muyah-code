@@ -1,0 +1,4 @@
+{
+  "prompt": "Add a --shout flag to greet.py. With --shout the greeting is printed in upper case (`python greet.py Bob --shout` prints `HELLO, BOB!`); without it the output stays `Hello, Bob!`.",
+  "max_steps": 30
+}

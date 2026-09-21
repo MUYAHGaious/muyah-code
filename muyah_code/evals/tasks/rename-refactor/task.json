@@ -1,0 +1,4 @@
+{
+  "prompt": "Rename the function calc_total to compute_total everywhere in this project (definition, imports and all call sites). Behavior must not change; the tests must still pass after updating them for the new name.",
+  "max_steps": 30
+}

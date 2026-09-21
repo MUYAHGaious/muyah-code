@@ -1,7 +1,0 @@
-openai
-rich
-prompt_toolkit
-duckduckgo-search
-beautifulsoup4
-requests
-gitpython
