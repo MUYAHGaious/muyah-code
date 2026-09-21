@@ -295,7 +295,7 @@ def _viz(argv: list[str], console) -> int:
                                 "folder and it follows that session live.")
     p.add_argument("session", nargs="?", help="Replay this recorded session (id prefix ok) instead of following")
     p.add_argument("--replay", action="store_true", help="Replay the last session (or SESSION) instead of following")
-    p.add_argument("--speed", type=int, choices=[1, 2, 4, 8, 16], default=2, help="Replay speed (default 2)")
+    p.add_argument("--speed", type=_speed, default=1.0, help="Replay speed, 0.1 (slow motion) to 16 (default 1)")
     p.add_argument("--port", type=int, default=0, help="Port on 127.0.0.1 (default: any free port)")
     p.add_argument("--no-open", action="store_true", help="Print the link instead of opening a browser")
     a = p.parse_args(argv)
@@ -322,6 +322,13 @@ def _viz(argv: list[str], console) -> int:
     return _serve(server, server.url, a.no_open, console, follower.stop)
 
 
+def _speed(value: str) -> float:
+    speed = float(value)
+    if not 0.1 <= speed <= 16:
+        raise argparse.ArgumentTypeError("speed must be between 0.1 and 16")
+    return speed
+
+
 def _viz_replay(directory: Path, session: str, a, console) -> int:
     from muyah_code.events import load_events
     from muyah_code.viz import VizServer, find_events_file
@@ -337,7 +344,7 @@ def _viz_replay(directory: Path, session: str, a, console) -> int:
         return 1
     name = path.name.removesuffix(".events.jsonl")
     server = VizServer(events=events, title=name, port=a.port)
-    url = f"{server.url}&speed={a.speed}"
+    url = f"{server.url}&speed={a.speed:g}"
     console.print(f"Replaying {name} ({len(events)} events): {url}")
     console.print("[dim]Press Ctrl+C to stop.[/]")
     return _serve(server, url, a.no_open, console)

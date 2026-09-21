@@ -155,7 +155,7 @@ def test_muyah_viz_replays_the_last_session(project, monkeypatch):
 
     monkeypatch.setattr(VizServer, "serve_forever", serve_briefly)
     t0 = time.time()
-    assert main(["viz", "--replay", "--no-open", "--speed", "4"]) == 0
+    assert main(["viz", "--replay", "--no-open", "--speed", "0.25"]) == 0
     assert started and started[0].mode == "replay" and time.time() - t0 < 5
     assert any(e["type"] == "turn_end" for e in started[0].events)
 
