@@ -5,6 +5,12 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **The agent sets up MCP servers itself** (new `McpServers` tool).
+  - It writes the server to `.mcp.json` (project) or `~/.muyah/mcp.json` (all projects) and starts it at once, with no restart, so its tools are usable from the next reply.
+  - It also lists, reconnects and disables servers.
+  - Adding one always asks first, auto mode included, and API keys are masked on screen.
+  - Before, the model told you it could not do this.
+- **Fix: the mic key did nothing.** Win+H was sent while Ctrl was still held, which Windows reads as Ctrl+Win+H. It is now sent with `SendInput` once Ctrl/Shift/Alt are released.
 - **Pasting while it works** no longer sends each pasted line as its own message.
   - While a turn runs, MUYAH-CODE turns on bracketed paste, so Windows Terminal also skips its "paste anyway?" warning.
   - A paste arrives as one piece; terminals without bracketed paste are detected by the burst.
