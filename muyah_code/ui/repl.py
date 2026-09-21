@@ -115,6 +115,11 @@ class Repl:
             self.app.set_mode(self.app.permissions.cycle_mode())
             event.app.invalidate()
 
+        @kb.add("escape", "escape")
+        def _(event):
+            if not event.current_buffer.text:
+                event.app.exit(result="/rewind")
+
         @kb.add("escape", "enter")
         def _(event):
             event.current_buffer.insert_text("\n")
@@ -282,6 +287,8 @@ class Repl:
             if line is _RESIZED:
                 self._redraw()
                 continue
+            if line == "/rewind" and not self.session.default_buffer.text:
+                return line
             # the input area is erased when you press Enter; your message is shown as a highlighted block
             if line.strip():
                 self.console.print(blocks.user_prompt(line))

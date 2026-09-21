@@ -5,6 +5,13 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **Rewind** (`/rewind`, or **Esc Esc** on an empty prompt): go back to before any earlier turn and restore **code and conversation, conversation only, or code only**.
+  - It shows exactly which files will change before you confirm.
+  - Every rewind can be undone ("Undo the last rewind").
+  - It covers files the agent wrote or edited *and* files changed by commands it ran.
+  - It works after a restart or `--resume`.
+  - Snapshots go to a shadow git repository in `~/.muyah/rewind/`, never your project's own `.git`. They're taken in the background while the model thinks (about 0.3 s on a 200-file project).
+  - `/undo` now rewinds code and conversation of the last turn. Fixed: a sub-agent used to split a turn in two.
 - **Live view:**
   - A **REC** badge shows where the session is being recorded, and **Download** saves the recording.
   - Every detail view has a **Copy** button, plus a copy icon on each code block.

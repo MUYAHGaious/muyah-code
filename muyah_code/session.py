@@ -90,6 +90,8 @@ class Session:
                     messages = list(ev.get("messages") or [])
                 elif t == "title":
                     meta["title"] = ev.get("title")
+                elif t in ("checkpoint", "epoch"):
+                    meta.setdefault("rewind", []).append(ev)
         return _repair(messages), meta
 
     @classmethod

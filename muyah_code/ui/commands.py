@@ -114,7 +114,9 @@ class CommandRouter:
             Command("connect", "Point at a new endpoint (URL) and pick a model", self.connect, "<url> [model]"),
             Command("mode", "Permission mode: plan | edit | manual | auto (or bypassPermissions)", self.mode, "[mode]"),
             Command("plan", "Toggle plan mode (read-only exploration, then a plan)", self.plan),
-            Command("undo", "Revert the file changes of the last turn", self.undo),
+            Command("undo", "Undo the last turn: its file changes and its messages", self.undo),
+            Command("rewind", "Go back to before any earlier turn: code, conversation, or both (Esc Esc)",
+                    self.rewind),
             Command("todos", "Show the current todo list", self.todos),
             Command("skills", "List skills (run one with /<skill-name> [args])", self.skills),
             Command("agents", "List sub-agent types", self.agents),
@@ -294,6 +296,72 @@ class CommandRouter:
 
     def undo(self, arg):
         self.console.print(escape(self.app.undo()))
+
+    def rewind(self, arg):
+        """Pick a turn, pick what to restore, see what changes, confirm."""
+        from muyah_code.app import describe_rewind
+        from muyah_code.ui.history import ago
+
+        rw = self.app.rewind
+        agent = self.app.agent
+        turns = rw.turns()
+        if not turns and rw.last_safety() is None:
+            self.console.print("[dim]Nothing to rewind yet: no turns in this session.[/]")
+            return
+        options = []
+        if rw.last_safety() is not None:
+            options.append(("__undo__", "↩ Undo the last rewind"))
+        for p in reversed(turns[-30:]):
+            convo = "" if rw.can_rewind_conversation(p, agent) else "  (code only)"
+            options.append((p.turn, f"Turn {p.turn} · {ago(p.ts)} · {p.prompt[:70]}{convo}"))
+        picked = self.repl.prompter.select("Rewind to before which turn?", options,
+                                           default=options[0][0] if options else None)
+        if picked is None:
+            return
+        if picked == "__undo__":
+            result = rw.undo_rewind(agent)
+            if result is None:
+                self.console.print("[dim]Nothing to undo.[/]")
+                return
+            files = len(result["code"])
+            self.console.print(f"Back to how things were before the last rewind ({files} file"
+                               f"{'s' if files != 1 else ''} restored"
+                               f"{', conversation restored' if result['conversation'] else ''}).")
+            return
+        point = next(p for p in turns if p.turn == picked)
+        modes = [("both", "Code and conversation"), ("conversation", "Conversation only (files stay as they are)"),
+                 ("code", "Code only (keep the conversation)")]
+        if not rw.can_rewind_conversation(point, agent):
+            modes = [("code", "Code only (the conversation was cleared or compacted since then)")]
+        mode = self.repl.prompter.select(f"Rewind to before turn {point.turn}: what should go back?", modes,
+                                         default=modes[0][0])
+        if mode is None:
+            return
+        code, conversation = mode in ("both", "code"), mode in ("both", "conversation")
+        safety_sha = None
+        if code:
+            safety_sha, changes = rw.preview(point)
+            if safety_sha is None and not rw.covers_commands:
+                self.console.print(f"[yellow]Only files edited with Write/Edit can be restored "
+                                   f"({escape(rw.disabled_reason)}).[/]")
+            elif not changes:
+                self.console.print("[dim]No files changed since then.[/]")
+            else:
+                verbs = {"M": "restore", "A": "bring back", "D": "remove"}
+                self.console.print(f"This will change {len(changes)} file{'s' if len(changes) != 1 else ''}:")
+                for status, path in changes[:15]:
+                    self.console.print(f"  [dim]{verbs[status]}[/] {escape(path)}")
+                if len(changes) > 15:
+                    self.console.print(f"  [dim]… and {len(changes) - 15} more[/]")
+            self.console.print("[dim]Things outside this folder (databases, installed packages, network calls) "
+                               "cannot be rewound.[/]")
+        ok = self.repl.prompter.select("Go ahead?", [("yes", "Yes, rewind"), ("no", "No")], default="yes")
+        if ok != "yes":
+            return
+        result = rw.restore(point, code=code, conversation=conversation, agent=agent, safety_sha=safety_sha)
+        self.console.print(escape(describe_rewind(point, result, rw)))
+        if result.get("conversation"):
+            self.repl._resume_text = point.prompt   # your prompt is back in the input, to edit or resend
 
     def todos(self, arg):
         if not self.app.ctx.todos:

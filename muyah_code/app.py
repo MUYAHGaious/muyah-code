@@ -19,7 +19,7 @@ from muyah_code.llm.models import DEFAULT_WINDOW, known_context_window
 from muyah_code.llm.toolcall_parser import TEXT_PROTOCOL_INSTRUCTIONS
 from muyah_code.memory import InstructionFile, load_instructions
 from muyah_code.permissions import PermissionManager
-from muyah_code.session import Checkpoints, Session, sessions_dir
+from muyah_code.session import Session, sessions_dir
 from muyah_code.skills.loader import SkillRegistry
 from muyah_code.subagents import AgentDef, AgentTool, SubagentManager, SubagentUI, load_agent_defs
 from muyah_code.tools import builtin_tools
@@ -51,6 +51,25 @@ def resolve_context_window(cfg: Config, llm: LLMClient) -> tuple[int, str]:
     if known:
         return known, "model table"
     return DEFAULT_WINDOW, "default"
+
+
+def describe_rewind(point, result: dict, rewind) -> str:
+    """One readable summary of a rewind, for /undo and /rewind."""
+    lines = [f"Rewound to before turn {point.turn}: {point.prompt[:80]}"]
+    code = result.get("code") or []
+    if code:
+        verbs = {"M": "restored", "A": "brought back", "D": "removed"}
+        lines += [f"  {verbs.get(st, st)} {path}" for st, path in code[:30]]
+        if len(code) > 30:
+            lines.append(f"  … and {len(code) - 30} more files")
+    elif "code" in result and not result.get("conversation"):
+        lines.append("  no file changes to undo")
+    if result.get("conversation"):
+        lines.append("  the conversation is back to that point too")
+    if result.get("fallback"):
+        lines.append("  (only files edited with Write/Edit could be restored: " + rewind.disabled_reason + ")")
+    lines.append("  Changed your mind? /rewind → \"Undo the last rewind\".")
+    return "\n".join(lines)
 
 
 class App:
@@ -94,7 +113,6 @@ class App:
         self.shell = detect_shell(cfg.get("shell", "auto"))
         self.git_status = git_snapshot(self.cwd)
         self.jobs = JobManager()
-        self.checkpoints = Checkpoints()
 
         self.learning_enabled = bool(cfg.get("learning.enabled", True))
         project_lessons = self.root / ".muyah" / "lessons.jsonl"
@@ -115,18 +133,25 @@ class App:
 
         sdir = sessions_dir(self.home, self.root)
         history: list[dict] = []
+        resume_meta: dict = {}
         if resume or continue_last:
             if continue_last and not resume:
                 infos = Session.list_sessions(sdir, limit=1)
                 resume = infos[0].id if infos else None
             if resume:
-                self.session, history, _ = Session.resume(sdir, resume)
+                self.session, history, resume_meta = Session.resume(sdir, resume)
             else:
                 self.session = Session(sdir)
         else:
             self.session = Session(sdir) if persist_session else None
         if self.session:
             self.session.start({"cwd": str(self.cwd), "model": self.llm.model, "version": __version__})
+        from muyah_code.rewind import Rewind
+
+        self.rewind = Rewind(self.home, self.root, self.session)
+        self.checkpoints = self.rewind.files  # per-file snapshots (the fallback without git)
+        if resume_meta.get("rewind"):
+            self.rewind.load(resume_meta["rewind"])
         # Live event stream for /viz; also recorded next to the session file so it can be replayed.
         self.events = EventBus(record_to=self.session.path.with_suffix(".events.jsonl") if self.session else None)
         self.hooks.events = self.events
@@ -198,7 +223,7 @@ class App:
         ctx = ToolContext(cwd=self.cwd, project_root=self.root, config=self.cfg, depth=depth, headless=self.headless)
         ctx.services.update({
             "ui": ui, "llm": self.llm, "skills": self.skills, "jobs": self.jobs,
-            "checkpoints": self.checkpoints, "context_window": self.window, "events": self.events,
+            "checkpoints": self.rewind, "rewind": self.rewind, "context_window": self.window, "events": self.events,
         })
         return ctx
 
@@ -342,6 +367,7 @@ class App:
     def run_prompt(self, prompt: str) -> TurnResult:
         self._learn_from_previous(prompt)
         start_index = len(self.agent.messages)
+        self.rewind.begin_turn(prompt, start_index)   # snapshot before anything in this turn changes
         result = self.agent.run(self.expand_mentions(prompt))
         self.last_turn = TurnRecord(prompt, result, [x.id for x in self._current_lessons], start_index)
         if self.learning_enabled and self.cfg.get("learning.reflect", True) and \
@@ -394,13 +420,13 @@ class App:
         return self.context.count(self.agent.messages, tools), self.context.usable
 
     def undo(self) -> str:
-        res = self.checkpoints.undo()
-        if res is None:
+        """Rewind code and conversation to before the last turn."""
+        turns = self.rewind.turns()
+        if not turns:
             return "Nothing to undo."
-        label, restored = res
-        for key in list(self.ctx.file_state):
-            self.ctx.file_state.pop(key, None)  # files changed on disk: force a re-read before editing
-        return f"Undid changes from: {label}\n" + "\n".join(f"  {r}" for r in restored)
+        point = turns[-1]
+        result = self.rewind.restore(point, code=True, conversation=True, agent=self.agent)
+        return describe_rewind(point, result, self.rewind)
 
     def shutdown(self) -> None:
         self.events.close()

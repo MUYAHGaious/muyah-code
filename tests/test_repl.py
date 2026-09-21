@@ -50,7 +50,7 @@ def test_repl_session_end_to_end(project):
     assert "Mode: plan" in out and "Mode: acceptEdits" in out
     assert "Created notes.md" in out              # markdown rendered (bold markers stripped)
     assert "1 file changed" in out                # turn footer
-    assert "Undid changes" in out and not (project / "notes.md").exists()
+    assert "Rewound to before turn" in out and not (project / "notes.md").exists()
     assert "always use type hints" in (project / "MUYAH.md").read_text()
     assert "Theme set to ocean" in out
     import re
@@ -376,3 +376,20 @@ def _check_startup_offer(project, monkeypatch):
     Repl(app, ui, prompter=asked).offer_viz()
     assert asked.asked == []
     app.shutdown()
+
+
+def test_rewind_command(project):
+    script = [reply("", [{"name": "Write", "arguments": {"file_path": "notes.md", "content": "# Notes\n"}}]),
+              reply("Created notes.md.")]
+    # /rewind: Enter picks the latest turn, "Code and conversation", "Yes, rewind". Your prompt is then back
+    # in the input box (to edit or resend): Ctrl+C clears it before /exit.
+    keys = "create notes.md\r/rewind\r\r\r\r" + CTRL_C + "/exit\r"
+    code, out, app = run_session(project, [keys], script, lines=False)
+    assert "This will change 1 file" in out and "Rewound to before turn 1" in out
+    assert not (project / "notes.md").exists()
+    assert len(app.agent.messages) == 1                       # the conversation went back too
+
+
+def test_esc_esc_on_an_empty_prompt_opens_rewind(project):
+    code, out, app = run_session(project, ["\x1b\x1b", "/exit\r"], [], lines=False)
+    assert "Nothing to rewind yet" in out

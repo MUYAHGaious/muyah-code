@@ -284,6 +284,7 @@ class Agent:
     def clear(self) -> None:
         self.messages = [{"role": "system", "content": ""}]
         self.ctx.todos.clear()
+        self._new_epoch()
         if self.session:
             self.session.log_replace([], "clear")
 
@@ -310,6 +311,7 @@ class Agent:
         after = self.context.count(new, tools)
         desc = f"Compacted the conversation: {before:,} → {after:,} tokens. {desc}"
         self.messages = new
+        self._new_epoch()
         if self.session:
             self.session.log_replace(self.messages[1:], "compact")
         self._emit("compact", description=desc, emergency=emergency)
@@ -366,9 +368,6 @@ class Agent:
             extra = self.turn_context(prompt)
             if extra:
                 prompt = f"{prompt}\n\n{extra}"
-        checkpoints = self.ctx.service("checkpoints")
-        if checkpoints is not None:
-            checkpoints.begin_turn(self.last_user_prompt)
         self._append({"role": "user", "content": prompt})
 
         seen: dict[str, int] = {}
@@ -542,6 +541,11 @@ class Agent:
                 for r in parse_limits(limits)]
         if rows:
             self._emit("limits", model=getattr(self.llm, "model", ""), rows=rows)
+
+    def _new_epoch(self) -> None:
+        rewind = self.ctx.service("rewind")
+        if rewind is not None and not self.is_subagent:
+            rewind.new_epoch()
 
     def _take_queued_messages(self) -> None:
         """Messages you typed while it worked arrive between steps, as soon as the current step is done."""
@@ -720,6 +724,9 @@ class Agent:
                     path = self.ctx.config.append_rule("allow", rule, scope="local")
                     self.ui.info(f"Saved rule {rule} to {path}")
 
+        rewind = self.ctx.service("rewind")
+        if rewind is not None and not tool.is_read_only(args):
+            rewind.wait_ready()   # the turn's snapshot must be done before anything changes
         tid = self._show_tool_start(title, tool.name, tool_id, args)
         t0 = time.time()
         res = self.registry.execute(tool, args, self.ctx, self._max_output())
