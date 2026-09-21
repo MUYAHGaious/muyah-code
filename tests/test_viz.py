@@ -57,7 +57,8 @@ def test_requires_token_and_loopback_host(capfd):
         body = resp.read().decode("utf-8")
         assert "MUYAH-CODE" in body and "EventSource" in body
         assert "default-src 'none'" in resp.getheader("Content-Security-Policy")
-        assert "http://" not in body.split("<script>")[1]   # self-contained: no external requests
+        script = body.split("<script>")[1].replace("http://www.w3.org/2000/svg", "")  # an SVG namespace id, not a URL
+        assert "http://" not in script and "https://" not in script   # self-contained: no external requests
         _, resp = request(server, f"/nope?t={server.token}")
         assert resp.status == 404
     finally:
