@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -52,6 +53,7 @@ class HookRunner:
         self.cwd = cwd
         self.shell_pref = shell_pref
         self.errors: list[str] = []
+        self.events = None  # EventBus: each hook run is shown in the live view
         for event in self.config:
             if event not in EVENTS:
                 self.errors.append(f"Unknown hook event '{event}' (known: {', '.join(EVENTS)})")
@@ -83,34 +85,43 @@ class HookRunner:
         data = json.dumps({"hook_event_name": event, "cwd": str(self.cwd), **payload}, default=str)
         shell = detect_shell(self.shell_pref)
         for h in hooks:
-            timeout = float(h.get("timeout", 60))
-            try:
-                proc = subprocess.Popen(
-                    shell.argv(h["command"]), cwd=str(self.cwd), stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, env={**shell_env(), "MUYAH_PROJECT_DIR": str(self.cwd)},
-                )
-            except OSError as e:
-                outcome.warnings.append(f"{event} hook failed to start: {e}")
-                continue
-            try:
-                out, err = proc.communicate(data.encode("utf-8"), timeout=timeout)
-            except subprocess.TimeoutExpired:
-                kill_tree(proc)
-                outcome.warnings.append(f"{event} hook timed out after {timeout:.0f}s: {h['command'][:80]}")
-                continue
-            stdout = out.decode("utf-8", errors="replace").strip()
-            stderr = err.decode("utf-8", errors="replace").strip()
-            if proc.returncode == 2:
-                outcome.blocked = True
-                outcome.reason = stderr or stdout or f"blocked by {event} hook"
-                return outcome
-            if proc.returncode != 0:
-                outcome.warnings.append(f"{event} hook exited {proc.returncode}: {(stderr or stdout)[:300]}")
-                continue
-            self._apply_stdout(event, stdout, outcome)
+            started, warnings_before = time.time(), len(outcome.warnings)
+            self._run_one(event, h, data, shell, outcome)
+            if self.events is not None:
+                result = ("blocked" if outcome.blocked else "warning" if len(outcome.warnings) > warnings_before
+                          else "ok")
+                self.events.emit("hook", event=event, tool=tool_name, command=h["command"][:160], outcome=result,
+                                 duration=round(time.time() - started, 3))
             if outcome.blocked:
                 return outcome
         return outcome
+
+    def _run_one(self, event: str, h: dict, data: str, shell, outcome: HookOutcome) -> None:
+        timeout = float(h.get("timeout", 60))
+        try:
+            proc = subprocess.Popen(
+                shell.argv(h["command"]), cwd=str(self.cwd), stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, env={**shell_env(), "MUYAH_PROJECT_DIR": str(self.cwd)},
+            )
+        except OSError as e:
+            outcome.warnings.append(f"{event} hook failed to start: {e}")
+            return
+        try:
+            out, err = proc.communicate(data.encode("utf-8"), timeout=timeout)
+        except subprocess.TimeoutExpired:
+            kill_tree(proc)
+            outcome.warnings.append(f"{event} hook timed out after {timeout:.0f}s: {h['command'][:80]}")
+            return
+        stdout = out.decode("utf-8", errors="replace").strip()
+        stderr = err.decode("utf-8", errors="replace").strip()
+        if proc.returncode == 2:
+            outcome.blocked = True
+            outcome.reason = stderr or stdout or f"blocked by {event} hook"
+            return
+        if proc.returncode != 0:
+            outcome.warnings.append(f"{event} hook exited {proc.returncode}: {(stderr or stdout)[:300]}")
+            return
+        self._apply_stdout(event, stdout, outcome)
 
     @staticmethod
     def _apply_stdout(event: str, stdout: str, outcome: HookOutcome) -> None:

@@ -125,3 +125,18 @@ def test_checkpoints_restore_first_state(tmp_path):
     label, restored = cp.undo()
     assert label == "t1" and f.read_text() == "v0"
     assert cp.undo() is None
+
+
+def test_global_muyah_home_is_not_a_project_marker(tmp_path, monkeypatch):
+    from muyah_code.config import find_project_root
+
+    user = tmp_path / "user"
+    (user / ".muyah").mkdir(parents=True)                 # the global ~/.muyah
+    monkeypatch.setenv("MUYAH_HOME", str(user / ".muyah"))
+    sandbox = user / "Desktop" / "sandbox"
+    sandbox.mkdir(parents=True)
+    assert find_project_root(sandbox) == sandbox.resolve()   # not the whole home directory
+    proj = user / "code" / "app"
+    (proj / ".muyah").mkdir(parents=True)                  # a real project marker still counts
+    (proj / "src").mkdir()
+    assert find_project_root(proj / "src") == proj.resolve()

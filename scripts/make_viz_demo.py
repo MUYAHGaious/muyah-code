@@ -12,6 +12,7 @@ same `.events.jsonl` file every session writes, so the replay is exactly what `m
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import sys
@@ -21,7 +22,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT), str(ROOT / "tests")]
-os.environ["MUYAH_HOME"] = tempfile.mkdtemp(prefix="muyah-viz-demo-")
+os.environ.setdefault("MUYAH_HOME", tempfile.mkdtemp(prefix="muyah-viz-demo-"))
 for var in ("MUYAH_BASE_URL", "MUYAH_API_KEY", "MUYAH_MODEL", "MUYAH_PROFILE"):
     os.environ.pop(var, None)
 
@@ -46,6 +47,8 @@ def todos(*states):
 SCRIPT = [
     reply("I'll plan this first.", [{"name": "TodoWrite", "arguments": todos("in_progress", "pending", "pending")}],
           think=1.2),
+    reply("Checking the tracker first.", [{"name": "mcp__tracker__lookup_issue", "arguments": {"id": "42"}}],
+          think=0.8),
     reply("", [{"name": "Agent", "arguments": {
         "description": "Find divide code", "subagent_type": "explore",
         "prompt": "Find where divide() is defined and tested. Report the file paths and anything wrong."}}], think=0.9),
@@ -74,15 +77,22 @@ class QuietUI(UI):
         raise AssertionError("the demo runs in bypassPermissions mode")
 
 
-def record(workdir: Path, live_wait: float | None = None) -> Path:
-    project = workdir / "calc-demo"
-    project.mkdir(parents=True)
+def record(project: Path, live_wait: float | None = None) -> Path:
+    project.mkdir(parents=True, exist_ok=True)
     (project / "calc.py").write_text(CALC, encoding="utf-8")
     (project / "test_calc.py").write_text(TEST, encoding="utf-8")
+    # an MCP server (a fake issue tracker) and a hook that runs after every Bash command
+    (project / ".mcp.json").write_text(json.dumps({"mcpServers": {"tracker": {
+        "command": sys.executable, "args": [str(ROOT / "tests" / "fakemcp.py"), "--delay", "0.8"]}}}), encoding="utf-8")
+    (project / ".muyah").mkdir(exist_ok=True)
+    (project / ".muyah" / "after_bash.py").write_text("import sys, json\njson.load(sys.stdin)\n", encoding="utf-8")
+    hook = f'"{sys.executable}" "{project / ".muyah" / "after_bash.py"}"'
+    (project / ".muyah" / "settings.json").write_text(json.dumps({"hooks": {"PostToolUse": [
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": hook}]}]}}), encoding="utf-8")
     with FakeOpenAI(SCRIPT, chunk_delay=0.035) as srv:
         cfg = load_config(cwd=project, overrides={"base_url": srv.url, "model": "qwen3-coder-30b", "api_key": "k"})
         cfg.set("learning.reflect", False)
-        app = App(cfg, QuietUI(), cwd=project, mode="bypassPermissions", headless=True, enable_mcp=False)
+        app = App(cfg, QuietUI(), cwd=project, mode="bypassPermissions", headless=True, enable_mcp=True)
         app.lessons.add(Lesson(trigger="fixing a failing test",
                                lesson="Run the failing test first to confirm the bug before editing.",
                                tags=["pytest", "test", "failing"]))
@@ -108,9 +118,11 @@ def main() -> int:
     ap.add_argument("--live", type=float, metavar="SECONDS",
                     help="Serve the live view while recording; wait SECONDS before starting the turn")
     ap.add_argument("--out", help="Copy the recording to this path")
+    ap.add_argument("--project", help="Folder for the demo project (default: a new temp folder). Run "
+                    "`muyah viz` there, with the same MUYAH_HOME, to watch from another terminal.")
     a = ap.parse_args()
-    workdir = Path(tempfile.mkdtemp(prefix="muyah-viz-proj-"))
-    path = record(workdir, a.live)
+    project = Path(a.project) if a.project else Path(tempfile.mkdtemp(prefix="muyah-viz-proj-")) / "calc-demo"
+    path = record(project, a.live)
     if a.out:
         shutil.copyfile(path, a.out)
         path = Path(a.out)

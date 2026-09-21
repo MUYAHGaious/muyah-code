@@ -330,7 +330,7 @@ class Agent:
             if self.events is not None:
                 from muyah_code.events import TokenMeter
 
-                meter = TokenMeter(self.events)
+                meter = TokenMeter(self.events, self.label)
                 self.emit_context()
                 self._emit("llm_start", model=getattr(self.llm, "model", ""))
                 show_text, show_reasoning = on_text, on_reasoning
@@ -340,7 +340,7 @@ class Agent:
                     _show(chunk)
 
                 def on_reasoning(chunk, _show=show_reasoning, _meter=meter):
-                    _meter.feed(chunk)
+                    _meter.feed(chunk, thinking=True)
                     _show(chunk)
             started = time.time()
             try:
@@ -355,6 +355,7 @@ class Agent:
                                duration=round(time.time() - started, 3), calls=[c.name for c in resp.tool_calls])
             except ToolsUnsupportedError as e:
                 self.ui.assistant_end()
+                self._llm_failed(meter, started, e)
                 if self.tool_mode == "native":
                     self._last_error = f"Server rejected native tool calling: {e}"
                     self.ui.error(self._last_error)
@@ -365,6 +366,7 @@ class Agent:
                 continue
             except ContextOverflowError as e:
                 self.ui.assistant_end()
+                self._llm_failed(meter, started, e)
                 overflow_retries += 1
                 if overflow_retries > 2:
                     self._last_error = f"Context still too large after compaction: {e}"
@@ -373,11 +375,13 @@ class Agent:
                 self.ui.warn("The model's context window is full; compacting and retrying...")
                 self.ui.info(self.compact(emergency=True))
                 continue
-            except KeyboardInterrupt:
+            except KeyboardInterrupt as e:
                 self.ui.assistant_end()
+                self._llm_failed(meter, started, e)
                 raise
             except Exception as e:  # LLMError and anything unexpected from the SDK
                 self.ui.assistant_end()
+                self._llm_failed(meter, started, e)
                 self._last_error = str(e)
                 self.ui.error(f"Model request failed: {e}")
                 return None
@@ -386,6 +390,12 @@ class Agent:
             if prompt_tokens:
                 self.context.calibrate(self.messages, tools, prompt_tokens)
             return resp
+
+    def _llm_failed(self, meter, started: float, error: BaseException) -> None:
+        if meter is not None:
+            meter.flush()
+            self._emit("llm_end", prompt_tokens=0, completion_tokens=0, duration=round(time.time() - started, 3),
+                       calls=[], error=(str(error) or type(error).__name__)[:300])
 
     def _stop_hook(self, rounds: int) -> str | None:
         event = "SubagentStop" if self.is_subagent else "Stop"

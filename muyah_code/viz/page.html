@@ -10,7 +10,7 @@
   --bg: #071012; --bg2: #0b181b; --panel: rgba(15, 32, 36, .72); --line: rgba(94, 234, 212, .14);
   --text: #d8f3ee; --dim: #7fa6a0; --faint: #4b6b67;
   --teal: #5eead4; --teal2: #2dd4bf; --cyan: #67e8f9; --amber: #fbbf24; --rose: #fb7185;
-  --green: #86efac; --violet: #c4b5fd;
+  --green: #86efac; --violet: #c4b5fd; --pink: #f0abfc; --orange: #fdba74;
   --mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
@@ -69,7 +69,17 @@ ul.list .mark { font-family: var(--mono); width: 14px; flex: none; text-align: c
 #log time { color: var(--faint); flex: none; width: 52px; text-align: right; }
 #log span { overflow: hidden; text-overflow: ellipsis; }
 .k-turn { color: var(--teal); } .k-llm { color: var(--cyan); } .k-tool { color: var(--amber); }
+.k-mcp { color: var(--pink); } .k-hook { color: var(--orange); }
 .k-err { color: var(--rose); } .k-ok { color: var(--green); } .k-sub { color: var(--violet); } .k-dim { color: var(--dim); }
+.now li { justify-content: space-between; }
+.now .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.now .secs { font-family: var(--mono); color: var(--dim); flex: none; }
+.stream { margin-top: 8px; font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word;
+  max-height: 150px; overflow: hidden; display: flex; flex-direction: column-reverse; color: var(--text); }
+.stream:empty { display: none; }
+.stream .thinking { color: var(--faint); font-style: italic; }
+.stream .cursor { display: inline-block; width: 7px; height: 13px; background: var(--cyan); vertical-align: -2px;
+  animation: blink 1s infinite; }
 footer { padding: 0 18px 14px; }
 .timeline { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 8px 12px; }
 .timeline h3 { margin: 0 0 4px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
@@ -116,6 +126,11 @@ footer { padding: 0 18px 14px; }
     <div class="caption" id="caption">Waiting for the agent…</div>
   </section>
   <aside>
+    <div class="card now">
+      <h3>Right now</h3>
+      <ul class="list" id="now"><li class="empty">Idle</li></ul>
+      <div class="stream" id="stream"></div>
+    </div>
     <div class="card">
       <h3>Context window</h3>
       <div class="ctx">
@@ -152,6 +167,7 @@ const $ = (id) => document.getElementById(id);
 const C = {
   teal: "#5eead4", teal2: "#2dd4bf", cyan: "#67e8f9", amber: "#fbbf24", rose: "#fb7185",
   green: "#86efac", violet: "#c4b5fd", text: "#d8f3ee", dim: "#7fa6a0", faint: "#4b6b67",
+  pink: "#f0abfc", orange: "#fdba74",
 };
 const PART_COLORS = { system: C.violet, conversation: C.teal, tools: C.amber };
 const MAX_GAP = 2.5;   // replay: idle gaps longer than this (seconds) are shortened
@@ -169,6 +185,7 @@ function freshState() {
     turns: 0, calls: 0, toolCalls: 0, toolErrors: 0, tokIn: 0, tokOut: 0,
     llmActive: null, tools: new Map(), toolNames: [], subagents: new Map(),
     todos: [], lessons: [], log: [], spans: [], caption: "Waiting for the agent…", now: 0,
+    stream: null, mcp: new Map(), hooks: 0, sessionSeen: false,
   };
 }
 let S = freshState();
@@ -179,6 +196,12 @@ function log(ev, kind, text) {
 }
 
 function isSub(ev) { return ev.agent && ev.agent !== "main"; }
+// MCP tools are named mcp__<server>__<tool>
+function mcpParts(name) {
+  if (!name || !name.startsWith("mcp__")) return null;
+  const rest = name.slice(5), i = rest.indexOf("__");
+  return i < 0 ? { server: rest, tool: "" } : { server: rest.slice(0, i), tool: rest.slice(i + 2) };
+}
 
 function apply(ev, fx) {
   S.now = Math.max(S.now, ev.t || 0);
@@ -186,6 +209,9 @@ function apply(ev, fx) {
   switch (ev.type) {
     case "session":
       Object.assign(S, { model: ev.model || "", provider: ev.provider || "", mode: ev.mode || "", window: ev.window || 0 });
+      S.sessionSeen = true;
+      for (const m of ev.mcp || []) S.mcp.set(m.name, { status: m.status || "", calls: 0, errors: 0 });
+      if (S.turns === 0) S.caption = "Ready. Send a prompt in the terminal.";
       log(ev, "k-dim", `session · ${ev.model} · ${fmtNum(ev.window || 0)} window`);
       break;
     case "turn_start":
@@ -203,24 +229,39 @@ function apply(ev, fx) {
     case "llm_start":
       closeLlm(ev);
       S.llmActive = { start: ev.t, agent: ev.agent, chars: 0 };
+      S.stream = { agent: ev.agent || "main", text: "", thinking: "" };
       S.calls++;
       S.caption = who + "Model is thinking…";
       fx && fx.think(ev);
       break;
     case "llm_tokens":
       if (S.llmActive) S.llmActive.chars += ev.chars || 0;
+      if (S.stream && S.stream.agent === (ev.agent || "main")) {
+        S.stream.text = (S.stream.text + (ev.text || "")).slice(-4000);
+        S.stream.thinking = (S.stream.thinking + (ev.thinking || "")).slice(-1500);
+      }
       fx && fx.tokens(ev);
       break;
     case "llm_end":
       S.tokIn += ev.prompt_tokens || 0; S.tokOut += ev.completion_tokens || 0;
-      closeLlm(ev);
+      closeLlm(ev, !!ev.error);
+      if (ev.error) {
+        log(ev, "k-err", `${who}model request failed · ${ev.error}`);
+        S.caption = who + "Model request failed: " + ev.error;
+        fx && fx.modelError();
+        break;
+      }
       log(ev, "k-llm", `${who}model · ${fmtNum(ev.prompt_tokens || 0)} in → ${fmtNum(ev.completion_tokens || 0)} out · `
         + `${(ev.duration || 0).toFixed(1)}s` + ((ev.calls || []).length ? " · calls " + ev.calls.join(", ") : ""));
       break;
     case "tool_start": {
       const key = (ev.agent || "main") + ":" + ev.id;
-      S.tools.set(key, { name: ev.name, title: ev.title, start: ev.t, agent: ev.agent });
-      if (!S.toolNames.includes(ev.name)) S.toolNames.push(ev.name);
+      const mcp = mcpParts(ev.name);
+      S.tools.set(key, { name: ev.name, title: ev.title, start: ev.t, agent: ev.agent, mcp });
+      if (mcp) {
+        if (!S.mcp.has(mcp.server)) S.mcp.set(mcp.server, { status: "", calls: 0, errors: 0 });
+        S.mcp.get(mcp.server).calls++;
+      } else if (!S.toolNames.includes(ev.name)) S.toolNames.push(ev.name);
       S.toolCalls++;
       S.caption = who + "● " + (ev.title || ev.name);
       fx && fx.toolStart(ev);
@@ -230,8 +271,10 @@ function apply(ev, fx) {
       const key = (ev.agent || "main") + ":" + ev.id;
       if (!ev.ok) S.toolErrors++;
       const t = S.tools.get(key);
-      if (t) { S.spans.push({ lane: 1, start: t.start, end: ev.t, label: ev.name, ok: ev.ok }); S.tools.delete(key); }
-      log(ev, ev.ok ? "k-tool" : "k-err", `${who}${ev.ok ? "●" : "✗"} ${t ? t.title || ev.name : ev.name}`
+      const mcp = mcpParts(ev.name);
+      if (mcp && !ev.ok && S.mcp.has(mcp.server)) S.mcp.get(mcp.server).errors++;
+      if (t) { S.spans.push({ lane: 1, start: t.start, end: ev.t, label: mcp ? mcp.server : ev.name, ok: ev.ok, mcp: !!mcp }); S.tools.delete(key); }
+      log(ev, !ev.ok ? "k-err" : mcp ? "k-mcp" : "k-tool", `${who}${ev.ok ? "●" : "✗"} ${t ? t.title || ev.name : ev.name}`
         + (ev.summary ? " — " + ev.summary : "") + ` · ${(ev.duration || 0).toFixed(2)}s`);
       fx && fx.toolEnd(ev);
       break;
@@ -264,12 +307,19 @@ function apply(ev, fx) {
     case "todos":
       S.todos = ev.items || [];
       break;
+    case "hook":
+      S.hooks++;
+      log(ev, ev.outcome === "blocked" ? "k-err" : "k-hook",
+        `hook ${ev.event}${ev.tool ? " (" + ev.tool + ")" : ""} · ${ev.outcome} · ${ev.command || ""}`);
+      if (ev.outcome === "blocked") S.caption = `A ${ev.event} hook blocked this step`;
+      fx && fx.hook(ev);
+      break;
   }
 }
 
-function closeLlm(ev) {
+function closeLlm(ev, failed) {
   if (!S.llmActive) return;
-  S.spans.push({ lane: 0, start: S.llmActive.start, end: ev.t, label: "model", ok: true });
+  S.spans.push({ lane: 0, start: S.llmActive.start, end: ev.t, label: "model", ok: !failed });
   if (S.spans.length > 2000) S.spans.splice(0, S.spans.length - 2000);
   S.llmActive = null;
 }
@@ -289,6 +339,7 @@ const particles = [];
 const pulses = [];
 let satellites = new Map();   // tool name -> {x, y, glow}
 let subNodes = new Map();     // sub-agent name -> {x, y, alpha}
+let mcpNodes = new Map();     // MCP server name -> {x, y, glow}
 let modelSpin = 0, compactFlash = 0;
 
 function layout() {
@@ -305,7 +356,10 @@ function layout() {
     tools:   { x: W * (narrow ? .84 : .8),  y: H * (narrow ? .24 : .5), r: R * .8, label: "Tools", color: C.amber },
     lessons: { x: W * (narrow ? .36 : .32), y: H * .17, r: R * .6,  label: "Lessons", color: C.violet },
     agents:  { x: W * (narrow ? .62 : .57), y: H * .84, r: R * .6,  label: "Sub-agents", color: C.violet },
+    mcp:     { x: W * (narrow ? .3 : .8),   y: H * (narrow ? .84 : .84), r: R * .6, label: "MCP", color: C.pink },
+    hooks:   { x: W * .1,                   y: H * .17, r: R * .5,  label: "Hooks",   color: C.orange },
   });
+  placeMcp();
   placeSatellites();
   placeSubNodes();
 }
@@ -329,6 +383,18 @@ function placeSatellites() {
     s.x = Math.min(hub.x + Math.cos(a) * radius * .55, W - 16); s.y = hub.y + Math.sin(a) * radius;
     s.labelLeft = W - s.x < 12 + name.length * 7.5;   // no room on the right: label goes left of the dot
     satellites.set(name, s);
+  });
+}
+function placeMcp() {
+  const hub = nodes.mcp, names = [...S.mcp.keys()], n = names.length;
+  const old = mcpNodes; mcpNodes = new Map();
+  names.forEach((name, i) => {
+    const s = old.get(name) || { glow: 0 };
+    const a = Math.PI + (n === 1 ? Math.PI / 2 : (i / (n - 1)) * Math.PI);   // a fan above the hub
+    const rad = hub.r * 2.4;
+    s.x = clamp(hub.x + Math.cos(a) * rad, 20, W - 20); s.y = hub.y + Math.sin(a) * rad * .8;
+    s.labelLeft = s.x > hub.x;
+    mcpNodes.set(name, s);
   });
 }
 function placeSubNodes() {
@@ -357,6 +423,8 @@ function edges() {
     youCtx: curve(n.you, n.context, 0), ctxModel: curve(n.context, n.model, 0), modelTools: curve(n.model, n.tools, 0),
     toolsCtx: curve(n.tools, n.context, -bend * 1.2), modelYou: curve(n.model, n.you, bend * 1.25),
     lessonsCtx: curve(n.lessons, n.context, 0), modelAgents: curve(n.model, n.agents, 0),
+    modelMcp: curve(n.model, n.mcp, bend * .3), mcpCtx: curve(n.mcp, n.context, -bend * .9),
+    hooksCtx: curve(n.hooks, n.context, 0),
   };
 }
 
@@ -378,6 +446,15 @@ const fx = {
     if (isSub(ev)) { const s = subNodes.get(ev.agent); if (s) s.alpha = 1; return; }
     spawn(edges().modelYou, C.cyan, n, { size: 2, speed: 1.1, stagger: .04, spread: 16 }); },
   toolStart(ev) {
+    const mcp = mcpParts(ev.name);
+    if (mcp) {
+      placeMcp();
+      const srv = mcpNodes.get(mcp.server), src = isSub(ev) ? subNodes.get(ev.agent) : null;
+      spawn(src ? curve(src, nodes.mcp, 20) : edges().modelMcp, C.pink, 6, { speed: 1.4 });
+      pulse(nodes.mcp, C.pink);
+      if (srv) { srv.glow = 1; setTimeout(() => spawn(curve(nodes.mcp, srv, 0), C.pink, 3, { speed: 2 }), 250); }
+      return;
+    }
     placeSatellites();
     const sat = satellites.get(ev.name); const e = edges();
     const src = isSub(ev) ? subNodes.get(ev.agent) : null;
@@ -385,12 +462,25 @@ const fx = {
     if (sat) { sat.glow = 1; setTimeout(() => spawn(curve(nodes.tools, sat, 0), C.amber, 3, { speed: 2 }), 250); }
   },
   toolEnd(ev) {
+    const mcp = mcpParts(ev.name);
+    if (mcp) {
+      const srv = mcpNodes.get(mcp.server), col = ev.ok ? C.green : C.rose;
+      if (srv) { srv.glow = Math.max(srv.glow, .6); spawn(curve(srv, nodes.mcp, 0), col, 3, { speed: 2 }); }
+      if (!isSub(ev)) setTimeout(() => spawn(edges().mcpCtx, col, 7, { speed: .9 }), 200);
+      if (!ev.ok) pulse(nodes.mcp, C.rose);
+      return;
+    }
     const sat = satellites.get(ev.name); const col = ev.ok ? C.green : C.rose;
     if (sat) { sat.glow = Math.max(sat.glow, .6); spawn(curve(sat, nodes.tools, 0), col, 3, { speed: 2 }); }
     if (!isSub(ev)) setTimeout(() => spawn(edges().toolsCtx, col, 7, { speed: .9 }), 200);
     if (!ev.ok) pulse(nodes.tools, C.rose);
   },
   compact() { compactFlash = 1; pulse(nodes.context, C.violet); },
+  modelError() { pulse(nodes.model, C.rose); },
+  hook(ev) {
+    const col = ev.outcome === "blocked" ? C.rose : ev.outcome === "warning" ? C.amber : C.orange;
+    pulse(nodes.hooks, col); spawn(edges().hooksCtx, col, 5, { speed: 1.3 });
+  },
   lessons() { pulse(nodes.lessons, C.violet); spawn(edges().lessonsCtx, C.violet, 8); },
   subStart(ev) { placeSubNodes(); pulse(nodes.agents, C.violet); spawn(edges().modelAgents, C.violet, 8); },
   subEnd(ev) { spawn(curve(nodes.agents, nodes.model, 0), ev.status === "ok" ? C.green : C.rose, 6); },
@@ -433,6 +523,10 @@ function frame(now) {
   drawEdge(e.youCtx, false, C.text); drawEdge(e.ctxModel, llm, C.teal); drawEdge(e.modelTools, toolsBusy, C.amber);
   drawEdge(e.toolsCtx, toolsBusy, C.green); drawEdge(e.modelYou, llm, C.cyan);
   drawEdge(e.lessonsCtx, S.lessons.length > 0, C.violet); drawEdge(e.modelAgents, anySub, C.violet);
+  const mcpBusy = [...S.tools.values()].some((t) => t.mcp);
+  if (S.mcp.size) { drawEdge(e.modelMcp, mcpBusy, C.pink); drawEdge(e.mcpCtx, mcpBusy, C.green); }
+  if (S.hooks) drawEdge(e.hooksCtx, false, C.orange);
+  mcpNodes.forEach((s) => { drawEdge(curve(n.mcp, s, 0), s.glow > .1, C.pink); });
   satellites.forEach((s) => { drawEdge(curve(n.tools, s, 0), s.glow > .1, C.amber); });
 
   // particles
@@ -476,6 +570,21 @@ function frame(now) {
   drawNode(n.tools, toolsBusy ? .6 : 0, S.toolCalls ? `${S.toolCalls} calls` : "");
   drawNode(n.lessons, S.lessons.length ? .4 : 0, S.lessons.length ? `${S.lessons.length} recalled` : "");
   drawNode(n.agents, anySub ? .5 : 0, "");
+  if (S.mcp.size) drawNode(n.mcp, mcpBusy ? .6 : 0, "");
+  if (S.hooks) drawNode(n.hooks, pulses.some((q) => q.node === n.hooks) ? .6 : 0, `${S.hooks} run${S.hooks === 1 ? "" : "s"}`);
+  mcpNodes.forEach((s, name) => {
+    const busy = [...S.tools.values()].some((t) => t.mcp && t.mcp.server === name);
+    const info = S.mcp.get(name) || {};
+    const failed = /fail/i.test(info.status || "");
+    if (busy) s.glow = 1;
+    sctx.beginPath(); sctx.arc(s.x, s.y, 5 + s.glow * 3, 0, Math.PI * 2);
+    sctx.fillStyle = failed ? C.rose : busy ? C.pink : C.pink + "66"; sctx.shadowColor = C.pink; sctx.shadowBlur = s.glow * 14;
+    sctx.fill(); sctx.shadowBlur = 0;
+    sctx.fillStyle = busy ? C.text : C.dim; sctx.font = "11px ui-monospace, Consolas, monospace"; sctx.textBaseline = "middle";
+    sctx.textAlign = s.labelLeft ? "left" : "right";
+    sctx.fillText(name + (info.calls ? ` ·${info.calls}` : ""), s.labelLeft ? s.x + 10 : s.x - 10, s.y);
+    s.glow = Math.max(0, s.glow - dt * .8);
+  });
 
   satellites.forEach((s, name) => {
     const busy = [...S.tools.values()].some((t) => t.name === name);
@@ -575,6 +684,43 @@ function renderPanels(force) {
   if (stick) box.scrollTop = box.scrollHeight;
 }
 
+function secs(start) { return Math.max(0, clock() - start).toFixed(1) + "s"; }
+let lastNow = 0;
+function renderNow() {
+  const rows = [];
+  if (S.llmActive) rows.push({ mark: "◐", color: C.cyan,
+    what: `${isSub(S.llmActive) ? "[" + S.llmActive.agent + "] " : ""}Model ${S.llmActive.chars ? "writing" : "thinking"}`
+      + (S.llmActive.chars ? ` · ${fmtNum(S.llmActive.chars)} chars` : ""), start: S.llmActive.start });
+  S.tools.forEach((t) => rows.push({ mark: "●", color: t.mcp ? C.pink : C.amber,
+    what: `${isSub(t) ? "[" + t.agent + "] " : ""}${t.mcp ? "MCP " + t.mcp.server + " · " + t.mcp.tool : t.title || t.name}`,
+    start: t.start }));
+  S.subagents.forEach((s, name) => { if (s.active) rows.push({ mark: "◆", color: C.violet, what: `Sub-agent ${name}`, start: s.start }); });
+  const box = $("now"); box.replaceChildren();
+  if (!rows.length) {
+    const li = document.createElement("li"); li.className = "empty";
+    li.textContent = S.sessionSeen ? "Idle · waiting for your next prompt" : "Waiting for a session";
+    box.append(li);
+  }
+  for (const r of rows) {
+    const li = document.createElement("li");
+    const m = document.createElement("span"); m.className = "mark"; m.textContent = r.mark; m.style.color = r.color;
+    const w = document.createElement("span"); w.className = "what"; w.textContent = r.what; w.title = r.what;
+    const t = document.createElement("span"); t.className = "secs"; t.textContent = secs(r.start);
+    li.append(m, w, t); box.append(li);
+  }
+  const st = $("stream"); st.replaceChildren();
+  if (S.stream && (S.stream.text || S.stream.thinking)) {
+    const inner = document.createElement("div");
+    if (S.stream.thinking && !S.stream.text) {
+      const th = document.createElement("span"); th.className = "thinking"; th.textContent = S.stream.thinking.slice(-600);
+      inner.append(th);
+    }
+    if (S.stream.text) inner.append(document.createTextNode(S.stream.text.slice(-900)));
+    if (S.llmActive) { const c = document.createElement("span"); c.className = "cursor"; inner.append(c); }
+    st.append(inner);
+  }
+}
+
 const tl = $("timeline"), tctx = tl.getContext("2d");
 function drawTimeline() {
   const r = tl.getBoundingClientRect(); const w = r.width, h = r.height;
@@ -586,14 +732,14 @@ function drawTimeline() {
   tctx.font = "11px ui-monospace, Consolas, monospace"; tctx.textBaseline = "middle";
   lanes.forEach((name, i) => { tctx.fillStyle = C.dim; tctx.textAlign = "left"; tctx.fillText(name, 0, 6 + lh * i + lh / 2);
     tctx.fillStyle = "rgba(94,234,212,.05)"; tctx.fillRect(left, 4 + lh * i, w - left - 8, lh - 4); });
-  const bar = (lane, s, e, ok, label) => {
+  const bar = (lane, s, e, ok, label, mcp) => {
     if (e < t0) return; const x1 = x(Math.max(s, t0)), x2 = Math.max(x1 + 2, x(e));
-    tctx.fillStyle = ok ? colors[lane] + "cc" : C.rose; tctx.fillRect(x1, 7 + lh * lane, x2 - x1, lh - 10);
+    tctx.fillStyle = !ok ? C.rose : (mcp ? C.pink : colors[lane]) + "cc"; tctx.fillRect(x1, 7 + lh * lane, x2 - x1, lh - 10);
     if (x2 - x1 > 46 && label) { tctx.fillStyle = "#06201e"; tctx.textAlign = "left"; tctx.fillText(label, x1 + 4, 6 + lh * lane + lh / 2); }
   };
-  for (const sp of S.spans) bar(sp.lane, sp.start, sp.end, sp.ok, sp.label);
+  for (const sp of S.spans) bar(sp.lane, sp.start, sp.end, sp.ok, sp.label, sp.mcp);
   if (S.llmActive) bar(0, S.llmActive.start, now, true, "thinking");
-  S.tools.forEach((t) => bar(1, t.start, now, true, t.name));
+  S.tools.forEach((t) => bar(1, t.start, now, true, t.mcp ? t.mcp.server : t.name, !!t.mcp));
   S.subagents.forEach((s, n) => { if (s.active) bar(2, s.start, now, true, n); });
   tctx.fillStyle = C.faint; tctx.textAlign = "right"; tctx.fillText(fmtTime(now), w - 8, h - 5);
   tctx.textAlign = "left"; tctx.fillText(fmtTime(t0), left, h - 5);
@@ -603,7 +749,7 @@ function drawTimeline() {
 
 const params = new URLSearchParams(location.search);
 const token = params.get("t") || "";
-let mode = "live", recorded = [], adjusted = [], replayPos = 0, replayClock = 0, playing = true, liveBase = null;
+let following = "", mode = "live", recorded = [], adjusted = [], replayPos = 0, replayClock = 0, playing = true, liveBase = null;
 
 function clock() {
   if (mode === "replay") return replayClock;
@@ -620,6 +766,8 @@ function tick(dt) {
     $("clock").textContent = `${fmtTime(replayClock)} / ${fmtTime(end)}`;
   }
   renderPanels(false);
+  const t = performance.now();
+  if (t - lastNow > 200) { lastNow = t; renderNow(); }
 }
 
 function compressGaps(events) {
@@ -632,11 +780,16 @@ function compressGaps(events) {
   });
 }
 
+function resetScene() {
+  S = freshState(); particles.length = 0; pulses.length = 0;
+  satellites = new Map(); subNodes = new Map(); mcpNodes = new Map();
+}
+
 function seekTo(target) {
-  S = freshState(); particles.length = 0; pulses.length = 0; satellites = new Map(); subNodes = new Map();
+  resetScene();
   replayPos = 0; replayClock = target;
   while (replayPos < adjusted.length && adjusted[replayPos].t <= target) apply(adjusted[replayPos++], null);
-  placeSatellites(); placeSubNodes(); renderPanels(true);
+  placeSatellites(); placeSubNodes(); placeMcp(); renderPanels(true);
 }
 
 function setStatus(text, cls) { const s = $("status"); s.textContent = text; s.className = "badge " + (cls || ""); }
@@ -645,19 +798,31 @@ function connect() {
   const es = new EventSource("events?t=" + encodeURIComponent(token));
   let catching = true;
   es.addEventListener("hello", (m) => {
-    const info = JSON.parse(m.data); mode = info.mode;
+    const info = JSON.parse(m.data); mode = info.mode; following = info.following || "";
     if (mode === "replay") { setStatus("replay", ""); $("controls").classList.add("on"); recorded = []; }
-    else { setStatus("live", "live"); S = freshState(); catching = true; }
+    else {
+      setStatus("live", "live"); resetScene(); catching = true;
+      if (following) S.caption = "Waiting for MUYAH-CODE in " + following + " …";
+    }
     if (info.title) document.title = "MUYAH-CODE · " + info.title;
   });
   es.onmessage = (m) => {
     const ev = JSON.parse(m.data);
     if (mode === "replay") { recorded.push(ev); return; }
+    if (ev.type === "reset") {   // a newer session started in the followed folder
+      resetScene(); liveBase = null;
+      S.caption = "New session " + (ev.session_id || "") + " started";
+      placeSatellites(); placeSubNodes(); placeMcp(); renderPanels(true);
+      return;
+    }
     liveBase = { t: ev.t || 0, at: performance.now() };
     apply(ev, catching ? null : fx);
+    if (ev.type === "session") placeMcp();
     if (!catching && (ev.type === "tool_start" || ev.type === "subagent_start")) { placeSatellites(); placeSubNodes(); }
   };
-  es.addEventListener("caughtup", () => { catching = false; placeSatellites(); placeSubNodes(); renderPanels(true); });
+  es.addEventListener("caughtup", () => {
+    catching = false; placeSatellites(); placeSubNodes(); placeMcp(); renderPanels(true);
+  });
   es.addEventListener("end", () => {
     es.close();
     adjusted = compressGaps(recorded);

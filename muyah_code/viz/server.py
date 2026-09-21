@@ -51,12 +51,13 @@ class _HTTPServer(ThreadingHTTPServer):
 
 class VizServer:
     def __init__(self, bus: EventBus | None = None, events: list[dict] | None = None, title: str = "",
-                 host: str = "127.0.0.1", port: int = 0):
+                 host: str = "127.0.0.1", port: int = 0, following: str = ""):
         if (bus is None) == (events is None):
             raise ValueError("give either a live event bus or recorded events")
         self.bus = bus
         self.events = events
         self.title = title
+        self.following = following  # the folder a follower watches ("" for a session's own /viz)
         self.token = secrets.token_urlsafe(18)
         self._stopping = threading.Event()
         self._httpd = _HTTPServer((host, port), self._handler())
@@ -155,7 +156,8 @@ class VizServer:
                 self.end_headers()
                 self.close_connection = True
                 try:
-                    self._write_event({"mode": server.mode, "title": server.title}, "hello")
+                    self._write_event({"mode": server.mode, "title": server.title, "following": server.following},
+                                      "hello")
                     if server.bus is None:
                         for ev in server.events or []:
                             self._write_event(ev)

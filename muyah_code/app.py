@@ -129,6 +129,7 @@ class App:
             self.session.start({"cwd": str(self.cwd), "model": self.llm.model, "version": __version__})
         # Live event stream for /viz; also recorded next to the session file so it can be replayed.
         self.events = EventBus(record_to=self.session.path.with_suffix(".events.jsonl") if self.session else None)
+        self.hooks.events = self.events
 
         self.registry = ToolRegistry(builtin_tools() + list(self.mcp_tools))
         self.subagents = SubagentManager(self.agent_defs, self._make_subagent, depth=0)
@@ -160,7 +161,8 @@ class App:
         prov = BY_ID.get(self.cfg.get("provider") or "")
         self.events.emit("session", model=self.llm.model, provider=prov.name if prov else self.llm.base_url,
                          window=self.window, cwd=str(self.cwd), mode=self.permissions.mode,
-                         session_id=self.session_id, tools=self.registry.names())
+                         session_id=self.session_id, tools=self.registry.names(),
+                         mcp=[{"name": n, "status": st} for n, st in (self.mcp.status.items() if self.mcp else [])])
         self.agent.emit_context()
 
     def _make_ctx(self, ui: UI, depth: int) -> ToolContext:

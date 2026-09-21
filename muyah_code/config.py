@@ -76,10 +76,17 @@ def muyah_home() -> Path:
 
 
 def find_project_root(start: Path) -> Path:
-    """Nearest ancestor containing .git or .muyah; otherwise the start directory."""
+    """Nearest ancestor containing .git or a project .muyah folder; otherwise the start directory.
+
+    The global MUYAH home (~/.muyah) is not a project marker: otherwise every folder under your home
+    directory would be one project rooted at the home directory."""
     start = start.resolve()
+    global_homes = {muyah_home().resolve(), (Path.home() / ".muyah").resolve()}
     for p in (start, *start.parents):
-        if (p / ".git").exists() or (p / ".muyah").is_dir():
+        if (p / ".git").exists():
+            return p
+        marker = p / ".muyah"
+        if marker.is_dir() and marker.resolve() not in global_homes:
             return p
     return start
 

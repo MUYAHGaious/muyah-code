@@ -11,7 +11,7 @@
     muyah eval [tasks...]         run the benchmark and track the pass rate
     muyah config get|set|unset    edit ~/.muyah/settings.json
     muyah sessions                list sessions for this project
-    muyah viz [id|last]           replay a recorded session in your browser (live: /viz in a session)
+    muyah viz [--replay [id]]     watch this folder's session live in your browser, or replay one
 """
 
 from __future__ import annotations
@@ -289,36 +289,64 @@ def _subcommand(name: str, argv: list[str]) -> int:
 
 
 def _viz(argv: list[str], console) -> int:
-    p = argparse.ArgumentParser(prog="muyah viz", description="Replay a recorded session in your browser: the "
-                                "model, context, tools and sub-agents, animated. For a live view, type /viz "
-                                "inside a session.")
-    p.add_argument("session", nargs="?", default="last", help="Session id (prefix ok) or 'last' (default)")
-    p.add_argument("--speed", type=int, choices=[1, 2, 4, 8, 16], default=2, help="Playback speed (default 2)")
+    p = argparse.ArgumentParser(prog="muyah viz", description="See what MUYAH-CODE is doing, in your browser: "
+                                "prompts, the model thinking and streaming, tool and MCP calls, sub-agents, "
+                                "hooks, lessons and the context window. Run it next to a session in the same "
+                                "folder and it follows that session live.")
+    p.add_argument("session", nargs="?", help="Replay this recorded session (id prefix ok) instead of following")
+    p.add_argument("--replay", action="store_true", help="Replay the last session (or SESSION) instead of following")
+    p.add_argument("--speed", type=int, choices=[1, 2, 4, 8, 16], default=2, help="Replay speed (default 2)")
     p.add_argument("--port", type=int, default=0, help="Port on 127.0.0.1 (default: any free port)")
     p.add_argument("--no-open", action="store_true", help="Print the link instead of opening a browser")
     a = p.parse_args(argv)
-    import webbrowser
+    from rich.markup import escape as escape_markup
 
     from muyah_code.config import load_config
-    from muyah_code.events import load_events
     from muyah_code.session import sessions_dir
-    from muyah_code.viz import VizServer, find_events_file
 
     cfg = load_config()
-    path = find_events_file(sessions_dir(cfg.home, cfg.project_root), a.session)
+    directory = sessions_dir(cfg.home, cfg.project_root)
+    if a.replay or a.session:
+        return _viz_replay(directory, a.session or "last", a, console)
+    from muyah_code.viz import SessionFollower, VizServer
+
+    from muyah_code.config import find_project_root
+
+    here = Path.cwd()
+    follower = SessionFollower(lambda: sessions_dir(cfg.home, find_project_root(here)))
+    follower.start()
+    server = VizServer(bus=follower.bus, title=cfg.project_root.name, following=str(cfg.project_root), port=a.port)
+    console.print(f"Watching MUYAH-CODE live in [bold]{escape_markup(str(cfg.project_root))}[/]: {server.url}")
+    console.print("[dim]Use muyah in this folder (another terminal is fine); the page follows the current "
+                  "session. Ctrl+C to stop.[/]")
+    return _serve(server, server.url, a.no_open, console, follower.stop)
+
+
+def _viz_replay(directory: Path, session: str, a, console) -> int:
+    from muyah_code.events import load_events
+    from muyah_code.viz import VizServer, find_events_file
+
+    path = find_events_file(directory, session)
     if path is None:
-        console.print(f"No recorded session '{a.session}' in this folder. Sessions are recorded as you use "
+        console.print(f"No recorded session '{session}' in this folder. Sessions are recorded as you use "
                       "MUYAH-CODE; see `muyah sessions`.")
         return 1
     events = load_events(path)
     if not events:
         console.print(f"{path.name} has no events to replay.")
         return 1
-    server = VizServer(events=events, title=path.name.removesuffix(".events.jsonl"), port=a.port)
+    name = path.name.removesuffix(".events.jsonl")
+    server = VizServer(events=events, title=name, port=a.port)
     url = f"{server.url}&speed={a.speed}"
-    console.print(f"Replaying {path.name.removesuffix('.events.jsonl')} ({len(events)} events): {url}")
+    console.print(f"Replaying {name} ({len(events)} events): {url}")
     console.print("[dim]Press Ctrl+C to stop.[/]")
-    if not a.no_open:
+    return _serve(server, url, a.no_open, console)
+
+
+def _serve(server, url: str, no_open: bool, console, on_stop=None) -> int:
+    import webbrowser
+
+    if not no_open:
         try:
             webbrowser.open(url)
         except webbrowser.Error:
@@ -329,6 +357,8 @@ def _viz(argv: list[str], console) -> int:
         console.print("[dim]Stopped.[/]")
     finally:
         server.stop()
+        if on_stop is not None:
+            on_stop()
     return 0
 
 

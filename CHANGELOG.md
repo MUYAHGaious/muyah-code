@@ -5,6 +5,15 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **Live view follows your session.** `muyah viz` in a second terminal now follows the session running in the same folder, in real time. It switches to the next session when you start another. Replays moved to `muyah viz --replay [id]`.
+- The live view now also shows:
+  - the model's answer and thinking as it streams
+  - a **Right now** list of what is running, with timers
+  - **MCP** servers and their calls
+  - **hooks** as they fire
+  - model calls that fail
+- **Fix: project root.** Your global `~/.muyah` folder no longer marks your home folder as a project. Before, every folder under your home without `.git` counted as one project rooted at your home directory: they shared sessions, and "inside the project" (acceptEdits) meant your entire home folder. Sessions saved from such folders before this fix won't show up in `/resume` from those folders.
+- MCP now has an end-to-end test against a real stdio server (`tests/fakemcp.py`).
 - **Fix: Gemini tool calls.** Gemini attaches a *thought signature* to every tool call and rejects the next request without it ("Function call is missing a thought_signature"). MUYAH-CODE now sends provider fields on tool calls back unchanged, and drops them if you switch to another provider mid-conversation. That error also no longer switches the session to the text tool protocol: only real "no tool support" errors do.
 - **Watch it think: `/viz`** opens a live view of the agent in your browser. It shows prompt → context → model, streaming tokens, tool calls and results, sub-agents, recalled lessons, the context window by part, and a timeline. **`muyah viz [id]`** replays any recorded session, with speed control and seeking. It is served on 127.0.0.1 with a random token and has no external requests.
 - **`muyah --resume`** opens an arrow-key list of this folder's recent conversations (title, age, message count). The one you pick opens with its prompts, tool calls and answers back on screen. `/resume` without an id does the same inside a session, and `muyah --resume <id>` still works.

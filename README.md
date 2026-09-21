@@ -153,7 +153,7 @@ muyah --resume                          # pick an earlier conversation from a li
 | `/lessons`, `/good [note]`, `/bad [what was wrong]`, `/learn on\|off` | the learning system |
 | `/init`, `/memory` | project instructions (`MUYAH.md`) |
 | `/resume`, `/sessions`, `/export` | sessions |
-| `/viz`, `/viz stop` | live view of the agent in your browser |
+| `/viz`, `/viz stop` | live view of the agent in your browser (or run `muyah viz` in another terminal) |
 | `/theme [teal\|muyah\|ocean\|forest\|mono\|light]` | color theme (saved; default: light teal) |
 | `/status`, `/doctor`, `/config`, `/permissions`, `/tools`, `/mcp`, `/cost` | inspection |
 
@@ -188,23 +188,28 @@ These habits are written into the system prompt:
 
 ## Watch it think
 
-Type **`/viz`** in a session to open a live view in your browser. It shows what the agent is doing:
+Open a live view of the agent in your browser and keep it next to your terminal. It updates as things happen:
 - your prompt flowing into the context and on to the model
-- tokens streaming back to you
-- tool calls fanning out and their results returning, green for ok and red for errors
-- sub-agents at work and lessons being recalled
+- the model thinking, then its answer streaming in
+- tool calls fanning out and their results coming back, green for ok and red for errors
+- **MCP** servers and their calls
+- **sub-agents** at work
+- **hooks** firing
+- **lessons** being recalled
 - the context window filling up (system / conversation / tool output) and being compacted
-- a timeline of every model call and tool call
+- a **Right now** list of what is running, with timers, plus a timeline of every model call and tool call
 
 <p align="center">
-  <img src="docs/images/viz-demo.gif" alt="Live view: prompt to context to model, tool calls, an explore sub-agent, a failing then passing test" width="800">
+  <img src="docs/images/viz-demo.gif" alt="Live view: prompt to context to model, an MCP call, an explore sub-agent, a failing then passing test" width="800">
 </p>
 
-Every session is recorded, so you can replay any of them:
+There are two ways to open it:
 
 ```bash
-muyah viz              # replay the last session in this folder (--speed 1|2|4|8|16)
-muyah viz 20260921-10  # or a specific one (id prefix; see `muyah sessions`)
+muyah viz                 # in a second terminal, in the same folder: follows your session live,
+                          #   and switches to the next one when you start another
+/viz                      # or type this inside a session
+muyah viz --replay [id]   # replay the last (or any) recorded session: --speed 1|2|4|8|16, seek, pause
 ```
 
 The page is served on `127.0.0.1` only, behind a random token. It is self-contained, so nothing is loaded from the internet.
@@ -266,7 +271,7 @@ Your old colab-code config is imported automatically on first run.
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest -q          # 179 tests: parser, tools, permissions, context, learning, hooks, full agent loop
+python -m pytest -q          # 188 tests: parser, tools, permissions, context, learning, hooks, full agent loop
 python -m ruff check .       #   against a scripted fake OpenAI server, headless CLI, REPL, eval harness
 ```
 
