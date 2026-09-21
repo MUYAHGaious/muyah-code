@@ -194,16 +194,20 @@ These habits are written into the system prompt:
 
 ## Watch it think
 
-Open a live view of the agent in your browser and keep it next to your terminal. It updates as things happen:
-- your prompt flowing into the context and on to the model
-- the model thinking, then its answer streaming in
-- tool calls fanning out and their results coming back, green for ok and red for errors
-- **MCP** servers and their calls
-- **sub-agents** at work
-- **hooks** firing
-- **lessons** being recalled
-- the context window filling up (system / conversation / tool output) and being compacted
-- a **Right now** list of what is running, with timers, plus a timeline of every model call and tool call
+Open the live view in your browser and keep it next to your terminal. It is a board of panels you can pan
+and zoom, like a design canvas. Every panel shows the real content, as it happens:
+- **You**: your prompt, and messages you typed while it works (queued, then delivered).
+- **Model**: its true state (preparing, *sent · waiting for reply*, streaming, idle, failed), with the
+  thinking and the answer as they stream.
+- **Terminal**: every command, its output and exit code.
+- **A panel per file**: the content being written, the diff of an edit, the lines that were read.
+- **A panel per sub-agent**, created when it spawns, with its own steps.
+- **Skills** (the skill in use and its instructions), **MCP** servers and their calls, **Hooks**, the
+  **Plan**, **Lessons** and the **Context** window.
+
+Click any panel or item for the full detail: a whole file history, full command output, a lesson and where
+it is stored. States are real events, never animation guesses: a tool waiting for your approval shows as
+waiting, not running. **Fit all** shows the whole board and **Follow** keeps the active panel in view.
 
 <p align="center">
   <img src="docs/images/viz-demo.gif" alt="Live view: prompt to context to model, an MCP call, an explore sub-agent, a failing then passing test" width="800">
@@ -214,8 +218,8 @@ There are two ways to open it:
 ```bash
 muyah viz                 # in a second terminal, in the same folder: follows your session live,
                           #   and switches to the next one when you start another
-/viz                      # or type this inside a session
-muyah viz --replay [id]   # replay the last (or any) recorded session: --speed 1|2|4|8|16, seek, pause
+/viz                      # or type this inside a session (MUYAH-CODE also offers it at startup)
+muyah viz --replay [id]   # replay the last (or any) recorded session: --speed 0.1 to 16, seek, pause
 ```
 
 The page is served on `127.0.0.1` only, behind a random token. It is self-contained, so nothing is loaded from the internet.

@@ -21,6 +21,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT), str(ROOT / "tests"), str(ROOT / "scripts")]
 os.environ["MUYAH_HOME"] = tempfile.mkdtemp(prefix="muyah-shots-")
+# scenes are scripted: no "open the live view?" question at startup
+Path(os.environ["MUYAH_HOME"], "settings.json").write_text('{"viz": {"autostart": false}}', encoding="utf-8")
 for var in ("MUYAH_BASE_URL", "MUYAH_API_KEY", "MUYAH_MODEL", "MUYAH_PROFILE"):
     os.environ.pop(var, None)
 
