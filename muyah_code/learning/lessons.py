@@ -244,7 +244,7 @@ class Reflector:
                 f"Existing lessons:\n{existing}\n\nEpisode transcript:\n{episode}")
         try:
             out = self.llm.chat([{"role": "system", "content": REFLECT_SYSTEM}, {"role": "user", "content": user}],
-                                max_tokens=700, temperature=0)
+                                max_tokens=700, temperature=0, purpose="reflect")
         except Exception:
             return []
         source = next((s["type"] for s in signals if s.get("type") in ("user_correction", "user_feedback",

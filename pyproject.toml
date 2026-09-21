@@ -57,7 +57,7 @@ version = { attr = "muyah_code.__version__" }
 include = ["muyah_code*"]
 
 [tool.setuptools.package-data]
-muyah_code = ["skills/bundled/*/SKILL.md", "agents/bundled/*.md", "evals/tasks/**/*", "viz/page.html"]
+muyah_code = ["skills/bundled/*/SKILL.md", "agents/bundled/*.md", "evals/tasks/**/*", "viz/page.html", "data/*.json"]
 
 [tool.setuptools.exclude-package-data]
 muyah_code = ["**/__pycache__/*", "**/*.pyc", "**/.pytest_cache/*"]

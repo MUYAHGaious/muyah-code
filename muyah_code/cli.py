@@ -73,7 +73,9 @@ def _parser() -> argparse.ArgumentParser:
                    help='Allow rules, e.g. "Bash(git *)" "Edit" (repeatable or comma-separated)')
     p.add_argument("--disallowedTools", "--disallowed-tools", dest="disallowed", action="append", default=[],
                    help="Deny rules")
-    p.add_argument("--max-steps", type=int, help="Max model steps per turn")
+    p.add_argument("--max-steps", "--max-turns", dest="max_steps", type=int,
+                   help="Max model steps per turn (--max-turns is the Claude Code spelling)")
+    p.add_argument("--max-cost", type=float, help="Stop when this session has cost this many dollars")
     p.add_argument("--tool-mode", choices=["auto", "native", "text"], help="Tool calling protocol")
     p.add_argument("--settings", help="Extra settings JSON file")
     p.add_argument("--cwd", help="Working directory")
@@ -116,6 +118,8 @@ def _main(argv: list[str]) -> int:
                  "context_window": args.context_window, "max_steps": args.max_steps, "tool_mode": args.tool_mode}
     try:
         cfg = load_config(cwd=cwd, settings_file=args.settings, overrides=overrides)
+        if args.max_cost is not None:
+            cfg.set("budget.session_usd", args.max_cost)
     except ConfigError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
@@ -163,6 +167,7 @@ def _headless(cfg, cwd, args, prompt: str) -> int:
         "type": "result", "session_id": app.session_id, "status": result.status, "result": result.text,
         "num_turns": result.steps, "tool_calls": result.tool_calls, "duration_s": round(result.duration, 2),
         "usage": app.llm.total_usage, "error": result.error,
+        "total_cost_usd": round(app.ledger.cost, 6), "unpriced_requests": app.ledger.unpriced,
     }
     if args.output_format == "text":
         if result.text:
@@ -290,7 +295,7 @@ def _subcommand(name: str, argv: list[str]) -> int:
     if name == "usage":
         from muyah_code.ui.commands import render_usage
 
-        render_usage(console, load_config().home)
+        render_usage(console, load_config().home, full="--all" in argv)
         console.print("[dim]Your provider's live limits show with /usage inside a session (after a reply).[/]")
         return 0
     return 2

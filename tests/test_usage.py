@@ -55,8 +55,9 @@ def test_usage_shows_session_totals_and_live_provider_limits(project):
         app.shutdown()
     assert app.llm.limits["x-ratelimit-remaining-requests"] == "29"
     out = io.StringIO()
-    render_usage(Console(file=out, width=100, color_system=None), app.home, llm=app.llm)
+    render_usage(Console(file=out, width=100, color_system=None), app.home, llm=app.llm, app=app)
     text = out.getvalue()
-    assert re.search(r"This session\s+2\s", text) and re.search(r"Today\s+2\s", text)
+    # a server on this machine costs nothing
+    assert re.search(r"This session\s+\$0 · 2 requests", text) and re.search(r"Today\s+2\s", text)
     assert "Provider limits" in text and re.search(r"requests\s+29\s+30\s+in 2\.0s", text)
-    assert "fake-model 2 req" in text                     # by model, last 7 days
+    assert "Top models, 7 days: fake-model" in text                     # by model, last 7 days

@@ -41,7 +41,7 @@ def _doctor_anthropic(cfg: Config, add, deep: bool) -> None:
     add("Context window", OK, f"{window:,} tokens" if window else "unknown")
     if deep:
         try:
-            reply = llm.chat([{"role": "user", "content": "Reply with PONG only."}], max_tokens=1024)
+            reply = llm.chat([{"role": "user", "content": "Reply with PONG only."}], max_tokens=1024, purpose="doctor")
             add("Completion", OK, f"replied: {reply.content[:40]!r}")
         except Exception as e:
             add("Completion", FAIL, str(e))

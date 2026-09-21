@@ -187,7 +187,7 @@ muyah --resume                          # pick an earlier conversation from a li
 | `/resume`, `/sessions`, `/export` | sessions |
 | `/viz`, `/viz stop` | live view of the agent in your browser (or run `muyah viz` in another terminal) |
 | `/theme [teal\|muyah\|ocean\|forest\|mono\|light]` | color theme (saved; default: light teal) |
-| `/usage` (or `muyah usage`) | tokens used (session, today, 7 days) and your provider's remaining limits |
+| `/usage [--all]` (or `muyah usage`) | cost, tokens, cache hits, where the tokens went, the context, today and 7 days, your provider's limits |
 | `/status`, `/doctor`, `/config`, `/permissions`, `/tools`, `/mcp` | inspection |
 
 ### Permission modes
@@ -307,6 +307,21 @@ Your old colab-code config is imported automatically on first run.
 - **Prompt caching:** the system prompt stays byte-for-byte stable between turns, and per-turn material goes after it.
   - Local servers (vLLM, colibri, llama.cpp) reuse their prefix cache instead of re-reading everything.
   - On Anthropic the stable part is marked for caching. Cached input is billed at about a tenth of the normal price, so long sessions cost much less.
+
+**Cost and budgets.** Every model call is counted: the agent's, sub-agents', compaction, learning and web page
+summaries. Each one is priced, and cached input is priced separately.
+- **Prices** come from your own `pricing.models` first, then OpenRouter's live list, then LiteLLM's public
+  price table. A copy of that table ships with MUYAH-CODE and is refreshed once a day.
+- **Self-hosted is free:** a model on your machine, your network or your own tunnel (Colab) costs $0.
+- **Never guessed:** a model found in no price list shows as "unpriced".
+- **Where it shows:** the status line shows what the session has cost so far, and the line after each turn shows that turn's cost.
+- **Budgets:** `{"budget": {"session_usd": 5, "daily_usd": 20}}`.
+  - At 80% of a limit you get a warning.
+  - At 100% the agent asks before sending the next request. With `-p`, it stops instead; `--max-cost 2` sets a session limit there.
+
+```json
+{"pricing": {"models": {"my-finetune": {"input": 0.5, "output": 1.5, "cache_read": 0.05}}}}   // $ per 1M tokens
+```
 
 **Hooks** follow Claude Code's format: `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `Stop` and more.
 - The hook gets JSON on stdin.

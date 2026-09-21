@@ -282,6 +282,11 @@ class Agent:
 
     # ------------------------------------------------------------------ events (for /viz)
 
+    @property
+    def purpose(self) -> str:
+        """What this agent's model calls are for, in the usage log."""
+        return "main" if self.label == "main" else f"subagent:{self.label}"
+
     def _emit(self, type_: str, **data) -> None:
         if self.events is not None:
             self.events.emit(type_, agent=self.label, **data)
@@ -431,6 +436,10 @@ class Agent:
                 self._take_queued_messages()
                 if self._prompt_dirty:        # e.g. the mode changed (Shift+Tab) while it worked
                     self.refresh_system_prompt()
+            if not self._within_budget():
+                result.status = "budget"
+                result.error = self._last_error
+                return
             resp = self._call_llm()
             if resp is None:
                 result.status = "error"
@@ -492,6 +501,30 @@ class Agent:
 
     _last_error: str | None = None
 
+    def _within_budget(self) -> bool:
+        """Before each model request: warn at 80% of a budget; at 100% ask whether to go on (headless: stop)."""
+        budget = self.ctx.service("budget")
+        if budget is None or not budget.active:
+            return True
+        level, message = budget.check()
+        if level == "warn":
+            self.ui.warn(message)
+        if level != "over":
+            return True
+        self._emit("budget", state="over", message=message)
+        if self.ui.headless:
+            self._last_error = message + ". Raise budget.session_usd / budget.daily_usd (or --max-cost) to go on."
+            self.ui.warn(self._last_error)
+            return False
+        answer = self.ui.ask_user(f"{message}. Keep going?", ["Continue (raise the limit by half)", "Stop this turn"])
+        if answer.startswith("Continue"):
+            budget.raise_limits()
+            self.ui.info("Budget raised for this session: " + ", ".join(
+                f"{name} ${limit:.2f}" for name, _, limit in budget.limits()))
+            return True
+        self._last_error = message + ". Stopped before the next request."
+        return False
+
     def _call_llm(self) -> AssistantMessage | None:
         overflow_retries = 0
         while True:
@@ -531,7 +564,7 @@ class Agent:
                 self.llm.on_status = on_status
             try:
                 resp = interruptible_call(self.llm.chat, self.messages, tools=tools, on_text=on_text,
-                                          on_reasoning=on_reasoning, max_tokens=max_tokens)
+                                          on_reasoning=on_reasoning, max_tokens=max_tokens, purpose=self.purpose)
                 opener.flush()
                 if hider:
                     hider.flush()

@@ -225,6 +225,8 @@ class LLMClient:
         self.on_status: Callable[[str], None] | None = None
         self.limits: dict = {}        # rate-limit headers of the last response (see /usage)
         self.limits_at = 0.0
+        # called after every successful request: (client, purpose, usage dict, seconds) -> usage accounting
+        self.on_call: Callable[[Any, str, dict, float], None] | None = None
         # timeout <= 0 means "wait as long as it takes": huge models on CPU/NVMe streaming (e.g. colibri)
         # can spend many minutes on prefill before the first token arrives.
         http_timeout = httpx.Timeout(None, connect=30.0) if timeout <= 0 else httpx.Timeout(timeout, connect=30.0)
@@ -285,7 +287,10 @@ class LLMClient:
         on_reasoning: Callable[[str], None] | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        purpose: str = "main",
     ) -> AssistantMessage:
+        """purpose says what the call is for (main, subagent:<type>, compact, reflect...) in the usage log."""
+        started = time.monotonic()
         messages = [self._outgoing(m) for m in messages]
         kwargs: dict[str, Any] = {
             "model": self.model,
@@ -309,6 +314,8 @@ class LLMClient:
                 self.total_usage["requests"] += 1
                 for k in ("prompt_tokens", "completion_tokens"):
                     self.total_usage[k] += int(result.usage.get(k) or 0)
+                if self.on_call is not None:
+                    self.on_call(self, purpose, result.usage, time.monotonic() - started)
                 return result
             except openai.BadRequestError as e:
                 msg = str(e).lower()

@@ -17,6 +17,7 @@ from rich.table import Table
 from muyah_code.memory import INIT_TEMPLATE
 from muyah_code.permissions import MODES
 from muyah_code.session import Session, sessions_dir
+from muyah_code.ui.usage_view import render_usage
 
 EXIT = object()
 
@@ -43,54 +44,6 @@ architecture notes a newcomer would not guess from file names; conventions and g
 verified. Use this shape:
 
 """ + INIT_TEMPLATE
-
-
-def render_usage(console, home: Path, llm=None) -> None:
-    """/usage and `muyah usage`: this session, today, the last 7 days, and the provider's current limits."""
-    from muyah_code import usage
-
-    t = Table(show_header=True, box=None, padding=(0, 2), header_style="bold")
-    t.add_column("")
-    t.add_column("requests", justify="right")
-    t.add_column("tokens in", justify="right")
-    t.add_column("tokens out", justify="right")
-    if llm is not None:
-        u = llm.total_usage
-        t.add_row("This session", str(u["requests"]), usage.compact(u["prompt_tokens"]),
-                  usage.compact(u["completion_tokens"]))
-    periods = usage.summarize(home)
-    for name, label in (("today", "Today"), ("7 days", "Last 7 days")):
-        p = periods[name]
-        t.add_row(label, str(p.requests), usage.compact(p.prompt_tokens), usage.compact(p.completion_tokens))
-    console.print(t)
-    week = periods["7 days"]
-    if week.by_model:
-        rows = sorted(week.by_model.items(), key=lambda kv: -kv[1][0])[:8]
-        console.print("[dim]By model, last 7 days:[/] " + " · ".join(
-            f"{escape(m)} {r[0]} req, {usage.compact(r[1] + r[2])} tokens" for m, r in rows))
-    if llm is None:
-        return
-    limits = usage.parse_limits(getattr(llm, "limits", {}))
-    console.print()
-    if not limits:
-        console.print(f"[dim]{escape(getattr(llm, 'model', ''))}: the provider has not reported its limits"
-                      + (" yet (they arrive with the first reply)." if not u["requests"] else
-                         ". Some providers (e.g. Gemini) never do; if you hit one, the error says when to retry.")
-                      + "[/]")
-        return
-    age = time.time() - getattr(llm, "limits_at", 0)
-    lt = Table(show_header=True, box=None, padding=(0, 2), header_style="bold",
-               title=f"Provider limits ({escape(getattr(llm, 'model', ''))}, as of {age:.0f}s ago)", title_justify="left")
-    lt.add_column("")
-    lt.add_column("left", justify="right")
-    lt.add_column("of", justify="right")
-    lt.add_column("resets")
-    for row in limits:
-        lt.add_row(row.name.replace("-", " "), row.remaining or "?", row.limit or "?", usage.describe_reset(row.reset))
-    console.print(lt)
-    retry = (getattr(llm, "limits", {}) or {}).get("retry-after")
-    if retry:
-        console.print(f"[yellow]Rate limited: retry after {escape(str(retry))}s.[/]")
 
 
 class CommandRouter:
@@ -135,7 +88,8 @@ class CommandRouter:
             Command("resume", "Resume an earlier conversation (pick from a list)", self.resume, "[id]"),
             Command("sessions", "List recent sessions for this project", self.sessions),
             Command("export", "Export the conversation to a markdown file", self.export, "[file]"),
-            Command("usage", "Tokens used (this session, today, 7 days) and your provider's limits", self.usage),
+            Command("usage", "Cost, tokens and where they went; context; provider limits (--all: everything)",
+                    self.usage, "[--all]"),
             Command("cost", "Same as /usage", self.usage),
             Command("config", "Show effective configuration", self.config),
             Command("status", "Model, endpoint, context, mode and what's loaded", self.status),
@@ -583,7 +537,7 @@ class CommandRouter:
         self.console.print(f"Exported to {escape(str(path.resolve()))}")
 
     def usage(self, arg):
-        render_usage(self.console, self.app.home, llm=self.app.llm)
+        render_usage(self.console, self.app.home, llm=self.app.llm, app=self.app, full="--all" in arg)
 
     def config(self, arg):
         data = copy.deepcopy(self.app.cfg.data)

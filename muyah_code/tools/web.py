@@ -156,6 +156,6 @@ class WebFetchTool(Tool):
             {"role": "user", "content": f"Page content:\n<<<\n{snippet}\n>>>\n\nTask: {prompt}"},
         ]
         try:
-            return llm.chat(messages, max_tokens=1500, temperature=0).content.strip() or None
+            return llm.chat(messages, max_tokens=1500, temperature=0, purpose="webfetch").content.strip() or None
         except Exception:
             return None

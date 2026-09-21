@@ -180,6 +180,16 @@ class Repl:
         used, usable = self.app.context_usage()
         return min(100, int(100 * used / max(1, usable)))
 
+    def _spent(self) -> str:
+        """"$0.42" (or "$0.42 of $5.00" with a session budget) once this session has cost something."""
+        ledger, budget = getattr(self.app, "ledger", None), getattr(self.app, "budget", None)
+        if ledger is None or not ledger.cost:
+            return ""
+        from muyah_code.pricing import money
+
+        limit = budget.session_usd if budget is not None else 0
+        return money(ledger.cost) + (f" of ${limit:.2f}" if limit else "")
+
     def _turn_changes(self) -> tuple[list[tuple[str, str]], list[str]]:
         """What the last turn changed (including by commands) and any tests it weakened."""
         from muyah_code.verify import weakened_tests
@@ -212,6 +222,9 @@ class Repl:
         if windows_dictation_available():
             status.append(("fg:ansibrightblack", " · ctrl+space: speak"))
         status.append(("fg:ansibrightblack", f" · ctx {self._ctx_pct()}%"))
+        spent = self._spent()
+        if spent:
+            status.append(("fg:ansibrightblack", f" · {spent}"))
         viz = getattr(self.app, "viz", None)
         if viz is not None and viz.running:
             status.append((f"fg:{t.accent}", " · ● live view on (/viz reopens it)"))
@@ -401,6 +414,7 @@ class Repl:
                     continue
             self.ui.context_pct = self._ctx_pct()
             self.ui.begin_typing()
+            cost_before = self.app.ledger.cost
             try:
                 result = self.app.run_prompt(line)
             finally:
@@ -409,7 +423,7 @@ class Repl:
             try:
                 changes, weakened = self._turn_changes()
                 self.ui.turn_footer(result.status, result.duration, result.tool_calls, len(changes),
-                                    self._ctx_pct(), warnings=weakened)
+                                    self._ctx_pct(), warnings=weakened, cost=self.app.ledger.cost - cost_before)
                 self.console.print()
             except KeyboardInterrupt:  # an Esc that arrived just as the turn ended
                 pass

@@ -661,7 +661,7 @@ class TerminalUI(UI):
         return False
 
     def turn_footer(self, status: str, seconds: float, tool_calls: int, files_changed: int, ctx_pct: int,
-                    warnings: list[str] | None = None) -> None:
+                    warnings: list[str] | None = None, cost: float = 0.0) -> None:
         t = theme()
         self._stop_live()
         ok = status == "ok"
@@ -673,6 +673,10 @@ class TerminalUI(UI):
             parts.append(f"{tool_calls} tool call{'s' if tool_calls != 1 else ''}")
         if files_changed:
             parts.append(f"{files_changed} file{'s' if files_changed != 1 else ''} changed (/undo · /verify)")
+        if cost > 0:
+            from muyah_code.pricing import money
+
+            parts.append(money(cost))
         parts.append(f"ctx {ctx_pct}%")
         if not ok:
             parts.append(status)

@@ -61,6 +61,10 @@ DEFAULTS: dict[str, Any] = {
     "fallbacks": True,
     # /verify: auto = off | quick | full (after a turn that changed files); test/lint = your own commands
     "verify": {"auto": "off", "test": None, "lint": None, "timeout": 900},
+    # dollars: 0 = no limit. At 80% you are warned, at 100% the agent asks before going on.
+    "budget": {"session_usd": 0, "daily_usd": 0},
+    # update: refresh the public price list once a day; models: your own prices ($ per 1M tokens)
+    "pricing": {"update": True, "models": {}},
 }
 
 LIST_MERGE_KEYS = {"allow", "ask", "deny"}

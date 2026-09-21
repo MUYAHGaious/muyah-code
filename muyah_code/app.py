@@ -95,7 +95,15 @@ class App:
         self.home = cfg.home
         self.root = cfg.project_root
 
+        from muyah_code import usage
+        from muyah_code.pricing import Pricing
+
+        self.pricing = Pricing(cfg.home, cfg.get("pricing.models") or {}, bool(cfg.get("pricing.update", True)))
+        self.ledger = usage.Ledger()            # every model call of this session, with its cost
+        self.budget = usage.Budget(self.ledger, cfg.home, cfg.get("budget.session_usd") or 0,
+                                   cfg.get("budget.daily_usd") or 0)
         self.llm = llm or make_client(cfg)
+        self._watch_calls(self.llm)
         self.window, self.window_source = resolve_context_window(cfg, self.llm)
         self.context = ContextManager(self.window, int(cfg.get("max_tokens", 4096)),
                                       float(cfg.get("compact_threshold", 0.8)))
@@ -156,7 +164,6 @@ class App:
         # Live event stream for /viz; also recorded next to the session file so it can be replayed.
         self.events = EventBus(record_to=self.session.path.with_suffix(".events.jsonl") if self.session else None)
         self.hooks.events = self.events
-        self.events.subscribe(self._record_usage)
 
         self.registry = ToolRegistry(builtin_tools() + list(self.mcp_tools))
         self.subagents = SubagentManager(self.agent_defs, self._make_subagent, depth=0)
@@ -182,17 +189,34 @@ class App:
     def session_id(self) -> str:
         return self.session.id if self.session else ""
 
-    def _record_usage(self, event: dict) -> None:
-        """Every model call goes into ~/.muyah/usage.jsonl (see /usage)."""
-        if event.get("type") != "llm_end" or event.get("error"):
-            return
+    def _watch_calls(self, llm) -> None:
+        llm.on_call = self._on_call
+        llm.provider_id = self.cfg.get("provider") or ""
+
+    def _on_call(self, client, purpose: str, raw_usage: dict, seconds: float) -> None:
+        """Every model call, whoever made it: priced, added to this session's ledger and ~/.muyah/usage.jsonl."""
         from muyah_code import usage
         from muyah_code.providers import BY_ID
 
-        prov = BY_ID.get(self.cfg.get("provider") or "")
-        usage.record(self.home, getattr(self.llm, "model", ""), prov.name if prov else self.llm.base_url,
-                     event.get("prompt_tokens") or 0, event.get("completion_tokens") or 0,
-                     event.get("agent") or "main")
+        provider_id = getattr(client, "provider_id", "") or ""
+        prov = BY_ID.get(provider_id)
+        model, base_url = getattr(client, "model", ""), getattr(client, "base_url", "") or ""
+        price = self.pricing.price(model, provider_id, base_url, local=bool(prov and prov.local))
+        if price is not None and price.source == "litellm":
+            self.pricing.refresh_in_background()
+        n = usage.normalize(raw_usage)
+        cost = price.cost(n["in"], n["out"], n["cache_read"], n["cache_write"]) if price else None
+        call = usage.Call(model, prov.name if prov else base_url, purpose, n["in"], n["out"], n["cache_read"],
+                          n["cache_write"], cost, seconds)
+        self.ledger.add(call)
+        usage.record_call(self.home, call)
+        events = getattr(self, "events", None)
+        if events is not None:
+            events.emit("cost", purpose=purpose, model=model, cost=cost, session_cost=round(self.ledger.cost, 6),
+                        cache_read=n["cache_read"], tokens_in=n["in"], tokens_out=n["out"],
+                        unpriced=self.ledger.unpriced,
+                        budget=[{"name": name, "spent": round(s, 4), "limit": lim}
+                                for name, s, lim in self.budget.limits()])
 
     def _mcp_inventory(self) -> list[dict]:
         if not self.mcp:
@@ -223,7 +247,7 @@ class App:
     def _make_ctx(self, ui: UI, depth: int) -> ToolContext:
         ctx = ToolContext(cwd=self.cwd, project_root=self.root, config=self.cfg, depth=depth, headless=self.headless)
         ctx.services.update({
-            "ui": ui, "llm": self.llm, "skills": self.skills, "jobs": self.jobs,
+            "ui": ui, "llm": self.llm, "skills": self.skills, "jobs": self.jobs, "budget": self.budget,
             "checkpoints": self.rewind, "rewind": self.rewind, "context_window": self.window, "events": self.events,
         })
         return ctx
@@ -300,6 +324,7 @@ class App:
 
     def _install_llm(self, llm) -> None:
         """Swap the model client everywhere that holds a reference to it."""
+        self._watch_calls(llm)
         self.llm = llm
         self.agent.llm = llm
         self.reflector.llm = llm

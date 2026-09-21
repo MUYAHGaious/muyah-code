@@ -55,7 +55,7 @@ def test_repl_session_end_to_end(project):
     assert "Theme set to ocean" in out
     import re
 
-    assert re.search(r"This session\s+2\s", out)      # /cost (= /usage): 2 model requests this session
+    assert re.search(r"This session\s+\$0 · 2 requests", out)   # /cost (= /usage): 2 requests, local = free
     assert re.search(r"Today\s+2\s", out)             # and they were recorded in the usage log
 
 

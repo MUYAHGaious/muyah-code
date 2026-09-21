@@ -10,10 +10,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 def reply(content: str = "", tool_calls: list[dict] | None = None, finish: str | None = None,
-          prompt_tokens: int | None = None, think: float = 0.0) -> dict:
+          prompt_tokens: int | None = None, think: float = 0.0, cached_tokens: int = 0) -> dict:
     """tool_calls: [{"name": "Read", "arguments": {...}, "extra": {provider fields}}]. think: seconds to wait before streaming (demos)."""
     return {"content": content, "tool_calls": tool_calls or [], "finish": finish, "prompt_tokens": prompt_tokens,
-            "think": think}
+            "think": think, "cached_tokens": cached_tokens}
 
 
 def error(status: int, message: str) -> dict:
@@ -83,6 +83,8 @@ class FakeOpenAI:
                 # realistic default: ~4 chars per token over the whole request
                 ptoks = step["prompt_tokens"] or max(1, len(json.dumps(body["messages"])) // 4)
                 usage = {"prompt_tokens": ptoks, "completion_tokens": 10, "total_tokens": ptoks + 10}
+                if step.get("cached_tokens"):   # OpenAI-style prompt caching report
+                    usage["prompt_tokens_details"] = {"cached_tokens": step["cached_tokens"]}
                 if body.get("stream"):
                     self.send_response(200)
                     self.send_header("Content-Type", "text/event-stream")

@@ -148,6 +148,7 @@ class AnthropicClient:
         self.on_status: Callable[[str], None] | None = None  # "sent" / "first_token" (live view)
         self.limits: dict = {}        # rate-limit headers of the last response (see /usage)
         self.limits_at = 0.0
+        self.on_call: Callable[[Any, str, dict, float], None] | None = None   # usage accounting (see LLMClient)
         self._client = anthropic.Anthropic(api_key=api_key, base_url=base_url, max_retries=max_retries,
                                            timeout=None if timeout <= 0 else timeout,
                                            default_headers={**(extra_headers or {})})
@@ -191,7 +192,9 @@ class AnthropicClient:
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None,
              on_text: Callable[[str], None] | None = None, on_reasoning: Callable[[str], None] | None = None,
-             max_tokens: int | None = None, temperature: float | None = None) -> AssistantMessage:
+             max_tokens: int | None = None, temperature: float | None = None,
+             purpose: str = "main") -> AssistantMessage:
+        started = time.monotonic()
         a = self._anthropic
         params = self._params(messages, tools, max_tokens)
         use_fallbacks = self.fallbacks and self.model.startswith(FALLBACK_MODELS)
@@ -238,7 +241,10 @@ class AnthropicClient:
             raise LLMError(f"Claude API error {e.status_code}: {getattr(e, 'message', e)}") from e
         except a.APIConnectionError as e:
             raise LLMError(f"Cannot reach the Claude API: {e}") from e
-        return self._convert(final)
+        result = self._convert(final)
+        if self.on_call is not None:
+            self.on_call(self, purpose, result.usage, time.monotonic() - started)
+        return result
 
     def _remember_limits(self, headers) -> None:
         found = limit_headers(headers)
@@ -274,11 +280,15 @@ class AnthropicClient:
         return msg
 
     def _usage(self, final) -> dict:
+        """prompt_tokens counts all input (fresh + cache reads + cache writes); the cache parts are kept too,
+        because they are priced differently (reads ~10% of the input price, writes ~125%)."""
         u = final.usage
-        prompt = int((u.input_tokens or 0) + (getattr(u, "cache_read_input_tokens", 0) or 0)
-                     + (getattr(u, "cache_creation_input_tokens", 0) or 0))
+        cache_read = int(getattr(u, "cache_read_input_tokens", 0) or 0)
+        cache_write = int(getattr(u, "cache_creation_input_tokens", 0) or 0)
+        prompt = int(u.input_tokens or 0) + cache_read + cache_write
         out = int(u.output_tokens or 0)
         self.total_usage["requests"] += 1
         self.total_usage["prompt_tokens"] += prompt
         self.total_usage["completion_tokens"] += out
-        return {"prompt_tokens": prompt, "completion_tokens": out}
+        return {"prompt_tokens": prompt, "completion_tokens": out, "cache_read": cache_read,
+                "cache_write": cache_write}

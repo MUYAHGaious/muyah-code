@@ -180,7 +180,7 @@ class ContextManager:
             {"role": "user", "content": f"Transcript to summarize:\n\n{transcript}"},
         ]
         try:
-            out = llm.chat(messages, max_tokens=min(2000, self.window // 6), temperature=0)
+            out = llm.chat(messages, max_tokens=min(2000, self.window // 6), temperature=0, purpose="compact")
         except Exception:
             return None
         text = (out.content or "").strip()

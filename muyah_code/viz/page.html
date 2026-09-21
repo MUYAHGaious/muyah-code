@@ -373,6 +373,7 @@ function freshState() {
     subagents: new Map(),   // for the timeline: agent -> {start, active}
     skillUse: new Map(), agentUse: new Map(), hookLog: [], hookRuns: 0, lessonsSeen: false,
     tokEv: [], reqs: [], ctxSeries: [], limits: null,
+    cost: { total: 0, priced: 0, unpriced: 0, tin: 0, cached: 0, budget: [], by: {} },
     todos: [], lessons: [], log: [], spans: [], caption: "Waiting for the agent…", now: 0, ver: 0,
   };
 }
@@ -603,6 +604,16 @@ function apply(ev, fx) {
         if (ev.usable) { S.ctxSeries.push({ t: ev.t || 0, pct: 100 * (ev.used || 0) / ev.usable }); if (S.ctxSeries.length > 3000) S.ctxSeries.splice(0, 500); }
       }
       break;
+    case "cost": {   // every model call, priced (compaction, learning and sub-agents too)
+      const k = S.cost;
+      k.total = Number(ev.session_cost) || 0; k.unpriced = ev.unpriced || 0;
+      if (ev.cost != null) k.priced++;
+      k.tin += ev.tokens_in || 0; k.cached += ev.cache_read || 0;
+      k.budget = Array.isArray(ev.budget) ? ev.budget : [];
+      const p = String(ev.purpose || "main").replace("subagent:", "sub-agent ");
+      k.by[p] = (k.by[p] || 0) + (ev.tokens_in || 0) + (ev.tokens_out || 0);
+      break;
+    }
     case "limits":   // the provider's rate limits after a reply (only providers that report them)
       S.limits = { t: ev.t || 0, model: ev.model || "", rows: Array.isArray(ev.rows) ? ev.rows : [] };
       break;
@@ -889,7 +900,7 @@ function panelContent(key) {
 // ------------------------------------------------------------------ layout: tidy columns, fixed panel heights
 
 const PW = 320, GAP_X = 64, GAP_Y = 22;
-const HEIGHTS = { you: 190, context: 160, usage: 330, lessons: 150, todos: 180, activity: 260, model: 300, now: 170, sub: 240,
+const HEIGHTS = { you: 190, context: 160, usage: 400, lessons: 150, todos: 180, activity: 260, model: 300, now: 170, sub: 240,
   terminal: 320, tools: 230, skills: 210, mcp: 200, hooks: 160, file: 280 };
 function heightOf(key) { return HEIGHTS[key.split(":")[0]] || 200; }
 
@@ -1492,6 +1503,8 @@ function usageSkeleton(place, big) {
     + `<canvas data-c="ctx" style="height:${h}px"></canvas>`
     + `<div class="cf"><span data-v="est">Estimate: needs a few more requests</span></div></div>`
     + `<div class="chart"><div class="ch"><b>Provider limits</b><span data-v="lmodel"></span></div><div data-v="limits"></div></div>`
+    + `<div class="chart"><div class="ch"><b>Cost</b><span class="bignum" data-v="cost">$0</span></div>`
+    + `<div class="cf"><span data-v="cache">cache hit –</span><span data-v="where"></span></div><div data-v="budget"></div></div>`
     + "</div>";
 }
 function setText(root, key, text) { const el = root.querySelector(`[data-v="${key}"]`); if (el && el.textContent !== text) el.textContent = text; }
@@ -1560,6 +1573,34 @@ function drawLimits(root) {
     if (b.dataset.col !== col) { b.style.background = col; b.dataset.col = col; }
   });
 }
+function fmtCost(v) { return v === 0 ? "$0" : v < 0.01 ? "$" + v.toFixed(4) : "$" + v.toFixed(2); }
+function costText() {
+  const k = S.cost;
+  if (!k.priced && k.unpriced) return "unpriced";
+  return fmtCost(k.total) + (k.unpriced && k.priced ? " +unpriced" : "");
+}
+function drawCost(root) {
+  const k = S.cost;
+  setText(root, "cost", costText());
+  setText(root, "cache", k.tin ? `cache hit ${Math.round(100 * k.cached / k.tin)}%` : "cache hit –");
+  const tot = Object.values(k.by).reduce((a, b) => a + b, 0), top = Object.entries(k.by).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  setText(root, "where", tot ? top.map(([n, v]) => `${n} ${Math.round(100 * v / tot)}%`).join(" · ") : "");
+  const box = root.querySelector('[data-v="budget"]'); if (!box) return;
+  const sig = k.budget.map((b) => b.name).join("|");
+  if (box.dataset.sig !== sig) {
+    box.dataset.sig = sig;
+    box.innerHTML = k.budget.map((b) => `<div class="gauge"><div class="gl"><span>${esc(b.name)} budget</span><span data-g="t"></span></div><div class="bar"><i data-g="b"></i></div></div>`).join("");
+  }
+  [...box.children].forEach((el, i) => {
+    const b = k.budget[i]; if (!b) return;
+    const frac = b.limit > 0 ? clamp(b.spent / b.limit, 0, 1) : 0, txt = `${fmtCost(b.spent)} of ${fmtCost(b.limit)}`;
+    const t = el.querySelector('[data-g="t"]'); if (t.textContent !== txt) t.textContent = txt;
+    const bar = el.querySelector('[data-g="b"]'), col = frac >= 1 ? C.rose : frac >= .8 ? C.amber : C.teal;
+    const wd = (frac * 100).toFixed(1) + "%";
+    if (bar.style.width !== wd) bar.style.width = wd;
+    if (bar.dataset.col !== col) { bar.style.background = col; bar.dataset.col = col; }
+  });
+}
 function llmNow() {   // the model call that matters most right now: streaming > sent > preparing, newest first
   const rank = { streaming: 3, sent: 2, preparing: 1 };
   let best = null;
@@ -1591,6 +1632,7 @@ function drawUsageRoot(root) {
     if (cv.dataset.c === "tps") drawTps(cv); else if (cv.dataset.c === "reqs") drawReqs(cv, big); else drawCtx(cv);
   }
   drawLimits(root);
+  drawCost(root);
 }
 let usageIdleAt = 0;
 function usageActive() {
@@ -1609,6 +1651,7 @@ function usageKeys() {   // one line of key numbers for the collapsed strip
   const last = S.reqs[S.reqs.length - 1];
   if (last) parts.push(`<span>last <b>${fmtNum(last.in)}</b>→<b>${fmtNum(last.out)}</b></span>`);
   if (S.ctx.usable) parts.push(`<span>ctx <b>${Math.round(100 * S.ctx.used / S.ctx.usable)}%</b></span>`);
+  if (S.cost.priced || S.cost.unpriced) parts.push(`<span>cost <b>${esc(costText())}</b></span>`);
   const lr = limitRows()[0];
   if (lr) parts.push(`<span>${esc(lr.name)} <b>${Number.isFinite(lr.rem) ? fmtInt(lr.rem) : "?"}</b>${lr.left != null && lr.left > 0 ? " · " + fmtLeft(lr.left) : ""}</span>`);
   else if (S.reqs.length) parts.push('<span class="c-faint">no provider limits</span>');
@@ -1799,6 +1842,7 @@ function compressGaps(events) {
 function resetScene() { S = freshState(); hot.clear(); clearChips(); lastVer = -1; }
 
 function seekTo(target) {
+  if (adjusted.length) target = clamp(target, 0, adjusted[adjusted.length - 1].t);   // never past the end
   resetScene();
   replayPos = 0; replayClock = target;
   while (replayPos < adjusted.length && adjusted[replayPos].t <= target) apply(adjusted[replayPos++], null);

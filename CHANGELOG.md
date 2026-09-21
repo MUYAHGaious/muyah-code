@@ -5,6 +5,27 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **Cost, in dollars, for every model call, and budgets.**
+  - **Every call is counted.** This includes compaction, learning (reflection), web page summaries and `/doctor`, each tagged with what it was for. Before, those calls never reached `usage.jsonl`.
+  - **Cache tokens are kept separately.** This covers Anthropic cache reads/writes, OpenAI/Groq/Gemini `cached_tokens` and DeepSeek cache hits, and they are priced at the cache rate.
+  - **Where prices come from:** your `pricing.models`, OpenRouter's live list, and LiteLLM's public price table. A trimmed copy ships in `muyah_code/data/prices.json` and is refreshed daily in the background. `scripts/update_prices.py` rebuilds the copy.
+  - **Self-hosted counts as $0.** That means localhost, private networks, and Cloudflare or ngrok tunnels.
+  - **Unknown models are "unpriced"**, never guessed.
+  - **`/usage` is redesigned:**
+    - this session's cost, tokens, cache hit rate and tokens/s;
+    - where the tokens went (the agent, each sub-agent, compaction, learning…);
+    - the context right now (system prompt, conversation, tool results, tool definitions);
+    - today and the last 7 days, with cost;
+    - provider limits;
+    - `--all` adds a per-model table.
+  - The status line shows the session cost, and the line after each turn shows that turn's cost.
+  - **Budgets:** `budget.session_usd` / `budget.daily_usd`.
+    - A warning at 80%.
+    - At 100% it asks before the next request, and "Continue" raises the limit by half.
+    - Headless mode stops with status `budget`.
+    - New flags `--max-cost` and `--max-turns` (an alias of `--max-steps`). The `-p` JSON result includes `total_cost_usd`.
+  - The live view's Usage panel has a Cost card: cost, cache hit, where the tokens went and budget bars. The bottom strip shows the cost.
+  - Fixed: seeking a replay past its end showed a nonsense clock.
 - **`/verify quick | full | e2e`: checking the work when you choose, not automatically.**
   - quick lints the files the last turn changed and runs their tests (`calc.py` → `test_calc.py`); full runs the whole suite and linters; e2e asks the agent to run the app the way a user would (browser tools for web UIs) without changing code.
   - Commands are detected from pyproject.toml, package.json (npm/pnpm/yarn/bun), Cargo.toml and go.mod. Set `verify.test` / `verify.lint` to use your own. `/init` passes the detected commands to the model.
