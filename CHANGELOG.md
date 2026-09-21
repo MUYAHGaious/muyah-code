@@ -5,6 +5,26 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **An organized transcript**, following what Codex, Gemini CLI, OpenCode and Claude Code do:
+  - Your prompt is a highlighted band, with no separator lines.
+  - Each kind of action has its own glyph and verb: `$ Ran` for commands, `→ Read`, `✱ Searched`, `± Edited` (with +/- counts and the diff), `◈ Fetched`, `⇄ Called` for MCP, `◇ Using skill`, `◆ Agent`, `▣ Updated plan`.
+  - Each tool prints once, when it finishes, and its glyph is green or red for the outcome. While it runs, it lives in the status area with a timer.
+  - A sub-agent's steps show live under it, then collapse into one "✓ Done · N steps" line.
+  - Quick lookups stack; other blocks get one blank line. Wrapped lines use hanging indents, and long paths are shortened in the middle.
+  - Answers wrap at a readable width on wide terminals.
+- **Type while it works.** What you type shows under the spinner. **Enter** queues it, and the model gets it at the next step (between tool calls), not after the whole turn. **Esc** stops the current step and sends it right away.
+- **Interrupts are instant.** Esc and Ctrl+C now take effect in about 0.1 s even while the model is thinking; before, they waited for the server's next bytes.
+- **Modes:** Shift+Tab cycles **plan → edit → manual → auto**, each with its own color (plan green, edit violet, auto yellow).
+  - The new **auto** mode runs work on its own and asks only for risky actions: bulk or forced deletes, `git push`, `git reset --hard`, publishing, `sudo`, piping downloads into a shell, and edits outside the project.
+  - `bypassPermissions` is only set with `--mode`, never by Shift+Tab.
+- **Honest waiting.** Until the provider sends its first byte, the spinner says "Waiting for <model> · sent Ns ago", so provider queueing is not mistaken for MUYAH-CODE being stuck. Free-tier rate limits (e.g. Gemini 429) are explained as rate limits, with the retry delay, instead of "no credits".
+- **Live view:**
+  - Events now fire at the real moments: requested, awaiting approval, approved/denied, running, done; for the model: sent, first token.
+  - Parallel reads used to report "started" after they had finished.
+  - Events carry file contents, diffs, command output, skill text and the extensions inventory (skills, agents, MCP tools, hooks).
+  - At startup MUYAH-CODE offers to open the live view (Always / Never are remembered), and the status line shows when it is on.
+  - `muyah viz --replay --speed` accepts 0.1 (slow motion) to 16.
+- In plan mode, chained read-only commands such as `python --version && pip --version` are allowed.
 - **Faster, smoother CLI** (measured in a real Windows pseudo-console, with a 2000-message conversation):
   - Enter → request reaching the model: **~1.2 s → 77 ms**. Requests no longer pass through the OpenAI SDK's per-request walk over the whole conversation, which cost about a second and grew with every message.
   - The input box no longer redraws itself twice a second while idle.

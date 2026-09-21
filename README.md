@@ -138,6 +138,7 @@ muyah --resume                          # pick an earlier conversation from a li
 - `@path` attaches a file.
 - `#note` saves a note to `MUYAH.md`.
 - **Shift+Tab** cycles permission modes.
+- **While it works, keep typing.** **Enter** queues a message; the model gets it at the next step. **Esc** stops the current step and sends it right away.
 - **Alt+Enter** / **Ctrl+J** inserts a newline.
 - **Ctrl+C** stops a running reply, or clears what you typed. Press it twice on an empty line (or **Ctrl+D**) to exit.
 
@@ -159,10 +160,15 @@ muyah --resume                          # pick an earlier conversation from a li
 
 ### Permission modes
 
-- **default** asks before edits, commands and network access. Read-only commands such as `git status` or `ls` never ask.
-- **acceptEdits** auto-approves file edits inside the project.
-- **plan** is read-only: the agent explores and proposes a plan.
-- **bypassPermissions** never asks, so use it only in throwaway environments.
+**Shift+Tab** cycles **plan → edit → manual → auto**. Each mode has its own color in the status line.
+
+| Mode | What it does |
+|---|---|
+| **plan** (green) | Read-only: the agent explores and proposes a plan. |
+| **edit** (violet) | Accepts file edits inside the project; asks before commands. |
+| **manual** (default) | Asks before edits, commands and network access. Read-only commands such as `git status` or `ls` never ask. |
+| **auto** (yellow) | Runs on its own. Still asks for risky actions: bulk or forced deletes, `git push`, `git reset --hard`, publishing, `sudo`, piping downloads into a shell, and edits outside the project. |
+| bypassPermissions | No checks at all. Only with `--mode bypassPermissions`, for throwaway environments. |
 
 When asked, you can answer **y**, **a** (always allow this session), **p** (always allow in this project, saved to `.muyah/settings.local.json`), **n**, or type what to do instead.
 
