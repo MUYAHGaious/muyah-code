@@ -483,7 +483,8 @@ class CommandRouter:
                 self.console.print("[dim]Visualization stopped.[/]")
             return
         if server is None or not server.running:
-            server = VizServer(bus=self.app.events, title=self.app.session_id)
+            server = VizServer(bus=self.app.events, title=self.app.session_id,
+                               recording=self.app.events.record_to)
             server.start()
             self.app.viz = server
         self.console.print(f"Live view: [link={server.url}]{server.url}[/link]")

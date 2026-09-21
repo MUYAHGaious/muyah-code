@@ -17,6 +17,7 @@ a resumed session continues its clock). Agent events also carry "agent" ("main" 
     subagent_start prompt                        subagent_end status, duration, tool_calls
     todos         items                          hook         event, command, outcome, duration
     queue         items (messages typed while it works, waiting for the next step)
+    limits        model, rows[{name, remaining, limit, reset_s}] (the provider's rate limits after a reply)
     reset         (a viewer following a folder switched to a newer session)
 
 Publishing is cheap when nobody listens, so the agent always emits. Every event is also appended to the

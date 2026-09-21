@@ -323,7 +323,8 @@ def _viz(argv: list[str], console) -> int:
     here = Path.cwd()
     follower = SessionFollower(lambda: sessions_dir(cfg.home, find_project_root(here)))
     follower.start()
-    server = VizServer(bus=follower.bus, title=cfg.project_root.name, following=str(cfg.project_root), port=a.port)
+    server = VizServer(bus=follower.bus, title=cfg.project_root.name, following=str(cfg.project_root), port=a.port,
+                       recording=lambda: follower.path)
     console.print(f"Watching MUYAH-CODE live in [bold]{escape_markup(str(cfg.project_root))}[/]: {server.url}")
     console.print("[dim]Use muyah in this folder (another terminal is fine); the page follows the current "
                   "session. Ctrl+C to stop.[/]")
@@ -351,7 +352,7 @@ def _viz_replay(directory: Path, session: str, a, console) -> int:
         console.print(f"{path.name} has no events to replay.")
         return 1
     name = path.name.removesuffix(".events.jsonl")
-    server = VizServer(events=events, title=name, port=a.port)
+    server = VizServer(events=events, title=name, port=a.port, recording=path)
     url = f"{server.url}&speed={a.speed:g}"
     console.print(f"Replaying {name} ({len(events)} events): {url}")
     console.print("[dim]Press Ctrl+C to stop.[/]")

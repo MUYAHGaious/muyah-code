@@ -62,13 +62,16 @@ class _HTTPServer(ThreadingHTTPServer):
 
 class VizServer:
     def __init__(self, bus: EventBus | None = None, events: list[dict] | None = None, title: str = "",
-                 host: str = "127.0.0.1", port: int = 0, following: str = ""):
+                 host: str = "127.0.0.1", port: int = 0, following: str = "",
+                 recording=None):
         if (bus is None) == (events is None):
             raise ValueError("give either a live event bus or recorded events")
         self.bus = bus
         self.events = events
         self.title = title
         self.following = following  # the folder a follower watches ("" for a session's own /viz)
+        # where this session is being recorded: a Path, or a function giving it (a follower switches files)
+        self.recording = recording
         self.token = secrets.token_urlsafe(18)
         self._stopping = threading.Event()
         self._httpd = self._bind(host, port)
@@ -86,6 +89,22 @@ class VizServer:
             except OSError:  # in use (another viewer is open): take any free port
                 continue
         raise OSError("no free port for the live view")
+
+    def recording_path(self) -> Path | None:
+        path = self.recording() if callable(self.recording) else self.recording
+        return Path(path) if path else None
+
+    def recording_bytes(self) -> tuple[str, bytes]:
+        """(file name, JSONL) of the events this viewer shows, for the page's download button."""
+        path = self.recording_path()
+        if path is not None and path.exists():
+            from muyah_code.appendlog import flush
+
+            flush(path)
+            return path.name, path.read_bytes()
+        events = self.events if self.bus is None else list(self.bus.history)
+        name = f"{self.title or 'session'}.events.jsonl"
+        return name, "".join(json.dumps(e, ensure_ascii=False, default=str) + "\n" for e in events or []).encode()
 
     @property
     def mode(self) -> str:
@@ -162,6 +181,15 @@ class VizServer:
                     self.wfile.write(body)
                 elif route == "/events":
                     self._stream()
+                elif route == "/recording":
+                    name, body = server.recording_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+                    self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+                    self.send_header("Content-Length", str(len(body)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    self.wfile.write(body)
                 else:
                     self._send(404, b"Not found", "text/plain; charset=utf-8")
 
@@ -179,8 +207,9 @@ class VizServer:
                 self.end_headers()
                 self.close_connection = True
                 try:
-                    self._write_event({"mode": server.mode, "title": server.title, "following": server.following},
-                                      "hello")
+                    rec = server.recording_path()
+                    self._write_event({"mode": server.mode, "title": server.title, "following": server.following,
+                                       "recording": str(rec) if rec else ""}, "hello")
                     if server.bus is None:
                         for ev in server.events or []:
                             self._write_event(ev)

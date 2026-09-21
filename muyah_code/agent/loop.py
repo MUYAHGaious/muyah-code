@@ -489,6 +489,7 @@ class Agent:
                     self._emit("llm_end", prompt_tokens=int(resp.usage.get("prompt_tokens") or 0),
                                completion_tokens=int(resp.usage.get("completion_tokens") or 0),
                                duration=round(time.time() - started, 3), calls=[c.name for c in resp.tool_calls])
+                    self._emit_limits()
             except ToolsUnsupportedError as e:
                 self.ui.assistant_end()
                 self._llm_failed(meter, started, e)
@@ -529,6 +530,18 @@ class Agent:
             if prompt_tokens:
                 self.context.calibrate(self.messages, tools, prompt_tokens)
             return resp
+
+    def _emit_limits(self) -> None:
+        """The provider's rate limits as of this reply (only when it reports them): for the live view."""
+        limits = getattr(self.llm, "limits", None)
+        if not limits:
+            return
+        from muyah_code.usage import parse_limits, reset_seconds
+
+        rows = [{"name": r.name, "remaining": r.remaining, "limit": r.limit, "reset_s": reset_seconds(r.reset)}
+                for r in parse_limits(limits)]
+        if rows:
+            self._emit("limits", model=getattr(self.llm, "model", ""), rows=rows)
 
     def _take_queued_messages(self) -> None:
         """Messages you typed while it worked arrive between steps, as soon as the current step is done."""

@@ -79,7 +79,7 @@ def test_replay_streams_recorded_events_then_ends():
         got = read_sse(resp, "end")
     finally:
         server.stop()
-    assert got[0] == ("hello", {"mode": "replay", "title": "abc", "following": ""})
+    assert got[0] == ("hello", {"mode": "replay", "title": "abc", "following": "", "recording": ""})
     assert [d for n, d in got if n == "message"] == events
     assert got[-1][0] == "end"
 
@@ -340,3 +340,30 @@ def test_viewer_prefers_a_stable_port_and_falls_back_when_busy():
     finally:
         first.stop()
         second.stop()
+
+
+def test_recording_can_be_downloaded_and_limits_are_events(project):
+    from fakeserver import FakeOpenAI as Fake
+
+    limits = {"x-ratelimit-limit-tokens": "6000", "x-ratelimit-remaining-tokens": "5000",
+              "x-ratelimit-reset-tokens": "1m30s"}
+    with Fake([reply("done")], headers=limits) as srv:
+        app = make_app(srv, project)
+        app.run_prompt("hi")
+    lim = [e for e in app.events.history if e["type"] == "limits"][0]
+    assert lim["rows"] == [{"name": "tokens", "remaining": "5000", "limit": "6000", "reset_s": 90.0}]
+    server = VizServer(bus=app.events, title="s", recording=app.events.record_to)
+    server.start()
+    try:
+        _, resp = request(server, f"/events?t={server.token}")
+        hello = read_sse(resp, "hello")[0][1]
+        assert hello["recording"].endswith(".events.jsonl")
+        _, resp = request(server, f"/recording?t={server.token}")
+        assert resp.status == 200 and "attachment" in resp.getheader("Content-Disposition")
+        lines = resp.read().decode("utf-8").splitlines()
+        assert any(json.loads(ln)["type"] == "turn_end" for ln in lines)
+        _, resp = request(server, "/recording")                   # the token is required here too
+        assert resp.status == 403
+    finally:
+        server.stop()
+        app.shutdown()

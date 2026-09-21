@@ -103,6 +103,17 @@ def parse_limits(headers: dict | None) -> list[Limit]:
     return list(rows.values())
 
 
+def reset_seconds(value: str | None, now: float | None = None) -> float | None:
+    """Seconds until a limit resets, from any of the header formats; None if unknown."""
+    text = describe_reset(value, now)
+    if not text.startswith("in "):
+        return None
+    total = 0.0
+    for amount, unit in re.findall(r"(\d+(?:\.\d+)?)(h|m|s)", text):
+        total += float(amount) * {"h": 3600, "m": 60, "s": 1}[unit]
+    return round(total, 1)
+
+
 def describe_reset(value: str | None, now: float | None = None) -> str:
     """'6m0s' / '12.5s' / '2026-09-21T15:00:00Z' / '1758460000000' (ms epoch) -> 'in 12s'."""
     if not value:
