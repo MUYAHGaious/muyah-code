@@ -37,6 +37,10 @@ from muyah_code.ui.theme import theme
 MAX_DIFF_LINES = 40
 LIVE_TAIL_LINES = 8
 HUNK_RE = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+# While the model thinks, the label changes every few seconds (so a long wait visibly moves on)
+THINKING_WORDS = ("Thinking", "Reasoning", "Working it out", "Weighing options", "Connecting the dots",
+                  "Planning the next step", "Checking the details")
+WORD_SECONDS = 4.0
 PROSE_WIDTH = 110  # answers wrap at this width even on very wide terminals (readable line length)
 
 
@@ -222,8 +226,13 @@ class TerminalUI(UI):
         self._reader = None
         self._turn_active = False
         self.events = None       # EventBus (set by the REPL): the live view shows the queue
+        self.on_mode_cycle = None  # Shift+Tab while it works (set by the REPL)
+        self.input_status = None   # () -> (label, description, color) for the status line under the box
         self.model_name = ""     # shown while waiting for the provider (set by the REPL)
         self._sent_at = 0.0      # when the current request left; 0 once its first byte arrived
+        # One spinner for the whole live area. A Rich Spinner picks its frame from how long it has
+        # existed: building a new one on every refresh froze the animation on its first frame.
+        self._spinner = Spinner("dots")
 
     # ------------------------------------------------------------------ live status
 
@@ -235,7 +244,7 @@ class TerminalUI(UI):
             line = blocks.header(tt, True, self.cwd, self.console.width - 22)
             line.append(f"  {elapsed:.0f}s", style=t.dim)
             line.append("  (esc to interrupt · type to queue a message)", style=t.dim)
-            spin = Spinner("dots", text=line, style=t.accent)
+            spin = self._spin(line)
             if tt.name == "Agent" and self._sub_current:
                 step = Text("  ⎿ ", style=t.dim)
                 step.append(f"{self._sub_current}", style=t.dim)
@@ -249,7 +258,7 @@ class TerminalUI(UI):
             label = f"Waiting for {self.model_name or 'the model'}"
             parts = [f"sent {time.monotonic() - self._sent_at:.0f}s ago"]
         elif self._phase == "thinking":
-            label = "Thinking"
+            label = THINKING_WORDS[int(elapsed // WORD_SECONDS) % len(THINKING_WORDS)]
             if self._reasoning_chars:
                 parts.append(f"{int(self._reasoning_chars / 3.5):,} reasoning tokens")
         elif self._phase == "writing":
@@ -259,36 +268,54 @@ class TerminalUI(UI):
             parts.append(f"{toks:,} tokens")
             if gen_time > 1:
                 parts.append(f"{toks / gen_time:.1f} tok/s")
+        elif self._phase in ("", "Working"):
+            label = THINKING_WORDS[int(elapsed // WORD_SECONDS) % len(THINKING_WORDS)]
         else:
-            label = self._phase or "Working"
+            label = self._phase
         if self.context_pct is not None:
             parts.append(f"ctx {self.context_pct}%")
-        spinner = Spinner("dots", text=Text.assemble((f"{label}… ", t.accent), (" · ".join(parts), t.dim),
-                                                     ("  (esc to interrupt · type to queue a message)", t.dim)),
-                          style=t.accent)
-        return spinner
+        return self._spin(Text.assemble((f"{label}… ", t.accent), (" · ".join(parts), t.dim),
+                                        ("  (esc to interrupt · type to queue a message)", t.dim)))
+
+    def _spin(self, text: Text) -> Spinner:
+        self._spinner.update(text=text, style=theme().accent)
+        return self._spinner
 
     def _with_typing(self, renderable):
-        """Add your draft and queued messages under the live status."""
+        """While it works, the input box stays under the live status (like when idle): queued messages,
+        the ❯ field with what you are typing, and the status line with the mode."""
         with self._keys:
             draft, queued = self._draft, list(self._queued)
-        if not draft and not queued:
+        if self._reader is None and not queued:   # not listening (piped output, screenshots)
             return renderable
         t = theme()
-        rows = [renderable]
+        width = max(20, self.console.width - 1)
+        rows = [renderable, Text("")]
         for msg in queued:
             line = Text("› ", style=t.dim)
             line.append(msg, style=t.dim)
-            line.append("  · queued, goes in at the next step (esc: send now)", style=f"italic {t.dim}")
+            line.append("  · queued: goes in at the next step (esc: send now)", style=f"italic {t.dim}")
             line.no_wrap, line.overflow = True, "ellipsis"
             rows.append(line)
+        if self._reader is None:
+            return Group(*rows)
+        label, what, color = self.input_status() if self.input_status else ("", "", t.accent)
+        rows.append(Text("─" * width, style="bright_black"))
+        field = Text("❯ ", style=f"bold {color}")
         if draft:
-            line = Text("› ", style=f"bold {t.accent}")
-            line.append(draft)
-            line.append("▌", style=t.accent)
-            line.append("   enter: queue · esc: send now", style=t.dim)
-            line.no_wrap, line.overflow = True, "ellipsis"
-            rows.append(line)
+            field.append(draft)
+            field.append("▌", style=color)
+        else:
+            field.append("type to queue a message · enter: queue · esc: send now", style=t.dim)
+        field.no_wrap, field.overflow = True, "ellipsis"
+        rows.append(field)
+        rows.append(Text("─" * width, style="bright_black"))
+        status = Text("  ")
+        if label:
+            status.append(label, style=f"bold {color}")
+            status.append(f" · {what} (shift+tab)", style=t.dim)
+        status.no_wrap, status.overflow = True, "ellipsis"
+        rows.append(status)
         return Group(*rows)
 
     # ------------------------------------------------------------------ typing while it works
@@ -305,6 +332,7 @@ class TerminalUI(UI):
     def end_typing(self) -> tuple[list[str], str]:
         """The turn ended: stop listening. Returns (queued messages not yet delivered, unsent draft)."""
         self._turn_active = False
+        self._stop_live()
         if self._reader is not None:
             self._reader.stop()
             self._reader = None
@@ -341,6 +369,8 @@ class TerminalUI(UI):
                 self._draft = ""
             elif key == "backspace":
                 self._draft = self._draft[:-1]
+            elif key == "shift-tab":
+                pass                       # handled below, outside the lock
             elif key in ("esc", "ctrl-c"):
                 if self._draft.strip():
                     self._queued.append(self._draft.strip())
@@ -348,6 +378,8 @@ class TerminalUI(UI):
                 interrupt = True
             elif len(key) == 1:
                 self._draft += key
+        if key == "shift-tab" and self.on_mode_cycle is not None:
+            self.on_mode_cycle()           # takes effect from the agent's next action
         if len(self._queued) != before:
             self._emit_queue()
         if interrupt and self._turn_active:
@@ -425,11 +457,22 @@ class TerminalUI(UI):
         self._chars += len(chunk)
         self._stream.update(chunk)
 
+    def busy(self, label: str) -> None:
+        """Something is happening that prints nothing (a hook, the learning step): show it, animated."""
+        if self._turn_active or self._live is None:
+            self._start_live(label)
+
+    def _keep_working(self) -> None:
+        """Between steps of a turn the spinner never stops: the model is still at work."""
+        if self._turn_active and self._live is None:
+            self._start_live("Working")
+
     def assistant_end(self) -> None:
         if self._stream is not None:
             self._stream.update("", final=True)
             self._stream = None
             self._stop_live()
+            self._keep_working()
         else:
             self._stop_live()
 
@@ -475,9 +518,9 @@ class TerminalUI(UI):
         elapsed = time.monotonic() - started
         self._tool = None
         self._stop_live()
-        if tt.name in ("TodoWrite", "AskUser") and not result.is_error:
-            return  # the plan / the question already has its own block
-        self._print_tool(tt, result, elapsed)
+        if tt.name not in ("TodoWrite", "AskUser") or result.is_error:  # those print their own block
+            self._print_tool(tt, result, elapsed)
+        self._keep_working()
 
     def _print_tool(self, tt: blocks.ToolTitle, result: ToolResult, elapsed: float) -> None:
         t = theme()
@@ -591,6 +634,7 @@ class TerminalUI(UI):
 
     def turn_footer(self, status: str, seconds: float, tool_calls: int, files_changed: int, ctx_pct: int) -> None:
         t = theme()
+        self._stop_live()
         ok = status == "ok"
         mark = Text("✓ " if ok else "• ", style=t.ok if ok else t.warn)
         self._space("block")

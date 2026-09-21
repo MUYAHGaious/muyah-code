@@ -100,6 +100,9 @@ class Repl:
         self.ui.prompter = self.prompter
         self.ui.cwd = app.cwd
         self.ui.events = app.events
+        self.ui.on_mode_cycle = lambda: self.app.set_mode(self.app.permissions.cycle_mode())
+        self.ui.input_status = lambda: (*MODE_LABEL.get(self.app.permissions.mode, (self.app.permissions.mode, "")),
+                                        self._mode_color())
         self.ui.model_name = getattr(app.llm, "model", "")
         self.router = CommandRouter(self)
         self._last_interrupt = 0.0

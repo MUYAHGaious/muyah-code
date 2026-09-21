@@ -1,7 +1,8 @@
 """Typing while MUYAH-CODE works.
 
 While a turn runs, a small reader thread takes your keystrokes (the normal input box is not active then):
-  * the text you type shows as a draft under the spinner,
+  * the input box stays on screen under the spinner, and what you type shows in it,
+  * Shift+Tab changes the mode (it applies from the agent's next action),
   * Enter queues it; the agent gets queued messages at its next step (between tool calls), not only
     after the whole turn, and the transcript shows them as sent at that moment,
   * Esc stops the current step and sends what you queued (or typed) right away.
@@ -25,7 +26,7 @@ POLL = 0.02
 class KeyReader:
     """Reads single keys from the terminal in a background thread and hands them to `on_key`.
 
-    Keys are delivered as text; special keys as names: "enter", "backspace", "esc"."""
+    Keys are delivered as text; special keys as names: "enter", "backspace", "esc", "shift-tab"."""
 
     def __init__(self, on_key: Callable[[str], None]):
         self.on_key = on_key
@@ -100,15 +101,9 @@ class KeyReader:
                 time.sleep(POLL)
 
     def _read_windows(self) -> str | None:
-        import msvcrt
-
-        if not msvcrt.kbhit():
-            return None
-        ch = msvcrt.getwch()
-        if ch in ("\x00", "\xe0"):   # arrows, function keys: ignore the second half
-            msvcrt.getwch()
-            return None
-        return _name(ch)
+        # msvcrt.getwch() only returns characters, so Shift+Tab arrives as a plain Tab. Console input
+        # records carry the key code and the Shift state.
+        return _WIN.read_key()
 
     def _read_posix(self) -> str | None:
         import select
@@ -118,6 +113,8 @@ class KeyReader:
         if not ready:
             return None
         data = os.read(fd, 64)
+        if data == b"\x1b[Z":
+            return "shift-tab"
         if data.startswith(b"\x1b") and len(data) > 1:
             return None               # an escape sequence (arrow keys...), not a bare Esc
         text = data.decode("utf-8", errors="ignore")
@@ -149,6 +146,59 @@ class KeyReader:
         except (ImportError, OSError, ValueError):
             pass
         self._saved_tty = None
+
+
+class _WindowsConsole:
+    """Key presses from the Windows console input buffer (ReadConsoleInputW), with modifier state."""
+
+    KEY_EVENT = 0x0001
+    SHIFT = 0x0010
+    VK = {0x09: "tab", 0x0D: "enter", 0x08: "backspace", 0x1B: "esc"}
+
+    def __init__(self):
+        self._api = None
+
+    def _setup(self):
+        import ctypes
+        from ctypes import wintypes
+
+        class KeyEvent(ctypes.Structure):
+            _fields_ = [("bKeyDown", wintypes.BOOL), ("wRepeatCount", wintypes.WORD),
+                        ("wVirtualKeyCode", wintypes.WORD), ("wVirtualScanCode", wintypes.WORD),
+                        ("uChar", wintypes.WCHAR), ("dwControlKeyState", wintypes.DWORD)]
+
+        class EventUnion(ctypes.Union):
+            _fields_ = [("KeyEvent", KeyEvent), ("_pad", ctypes.c_byte * 16)]
+
+        class InputRecord(ctypes.Structure):
+            _fields_ = [("EventType", wintypes.WORD), ("Event", EventUnion)]
+
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        handle = k32.GetStdHandle(-10)  # STD_INPUT_HANDLE
+        self._api = (ctypes, wintypes, k32, handle, InputRecord)
+
+    def read_key(self) -> str | None:
+        if self._api is None:
+            self._setup()
+        ctypes, wintypes, k32, handle, InputRecord = self._api
+        pending = wintypes.DWORD(0)
+        if not k32.GetNumberOfConsoleInputEvents(handle, ctypes.byref(pending)) or pending.value == 0:
+            return None
+        record, read = InputRecord(), wintypes.DWORD(0)
+        if not k32.ReadConsoleInputW(handle, ctypes.byref(record), 1, ctypes.byref(read)) or read.value == 0:
+            return None
+        if record.EventType != self.KEY_EVENT or not record.Event.KeyEvent.bKeyDown:
+            return None                  # key releases, mouse, focus and resize events
+        key = record.Event.KeyEvent
+        special = self.VK.get(key.wVirtualKeyCode)
+        if special == "tab":
+            return "shift-tab" if key.dwControlKeyState & self.SHIFT else None
+        if special:
+            return special
+        return _name(key.uChar) if key.uChar and key.uChar != "\x00" else None
+
+
+_WIN = _WindowsConsole()
 
 
 def _name(ch: str) -> str | None:

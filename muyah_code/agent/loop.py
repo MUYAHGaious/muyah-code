@@ -301,8 +301,14 @@ class Agent:
         if self.hooks and self.hooks.has("PreCompact"):
             self.hooks.run("PreCompact", self._hook_base() | {"trigger": "manual" if focus else "auto"})
         tools = None if self.text_mode else self.registry.schemas()
+        before = self.context.count(self.messages, tools)
+        busy = getattr(self.ui, "busy", None)
+        if callable(busy):
+            busy(f"Compacting the conversation ({len(self.messages) - 1} messages, {before:,} tokens)")
         new, desc = self.context.compact(self.messages, self.llm, focus=focus, todos=self.ctx.todos,
                                          tools=tools, emergency=emergency)
+        after = self.context.count(new, tools)
+        desc = f"Compacted the conversation: {before:,} → {after:,} tokens. {desc}"
         self.messages = new
         if self.session:
             self.session.log_replace(self.messages[1:], "compact")
@@ -375,6 +381,8 @@ class Agent:
             result.steps = step
             if step > 1:
                 self._take_queued_messages()
+                if self._prompt_dirty:        # e.g. the mode changed (Shift+Tab) while it worked
+                    self.refresh_system_prompt()
             resp = self._call_llm()
             if resp is None:
                 result.status = "error"

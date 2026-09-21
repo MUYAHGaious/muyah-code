@@ -5,6 +5,10 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **Fix: the spinner froze.** A new spinner was built on every redraw, and Rich spinners pick their frame from their age, so they always showed the first frame while the timer kept counting. The spinner now animates the whole time (verified: all 10 frames, hundreds of changes per turn).
+- **The spinner never goes quiet during a turn.** Between steps it shows "Working…"; the learning step after a turn shows "Learning from this turn…". While thinking, the words change every few seconds.
+- **Compaction shows progress:** "Compacting the conversation (N messages, X tokens)" while it runs, then the size before → after.
+- **The input box stays on screen while it works**, and **Shift+Tab changes the mode mid-turn**; it applies from the agent's next action. On Windows the key reader now reads console input records, which is the only way to tell Shift+Tab from Tab.
 - **Live view logs:** the Activity panel's detail view is the full log of every state change. Filter it by kind (you, model calls, tools, commands, sub-agents, hooks and lessons, errors) and open any line to see the raw event.
 - README: a showcase for running huge models on your own hardware with colibri and Soup, and an accurate note on prompt caching.
 - **`/usage`** (also `muyah usage`): requests and tokens for this session, today and the last 7 days, broken down by model. It also shows the **live limits your provider reports**: requests and tokens left, and when they reset. Groq, OpenRouter, OpenAI, Anthropic and others send these with every reply; if a provider sends none (Gemini), `/usage` says so. `/cost` shows the same.

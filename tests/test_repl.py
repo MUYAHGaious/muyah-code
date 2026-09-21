@@ -316,6 +316,15 @@ def test_typing_while_working_queues_and_esc_sends_now(monkeypatch):
     interrupts = []
     monkeypatch.setattr("_thread.interrupt_main", lambda: interrupts.append(1))
     ui.begin_typing()
+
+    class Reader:  # stands in for the real key reader (tests have no terminal)
+        def stop(self): ...
+        def pause(self): ...
+        def resume(self): ...
+    ui._reader = Reader()
+    modes = []
+    ui.on_mode_cycle = lambda: modes.append("cycled")
+    ui.input_status = lambda: ("⏵⏵ auto", "runs on its own", "#facc15")
     for ch in "also run the tests":
         ui._on_key(ch)
     ui._on_key("backspace")
@@ -324,7 +333,11 @@ def test_typing_while_working_queues_and_esc_sends_now(monkeypatch):
 
     shown = io.StringIO()
     Console(file=shown, width=120, color_system=None).print(ui._with_typing(Text("status")))
-    assert "› also run the tests▌" in shown.getvalue() and "enter: queue" in shown.getvalue()
+    screen = shown.getvalue()
+    assert "❯ also run the tests▌" in screen                  # the input box stays on screen while it works
+    assert "⏵⏵ auto" in screen and "(shift+tab)" in screen    # with the mode status line under it
+    ui._on_key("shift-tab")
+    assert modes == ["cycled"]                                # Shift+Tab changes the mode mid-turn
     ui._on_key("enter")
     assert ui._queued == ["also run the tests"] and ui._draft == ""
     assert ui.take_queued() == ["also run the tests"] and ui._queued == []   # delivered at the next step

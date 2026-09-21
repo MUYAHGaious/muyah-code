@@ -380,7 +380,7 @@ class App:
     def _reflect(self, prompt: str, signals: list[dict], status: str, start_index: int) -> list:
         messages = self.agent.messages
         transcript = messages[start_index:] if 0 < start_index < len(messages) else messages[-20:]
-        self.ui.info("Reflecting on this turn to learn from it...")
+        self.ui.busy("Learning from this turn")
         stored = self.reflector.reflect(prompt, signals, transcript, status)
         for lesson, merged in stored:
             self.ui.info(f"{'Reinforced' if merged else 'Learned'} [{lesson.id}] {lesson.render()[2:]}")
