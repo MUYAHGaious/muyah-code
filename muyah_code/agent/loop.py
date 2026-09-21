@@ -84,6 +84,41 @@ class _TagHider:
         self.buf = ""
 
 
+
+LONG_ARG_KEYS = ("content", "new_string", "old_string", "edits", "prompt")
+
+
+def brief_args(args: dict | None) -> dict:
+    """Tool arguments for the live view: short values as they are, long text as a size."""
+    out: dict = {}
+    for k, v in (args or {}).items():
+        if isinstance(v, str):
+            out[k] = f"({len(v):,} chars)" if k in LONG_ARG_KEYS and len(v) > 200 else v[:400]
+        elif isinstance(v, (int, float, bool)) or v is None:
+            out[k] = v
+        else:
+            text = json.dumps(v, default=str)
+            out[k] = text if len(text) <= 300 else f"({len(text):,} chars)"
+    return out
+
+
+def result_detail(name: str, res: ToolResult) -> dict:
+    """What the live view shows about a finished tool: output (tail for commands), exit code, diff size."""
+    detail: dict = {}
+    content = res.content or ""
+    if name in ("Bash", "BashOutput") or name.startswith("mcp__"):
+        detail["output"] = content[-1500:]
+    elif name not in ("Read", "Write", "Edit"):
+        detail["output"] = content[:1200]
+    if "exit_code" in res.meta:
+        detail["exit_code"] = res.meta["exit_code"]
+    if res.display:
+        lines = res.display.splitlines()
+        detail["added"] = sum(1 for ln in lines if ln.startswith("+") and not ln.startswith("+++"))
+        detail["removed"] = sum(1 for ln in lines if ln.startswith("-") and not ln.startswith("---"))
+    return detail
+
+
 class Agent:
     def __init__(
         self,
@@ -145,16 +180,31 @@ class Agent:
                    parts={"system": c.count(self.messages[:1]), "conversation": c.count(convo),
                           "tools": c.count(tools_msgs)})
 
-    def _show_tool_start(self, title: str, name: str) -> int:
+    def _new_tool_id(self) -> int:
         self._tool_seq += 1
-        self.ui.tool_start(title)
-        self._emit("tool_start", id=self._tool_seq, name=name, title=title[:160])
         return self._tool_seq
+
+    def _emit_tool_request(self, tool_id: int, name: str, title: str, args: dict | None) -> None:
+        """The model asked for this tool (nothing has run yet)."""
+        self._emit("tool_request", id=tool_id, name=name, title=title[:200], args=brief_args(args))
+
+    def _emit_tool_start(self, tool_id: int, name: str, title: str, args: dict | None) -> None:
+        """The tool is actually starting to run, right now."""
+        self._emit("tool_start", id=tool_id, name=name, title=title[:200], args=brief_args(args))
+
+    def _emit_tool_end(self, tool_id: int, name: str, res: ToolResult, duration: float) -> None:
+        self._emit("tool_end", id=tool_id, name=name, ok=not res.is_error, summary=(res.summary or "")[:160],
+                   duration=round(duration, 3), chars=len(res.content or ""), **result_detail(name, res))
+
+    def _show_tool_start(self, title: str, name: str, tool_id: int | None = None, args: dict | None = None) -> int:
+        tool_id = tool_id if tool_id is not None else self._new_tool_id()
+        self.ui.tool_start(title)
+        self._emit_tool_start(tool_id, name, title, args)
+        return tool_id
 
     def _show_tool_end(self, tool_id: int, title: str, name: str, res: ToolResult, duration: float) -> None:
         self.ui.tool_end(title, res)
-        self._emit("tool_end", id=tool_id, name=name, ok=not res.is_error, summary=(res.summary or "")[:120],
-                   duration=round(duration, 3), chars=len(res.content or ""))
+        self._emit_tool_end(tool_id, name, res, duration)
 
     # ------------------------------------------------------------------ public
 
@@ -343,6 +393,9 @@ class Agent:
                     _meter.feed(chunk, thinking=True)
                     _show(chunk)
             started = time.time()
+            previous_status = getattr(self.llm, "on_status", None)
+            if meter is not None and hasattr(self.llm, "on_status"):
+                self.llm.on_status = lambda state: self._emit("llm_status", state=state)
             try:
                 resp = self.llm.chat(self.messages, tools=tools, on_text=on_text, on_reasoning=on_reasoning,
                                      max_tokens=max_tokens)
@@ -385,6 +438,9 @@ class Agent:
                 self._last_error = str(e)
                 self.ui.error(f"Model request failed: {e}")
                 return None
+            finally:
+                if hasattr(self.llm, "on_status"):
+                    self.llm.on_status = previous_status
             self.ui.assistant_end()
             prompt_tokens = int(resp.usage.get("prompt_tokens") or 0)
             if prompt_tokens:
@@ -441,6 +497,16 @@ class Agent:
                 continue
             prepared.append((i, tool, args))
 
+        # every call the model made is visible as "requested" before anything runs
+        ids: dict[int, int] = {}
+        for i, call in enumerate(calls):
+            ids[i] = self._new_tool_id()
+            tool = self.registry.get(call.name)
+            title = tool.title(call.arguments or {}) if tool and outputs[i] is None else call.name
+            self._emit_tool_request(ids[i], call.name, title, call.arguments)
+            if outputs[i] is not None:  # rejected before running (bad JSON, invalid arguments, loop)
+                self._emit_tool_end(ids[i], call.name, outputs[i], 0.0)
+
         # Parallelize when every call is a pure read (no prompts, no side effects, no UI of its own).
         parallel = len(prepared) > 1 and all(
             t.kind == READ and t.is_read_only(a) and self.permissions.check(t, a, self.ctx).action == "allow"
@@ -448,24 +514,29 @@ class Agent:
             for _, t, a in prepared
         )
         if parallel:
-            def timed(t, a):
+            def timed(i, t, a):
+                self._emit_tool_start(ids[i], t.name, t.title(a), a)   # the moment it really starts
                 t0 = time.time()
                 res = self.registry.execute(t, a, self.ctx, self._max_output())
-                return res, time.time() - t0
+                took = time.time() - t0
+                self._emit_tool_end(ids[i], t.name, res, took)          # and the moment it really ends
+                return res, took
 
             with ThreadPoolExecutor(max_workers=min(6, len(prepared))) as pool:
-                futures = {i: pool.submit(timed, t, a) for i, t, a in prepared}
+                futures = {i: pool.submit(timed, i, t, a) for i, t, a in prepared}
                 for i, t, a in prepared:
                     res, took = futures[i].result()
-                    tid = self._show_tool_start(t.title(a), t.name)
-                    self._show_tool_end(tid, t.title(a), t.name, res, took)
+                    self.ui.tool_start(t.title(a))
+                    self.ui.tool_end(t.title(a), res)
                     outputs[i] = res
         else:
             for n, (i, tool, args) in enumerate(prepared):
-                res = self._run_one(tool, args)
+                res = self._run_one(tool, args, ids[i])
                 if res is None:  # denied without feedback: skip the rest
-                    for j, _, _ in prepared[n:]:
+                    for j, t, _ in prepared[n:]:
                         outputs[j] = ToolResult.error("Skipped: the user rejected a previous action in this batch.")
+                        if j != i:
+                            self._emit_tool_end(ids[j], t.name, outputs[j], 0.0)
                     self._append_results(calls, [o or ToolResult.error("Skipped.") for o in outputs])
                     return None
                 outputs[i] = res
@@ -480,16 +551,20 @@ class Agent:
             self._track_signal(tool, args, res, result, failures)
         return [o if o is not None else ToolResult.error("Error: no result") for o in outputs]
 
-    def _refuse(self, title: str, name: str, message: str) -> ToolResult:
-        tid = self._show_tool_start(title, name)
+    def _refuse(self, title: str, name: str, message: str, tool_id: int | None = None) -> ToolResult:
+        """A call that never ran (blocked, denied): shown as a failed line; the live view never shows it running."""
+        tool_id = tool_id if tool_id is not None else self._new_tool_id()
         res = ToolResult.error(message)
-        self._show_tool_end(tid, title, name, res, 0.0)
+        self.ui.tool_start(title)
+        self.ui.tool_end(title, res)
+        self._emit_tool_end(tool_id, name, res, 0.0)
         return res
 
     def _max_output(self) -> int:
         return self.context.tool_output_chars(self.max_tool_output_chars)
 
-    def _run_one(self, tool: Tool, args: dict) -> ToolResult | None:
+    def _run_one(self, tool: Tool, args: dict, tool_id: int | None = None) -> ToolResult | None:
+        tool_id = tool_id if tool_id is not None else self._new_tool_id()
         title = tool.title(args)
         forced: str | None = None
         if self.hooks and self.hooks.has("PreToolUse"):
@@ -498,7 +573,7 @@ class Agent:
             for w in out.warnings:
                 self.ui.warn(w)
             if out.blocked:
-                return self._refuse(title, tool.name, f"Blocked by PreToolUse hook: {out.reason}")
+                return self._refuse(title, tool.name, f"Blocked by PreToolUse hook: {out.reason}", tool_id)
             if out.updated_input:
                 args = {**args, **out.updated_input}
                 title = tool.title(args)
@@ -511,27 +586,37 @@ class Agent:
             decision.action = "ask"
 
         if decision.action == "deny":
-            return self._refuse(title, tool.name, f"Permission denied: {decision.reason}.")
+            self._emit("tool_permission", id=tool_id, name=tool.name, state="denied", reason=decision.reason)
+            return self._refuse(title, tool.name, f"Permission denied: {decision.reason}.", tool_id)
         if decision.action == "ask":
             if self.ctx.headless:
+                self._emit("tool_permission", id=tool_id, name=tool.name, state="denied",
+                           reason="needs approval in a non-interactive run")
                 return self._refuse(title, tool.name,
                                     f"Permission denied: {tool.name} needs approval, and this is a non-interactive "
-                                    "run. It was not executed. Use a different approach or report what you would run.")
+                                    "run. It was not executed. Use a different approach or report what you would run.",
+                                    tool_id)
+            self._emit("tool_permission", id=tool_id, name=tool.name, state="asking", reason=decision.reason)
             rule = suggest_rule(tool, args, self.ctx)
             preview = tool.preview(args, self.ctx) or tool.permission_subject(args, self.ctx)
             reply = self.ui.ask_permission(PermissionRequest(tool.name, title, preview or "", decision.reason,
                                                              rule, tool.kind))
+            self._emit("tool_permission", id=tool_id, name=tool.name,
+                       state="denied" if reply.choice == "no" else "approved", choice=reply.choice)
             if reply.choice == "no":
+                res = ToolResult.error(f"The user rejected this action and said: {reply.feedback}"
+                                       if reply.feedback else "The user rejected this action.")
+                self._emit_tool_end(tool_id, tool.name, res, 0.0)
                 if not reply.feedback:
                     return None
-                return ToolResult.error(f"The user rejected this action and said: {reply.feedback}")
+                return res
             if reply.choice in ("always", "project"):
                 self.permissions.add("allow", rule)
                 if reply.choice == "project":
                     path = self.ctx.config.append_rule("allow", rule, scope="local")
                     self.ui.info(f"Saved rule {rule} to {path}")
 
-        tid = self._show_tool_start(title, tool.name)
+        tid = self._show_tool_start(title, tool.name, tool_id, args)
         t0 = time.time()
         res = self.registry.execute(tool, args, self.ctx, self._max_output())
         self._show_tool_end(tid, title, tool.name, res, time.time() - t0)

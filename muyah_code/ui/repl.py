@@ -34,6 +34,8 @@ MODE_LABEL = {
     "auto": ("⏵⏵ auto", "runs on its own, asks only for risky actions"),
     "bypassPermissions": ("⚠ bypass", "no permission checks at all"),
 }
+# each mode has its own color (status line and the ❯ prompt): plan green, edit violet, auto yellow, bypass red
+MODE_COLOR = {"plan": "#4ade80", "acceptEdits": "#c4b5fd", "auto": "#facc15", "bypassPermissions": "#f87171"}
 EXIT_WINDOW = 2.0  # seconds between two Ctrl+C presses to exit
 RESIZE_POLL = 0.1     # how often the prompt checks the terminal width
 RESIZE_SETTLE = 0.3   # redraw once the width has stayed the same this long (user stopped dragging)
@@ -162,14 +164,17 @@ class Repl:
         if time.monotonic() - self._last_interrupt < EXIT_WINDOW:
             return rule + [(f"fg:{t.accent}", "  Press Ctrl+C again to exit")]
         label, what = MODE_LABEL.get(self.app.permissions.mode, (self.app.permissions.mode, ""))
-        style = f"fg:{t.warn} bold" if self.app.permissions.mode == "bypassPermissions" else f"fg:{t.accent} bold"
+        style = f"fg:{self._mode_color()} bold"
         status = [("", "  "), (style, label), ("fg:ansibrightblack", f" · {what} (shift+tab)")]
         status.append(("fg:ansibrightblack", f" · ctx {self._ctx_pct()}%"))
         return rule + status
 
     def _prompt_message(self):
         """A rule above the ❯ prompt (the input sits between two rules, like Claude Code)."""
-        return [("fg:ansibrightblack", "─" * max(1, self._cols() - 1) + "\n"), (f"fg:{theme().accent}", "❯ ")]
+        return [("fg:ansibrightblack", "─" * max(1, self._cols() - 1) + "\n"), (f"fg:{self._mode_color()} bold", "❯ ")]
+
+    def _mode_color(self) -> str:
+        return MODE_COLOR.get(self.app.permissions.mode, theme().accent)
 
     def _provider_label(self) -> str:
         from muyah_code.providers import BY_ID

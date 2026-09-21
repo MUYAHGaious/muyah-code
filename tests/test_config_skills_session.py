@@ -173,10 +173,9 @@ def test_requests_send_the_conversation_as_plain_json(project):
 
     with FakeOpenAI([reply("", [{"name": "Glob", "arguments": {"pattern": "*"}}]), reply("ok")]) as srv:
         app = make_app(srv, project)
-        statuses = []
-        app.llm.on_status = statuses.append
         app.run_prompt("hi")
     first = srv.requests[0]
     assert first["messages"][0]["role"] == "system" and first["messages"][-1]["content"].endswith("hi")
     assert any(t["function"]["name"] == "Glob" for t in first["tools"])
-    assert statuses[:2] == ["sent", "first_token"]
+    states = [e["state"] for e in app.events.history if e["type"] == "llm_status"]
+    assert states[:2] == ["sent", "first_token"]          # the live view learns when it was really sent
