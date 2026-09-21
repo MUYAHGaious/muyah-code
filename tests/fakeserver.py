@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 def reply(content: str = "", tool_calls: list[dict] | None = None, finish: str | None = None,
-          prompt_tokens: int | None = None) -> dict:
-    """tool_calls: [{"name": "Read", "arguments": {...}}]"""
-    return {"content": content, "tool_calls": tool_calls or [], "finish": finish, "prompt_tokens": prompt_tokens}
+          prompt_tokens: int | None = None, think: float = 0.0) -> dict:
+    """tool_calls: [{"name": "Read", "arguments": {...}}]. think: seconds to wait before streaming (demos)."""
+    return {"content": content, "tool_calls": tool_calls or [], "finish": finish, "prompt_tokens": prompt_tokens,
+            "think": think}
 
 
 def error(status: int, message: str) -> dict:
@@ -20,7 +22,8 @@ def error(status: int, message: str) -> dict:
 
 class FakeOpenAI:
     def __init__(self, script: list[dict] | None = None, models: list[dict] | None = None,
-                 require_key: str | None = None):
+                 require_key: str | None = None, chunk_delay: float = 0.0):
+        self.chunk_delay = chunk_delay  # seconds between streamed chunks, to look like a real model (demos)
         self.script = list(script or [])
         self.models = models or [{"id": "fake-model", "object": "model", "max_model_len": 32768}]
         self.requests: list[dict] = []
@@ -81,7 +84,11 @@ class FakeOpenAI:
                     self.send_header("Content-Type", "text/event-stream")
                     self.end_headers()
 
+                    time.sleep(step.get("think") or 0)
+
                     def send(obj):
+                        if server.chunk_delay:
+                            time.sleep(server.chunk_delay)
                         self.wfile.write(b"data: " + json.dumps(obj).encode() + b"\n\n")
                         self.wfile.flush()
 

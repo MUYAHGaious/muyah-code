@@ -87,6 +87,7 @@ class CommandRouter:
             Command("config", "Show effective configuration", self.config),
             Command("status", "Model, endpoint, context, mode and what's loaded", self.status),
             Command("doctor", "Check the setup", self.doctor),
+            Command("viz", "Watch the agent work, live, in your browser ('/viz stop' to end)", self.viz, "[stop]"),
             Command("theme", "Switch color theme (saved): teal | muyah | ocean | forest | mono | light", self.theme,
                     "[name]"),
         ]:
@@ -419,6 +420,31 @@ class CommandRouter:
         from muyah_code.doctor import run_doctor
 
         run_doctor(self.app.cfg, self.console, deep=arg == "--deep")
+
+    def viz(self, arg):
+        import webbrowser
+
+        from muyah_code.viz import VizServer
+
+        server = self.app.viz
+        if arg == "stop":
+            if server is None:
+                self.console.print("[dim]The visualization is not running.[/]")
+            else:
+                server.stop()
+                self.app.viz = None
+                self.console.print("[dim]Visualization stopped.[/]")
+            return
+        if server is None or not server.running:
+            server = VizServer(bus=self.app.events, title=self.app.session_id)
+            server.start()
+            self.app.viz = server
+        self.console.print(f"Live view: [link={server.url}]{server.url}[/link]")
+        self.console.print("[dim]Only this computer can open it. '/viz stop' ends it.[/]")
+        try:
+            webbrowser.open(server.url)
+        except webbrowser.Error:
+            self.console.print("[dim]Could not open a browser; open the link above.[/]")
 
     def theme(self, arg):
         from muyah_code.ui.terminal import banner_text

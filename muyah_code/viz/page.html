@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MUYAH-CODE Live</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath fill='%235eead4' d='M0 0h2v1h1v1h1v1h2V2h1V1h1V0h2v6H8V4H7v1H3V4H2v2H0z'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #071012; --bg2: #0b181b; --panel: rgba(15, 32, 36, .72); --line: rgba(94, 234, 212, .14);
+  --text: #d8f3ee; --dim: #7fa6a0; --faint: #4b6b67;
+  --teal: #5eead4; --teal2: #2dd4bf; --cyan: #67e8f9; --amber: #fbbf24; --rose: #fb7185;
+  --green: #86efac; --violet: #c4b5fd;
+  --mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.45 var(--sans); }
+body { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-columns: minmax(0, 1fr); height: 100vh; overflow-x: hidden;
+  background: radial-gradient(1200px 700px at 30% 20%, #0e2a2c 0%, var(--bg) 60%); }
+header { display: flex; align-items: center; gap: 14px; padding: 12px 18px; border-bottom: 1px solid var(--line);
+  flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: .08em; }
+.brand svg { width: 30px; height: 18px; }
+.brand small { font-weight: 400; color: var(--dim); letter-spacing: 0; }
+.badge { font: 11px var(--mono); padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--dim);
+  white-space: nowrap; }
+.badge.live { color: var(--bg); background: var(--teal); border-color: var(--teal); }
+.badge.live::before { content: "● "; animation: blink 1.4s infinite; }
+.badge.off { color: var(--rose); border-color: rgba(251,113,133,.4); }
+@keyframes blink { 50% { opacity: .25; } }
+.meta { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+.controls { display: none; align-items: center; gap: 8px; width: 100%; }
+.controls.on { display: flex; }
+.controls button, .controls select { background: var(--bg2); color: var(--text); border: 1px solid var(--line);
+  border-radius: 6px; padding: 4px 10px; font: 12px var(--mono); cursor: pointer; }
+.controls button:hover { border-color: var(--teal); }
+.controls input[type=range] { flex: 1; accent-color: var(--teal); min-width: 80px; }
+.controls .clock { font: 12px var(--mono); color: var(--dim); min-width: 110px; text-align: right; }
+main { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 14px; padding: 14px 18px; min-height: 0; }
+.stage { position: relative; min-height: 420px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+  background: linear-gradient(180deg, rgba(10,26,29,.6), rgba(7,16,18,.6)); }
+#scene { position: absolute; inset: 0; width: 100%; height: 100%; }
+.caption { position: absolute; left: 14px; bottom: 12px; right: 14px; font: 12px var(--mono); color: var(--dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.caption b { color: var(--teal); font-weight: 600; }
+aside { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #1f3b3d transparent; }
+.card { flex: none; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+  backdrop-filter: blur(8px); }
+.card h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim);
+  font-weight: 600; }
+.ctx { display: flex; align-items: center; gap: 14px; }
+#ring { width: 104px; height: 104px; flex: none; }
+.legend { font: 12px var(--mono); display: grid; gap: 3px; }
+.legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.stat { background: rgba(0,0,0,.18); border-radius: 8px; padding: 6px 8px; }
+.stat b { display: block; font: 600 16px var(--mono); color: var(--text); }
+.stat span { font-size: 11px; color: var(--dim); }
+ul.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 12px; }
+ul.list li { display: flex; gap: 8px; align-items: baseline; }
+ul.list .mark { font-family: var(--mono); width: 14px; flex: none; text-align: center; }
+.todo-done { color: var(--faint); text-decoration: line-through; }
+.todo-active { color: var(--amber); }
+.empty { color: var(--faint); font-size: 12px; }
+#log { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: #1f3b3d transparent; font: 12px/1.5 var(--mono); }
+#log div { display: flex; gap: 8px; white-space: nowrap; }
+#log time { color: var(--faint); flex: none; width: 52px; text-align: right; }
+#log span { overflow: hidden; text-overflow: ellipsis; }
+.k-turn { color: var(--teal); } .k-llm { color: var(--cyan); } .k-tool { color: var(--amber); }
+.k-err { color: var(--rose); } .k-ok { color: var(--green); } .k-sub { color: var(--violet); } .k-dim { color: var(--dim); }
+footer { padding: 0 18px 14px; }
+.timeline { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 8px 12px; }
+.timeline h3 { margin: 0 0 4px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
+#timeline { width: 100%; height: 92px; display: block; }
+@media (max-width: 900px) {
+  body { height: auto; min-height: 100vh; }
+  aside { overflow: visible; }
+  #log { max-height: 260px; }
+  main { grid-template-columns: minmax(0, 1fr); padding: 12px 16px; }
+  header, footer { padding-left: 16px; padding-right: 16px; }
+  .stage { min-height: 360px; }
+  .meta { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <svg viewBox="0 0 10 6" aria-hidden="true"><path fill="#5eead4" d="M0 0h2v1h1v1h1v1h2V2h1V1h1V0h2v6H8V4H7v1H3V4H2v2H0z"/></svg>
+    MUYAH-CODE <small>inside the agent</small>
+  </div>
+  <span id="status" class="badge">connecting…</span>
+  <div class="meta">
+    <span class="badge" id="m-model">model –</span>
+    <span class="badge" id="m-provider">provider –</span>
+    <span class="badge" id="m-mode">mode –</span>
+    <span class="badge" id="m-window">window –</span>
+  </div>
+  <div class="controls" id="controls">
+    <button id="play" title="Play / pause (space)">❚❚</button>
+    <button id="restart" title="Restart">↺</button>
+    <select id="speed" title="Playback speed">
+      <option value="1">1×</option><option value="2" selected>2×</option><option value="4">4×</option>
+      <option value="8">8×</option><option value="16">16×</option>
+    </select>
+    <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Position">
+    <span class="clock" id="clock">0:00 / 0:00</span>
+  </div>
+</header>
+
+<main>
+  <section class="stage">
+    <canvas id="scene"></canvas>
+    <div class="caption" id="caption">Waiting for the agent…</div>
+  </section>
+  <aside>
+    <div class="card">
+      <h3>Context window</h3>
+      <div class="ctx">
+        <canvas id="ring" width="208" height="208"></canvas>
+        <div class="legend" id="legend"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>This session</h3>
+      <div class="stats">
+        <div class="stat"><b id="s-turns">0</b><span>turns</span></div>
+        <div class="stat"><b id="s-calls">0</b><span>model calls</span></div>
+        <div class="stat"><b id="s-tools">0</b><span>tool calls</span></div>
+        <div class="stat"><b id="s-in">0</b><span>tokens in</span></div>
+        <div class="stat"><b id="s-out">0</b><span>tokens out</span></div>
+        <div class="stat"><b id="s-err">0</b><span>tool errors</span></div>
+      </div>
+    </div>
+    <div class="card"><h3>Todos</h3><ul class="list" id="todos"><li class="empty">No plan yet</li></ul></div>
+    <div class="card"><h3>Lessons recalled</h3><ul class="list" id="lessons"><li class="empty">None this turn</li></ul></div>
+    <div class="card" style="flex:1 0 190px;display:flex;flex-direction:column;min-height:190px">
+      <h3>Activity</h3><div id="log"></div>
+    </div>
+  </aside>
+</main>
+
+<footer>
+  <div class="timeline"><h3>Timeline</h3><canvas id="timeline"></canvas></div>
+</footer>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const C = {
+  teal: "#5eead4", teal2: "#2dd4bf", cyan: "#67e8f9", amber: "#fbbf24", rose: "#fb7185",
+  green: "#86efac", violet: "#c4b5fd", text: "#d8f3ee", dim: "#7fa6a0", faint: "#4b6b67",
+};
+const PART_COLORS = { system: C.violet, conversation: C.teal, tools: C.amber };
+const MAX_GAP = 2.5;   // replay: idle gaps longer than this (seconds) are shortened
+const fmtNum = (n) => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e4 ? Math.round(n / 1e3) + "k"
+  : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n);
+const fmtTime = (s) => { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+// ------------------------------------------------------------------ state (pure: rebuilt on seek)
+
+function freshState() {
+  return {
+    model: "", provider: "", mode: "", window: 0,
+    ctx: { used: 0, usable: 0, window: 0, parts: {} },
+    turns: 0, calls: 0, toolCalls: 0, toolErrors: 0, tokIn: 0, tokOut: 0,
+    llmActive: null, tools: new Map(), toolNames: [], subagents: new Map(),
+    todos: [], lessons: [], log: [], spans: [], caption: "Waiting for the agent…", now: 0,
+  };
+}
+let S = freshState();
+
+function log(ev, kind, text) {
+  S.log.push({ t: ev.t || 0, kind, text });
+  if (S.log.length > 400) S.log.splice(0, S.log.length - 400);
+}
+
+function isSub(ev) { return ev.agent && ev.agent !== "main"; }
+
+function apply(ev, fx) {
+  S.now = Math.max(S.now, ev.t || 0);
+  const who = isSub(ev) ? `[${ev.agent}] ` : "";
+  switch (ev.type) {
+    case "session":
+      Object.assign(S, { model: ev.model || "", provider: ev.provider || "", mode: ev.mode || "", window: ev.window || 0 });
+      log(ev, "k-dim", `session · ${ev.model} · ${fmtNum(ev.window || 0)} window`);
+      break;
+    case "turn_start":
+      S.turns++; S.lessons = [];
+      S.caption = "You: " + (ev.prompt || "").replace(/\s+/g, " ");
+      log(ev, "k-turn", "❯ " + (ev.prompt || "").replace(/\s+/g, " "));
+      fx && fx.turn();
+      break;
+    case "turn_end":
+      closeLlm(ev); S.tools.forEach((_, id) => closeTool(ev, id, true));
+      S.caption = `Turn ${ev.status} in ${(ev.duration || 0).toFixed(1)}s · ${ev.tool_calls || 0} tool calls`;
+      log(ev, ev.status === "ok" ? "k-ok" : "k-err", `turn ${ev.status} · ${(ev.duration || 0).toFixed(1)}s`);
+      fx && fx.answer();
+      break;
+    case "llm_start":
+      closeLlm(ev);
+      S.llmActive = { start: ev.t, agent: ev.agent, chars: 0 };
+      S.calls++;
+      S.caption = who + "Model is thinking…";
+      fx && fx.think(ev);
+      break;
+    case "llm_tokens":
+      if (S.llmActive) S.llmActive.chars += ev.chars || 0;
+      fx && fx.tokens(ev);
+      break;
+    case "llm_end":
+      S.tokIn += ev.prompt_tokens || 0; S.tokOut += ev.completion_tokens || 0;
+      closeLlm(ev);
+      log(ev, "k-llm", `${who}model · ${fmtNum(ev.prompt_tokens || 0)} in → ${fmtNum(ev.completion_tokens || 0)} out · `
+        + `${(ev.duration || 0).toFixed(1)}s` + ((ev.calls || []).length ? " · calls " + ev.calls.join(", ") : ""));
+      break;
+    case "tool_start": {
+      const key = (ev.agent || "main") + ":" + ev.id;
+      S.tools.set(key, { name: ev.name, title: ev.title, start: ev.t, agent: ev.agent });
+      if (!S.toolNames.includes(ev.name)) S.toolNames.push(ev.name);
+      S.toolCalls++;
+      S.caption = who + "● " + (ev.title || ev.name);
+      fx && fx.toolStart(ev);
+      break;
+    }
+    case "tool_end": {
+      const key = (ev.agent || "main") + ":" + ev.id;
+      if (!ev.ok) S.toolErrors++;
+      const t = S.tools.get(key);
+      if (t) { S.spans.push({ lane: 1, start: t.start, end: ev.t, label: ev.name, ok: ev.ok }); S.tools.delete(key); }
+      log(ev, ev.ok ? "k-tool" : "k-err", `${who}${ev.ok ? "●" : "✗"} ${t ? t.title || ev.name : ev.name}`
+        + (ev.summary ? " — " + ev.summary : "") + ` · ${(ev.duration || 0).toFixed(2)}s`);
+      fx && fx.toolEnd(ev);
+      break;
+    }
+    case "context":
+      if (!isSub(ev)) S.ctx = { used: ev.used || 0, usable: ev.usable || 0, window: ev.window || 0, parts: ev.parts || {} };
+      break;
+    case "compact":
+      log(ev, "k-sub", `${ev.emergency ? "emergency " : ""}compaction · ${ev.description || ""}`);
+      S.caption = "Context compacted: " + (ev.description || "");
+      fx && fx.compact();
+      break;
+    case "lessons":
+      S.lessons = ev.items || [];
+      log(ev, "k-sub", `recalled ${S.lessons.length} lesson${S.lessons.length === 1 ? "" : "s"}`);
+      fx && fx.lessons();
+      break;
+    case "subagent_start":
+      S.subagents.set(ev.agent, { task: ev.prompt || "", start: ev.t, active: true });
+      log(ev, "k-sub", `sub-agent ${ev.agent} started · ${(ev.prompt || "").replace(/\s+/g, " ")}`);
+      fx && fx.subStart(ev);
+      break;
+    case "subagent_end": {
+      const s = S.subagents.get(ev.agent);
+      if (s) { s.active = false; S.spans.push({ lane: 2, start: s.start, end: ev.t, label: ev.agent, ok: ev.status === "ok" }); }
+      log(ev, "k-sub", `sub-agent ${ev.agent} ${ev.status} · ${(ev.duration || 0).toFixed(1)}s`);
+      fx && fx.subEnd(ev);
+      break;
+    }
+    case "todos":
+      S.todos = ev.items || [];
+      break;
+  }
+}
+
+function closeLlm(ev) {
+  if (!S.llmActive) return;
+  S.spans.push({ lane: 0, start: S.llmActive.start, end: ev.t, label: "model", ok: true });
+  if (S.spans.length > 2000) S.spans.splice(0, S.spans.length - 2000);
+  S.llmActive = null;
+}
+function closeTool(ev, key, interrupted) {
+  const t = S.tools.get(key);
+  if (!t) return;
+  S.spans.push({ lane: 1, start: t.start, end: ev.t, label: t.name, ok: !interrupted });
+  S.tools.delete(key);
+}
+
+// ------------------------------------------------------------------ scene (canvas)
+
+const scene = $("scene"), sctx = scene.getContext("2d");
+let W = 0, H = 0, DPR = 1;
+const nodes = {};
+const particles = [];
+const pulses = [];
+let satellites = new Map();   // tool name -> {x, y, glow}
+let subNodes = new Map();     // sub-agent name -> {x, y, alpha}
+let modelSpin = 0, compactFlash = 0;
+
+function layout() {
+  const r = scene.getBoundingClientRect();
+  DPR = window.devicePixelRatio || 1;
+  W = r.width; H = r.height;
+  scene.width = Math.round(W * DPR); scene.height = Math.round(H * DPR);
+  const narrow = W < 560;
+  const R = clamp(Math.min(W, H) * 0.075, 22, 42);
+  Object.assign(nodes, {
+    you:     { x: W * (narrow ? .12 : .1),  y: H * .5,  r: R * .85, label: "You",     color: C.text },
+    context: { x: W * (narrow ? .36 : .32), y: H * .5,  r: R,       label: "Context", color: C.teal },
+    model:   { x: W * (narrow ? .62 : .57), y: H * .5,  r: R * 1.2, label: "Model",   color: C.cyan },
+    tools:   { x: W * (narrow ? .84 : .8),  y: H * (narrow ? .24 : .5), r: R * .8, label: "Tools", color: C.amber },
+    lessons: { x: W * (narrow ? .36 : .32), y: H * .17, r: R * .6,  label: "Lessons", color: C.violet },
+    agents:  { x: W * (narrow ? .62 : .57), y: H * .84, r: R * .6,  label: "Sub-agents", color: C.violet },
+  });
+  placeSatellites();
+  placeSubNodes();
+}
+
+function placeSatellites() {
+  const hub = nodes.tools, names = S.toolNames, n = names.length;
+  const radius = clamp(Math.min(W, H) * .2, 60, 150);
+  const old = satellites; satellites = new Map();
+  if (W < 560) {   // narrow: a column of tools under the hub, labels on the left
+    const top = hub.y + hub.r + 30, step = n ? Math.min(20, (H * .96 - top) / n) : 0;
+    names.forEach((name, i) => {
+      const s = old.get(name) || { glow: 0 };
+      Object.assign(s, { x: W - 18, y: top + i * step, labelLeft: true });
+      satellites.set(name, s);
+    });
+    return;
+  }
+  names.forEach((name, i) => {
+    const a = -Math.PI / 2.3 + (n === 1 ? Math.PI / 2.3 : (i / (n - 1)) * (Math.PI / 1.15));
+    const s = old.get(name) || { glow: 0 };
+    s.x = Math.min(hub.x + Math.cos(a) * radius * .55, W - 16); s.y = hub.y + Math.sin(a) * radius;
+    s.labelLeft = W - s.x < 12 + name.length * 7.5;   // no room on the right: label goes left of the dot
+    satellites.set(name, s);
+  });
+}
+function placeSubNodes() {
+  const hub = nodes.agents, names = [...S.subagents.keys()];
+  const old = subNodes; subNodes = new Map();
+  names.forEach((name, i) => {
+    const s = old.get(name) || { alpha: 0 };
+    const off = (i - (names.length - 1) / 2) * 90;
+    s.x = clamp(hub.x + off + 70, 40, W - 40); s.y = hub.y + 4;
+    subNodes.set(name, s);
+  });
+}
+
+function curve(a, b, bend) {
+  const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+  const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
+  return { a, b, c: { x: mx - dy / len * bend, y: my + dx / len * bend } };
+}
+function at(cv, t) {
+  const u = 1 - t;
+  return { x: u * u * cv.a.x + 2 * u * t * cv.c.x + t * t * cv.b.x, y: u * u * cv.a.y + 2 * u * t * cv.c.y + t * t * cv.b.y };
+}
+function edges() {
+  const n = nodes, bend = Math.min(W, H) * .16;
+  return {
+    youCtx: curve(n.you, n.context, 0), ctxModel: curve(n.context, n.model, 0), modelTools: curve(n.model, n.tools, 0),
+    toolsCtx: curve(n.tools, n.context, -bend * 1.2), modelYou: curve(n.model, n.you, bend * 1.25),
+    lessonsCtx: curve(n.lessons, n.context, 0), modelAgents: curve(n.model, n.agents, 0),
+  };
+}
+
+function spawn(cv, color, count, opts = {}) {
+  for (let i = 0; i < count; i++) {
+    particles.push({ cv, t: -(opts.stagger ?? 0.06) * i, speed: (opts.speed || .9) * (0.85 + Math.random() * .3),
+      color, size: opts.size || 2.4, jitter: (Math.random() - .5) * (opts.spread ?? 10) });
+  }
+  if (particles.length > 900) particles.splice(0, particles.length - 900);
+}
+function pulse(node, color) { pulses.push({ node, color, t: 0 }); }
+
+const fx = {
+  turn() { const e = edges(); pulse(nodes.you, C.text); spawn(e.youCtx, C.text, 10); setTimeout(() => spawn(edges().ctxModel, C.teal, 10), 450); },
+  answer() { pulse(nodes.you, C.green); },
+  think(ev) { const e = edges(); const from = isSub(ev) && subNodes.get(ev.agent);
+    if (from) spawn(curve(nodes.agents, from, 12), C.violet, 5); else spawn(e.ctxModel, C.teal, 6, { speed: 1.2 }); },
+  tokens(ev) { const n = clamp(Math.round((ev.chars || 0) / 30), 1, 6);
+    if (isSub(ev)) { const s = subNodes.get(ev.agent); if (s) s.alpha = 1; return; }
+    spawn(edges().modelYou, C.cyan, n, { size: 2, speed: 1.1, stagger: .04, spread: 16 }); },
+  toolStart(ev) {
+    placeSatellites();
+    const sat = satellites.get(ev.name); const e = edges();
+    const src = isSub(ev) ? subNodes.get(ev.agent) : null;
+    if (src) spawn(curve(src, nodes.tools, 30), C.violet, 5); else spawn(e.modelTools, C.amber, 6, { speed: 1.4 });
+    if (sat) { sat.glow = 1; setTimeout(() => spawn(curve(nodes.tools, sat, 0), C.amber, 3, { speed: 2 }), 250); }
+  },
+  toolEnd(ev) {
+    const sat = satellites.get(ev.name); const col = ev.ok ? C.green : C.rose;
+    if (sat) { sat.glow = Math.max(sat.glow, .6); spawn(curve(sat, nodes.tools, 0), col, 3, { speed: 2 }); }
+    if (!isSub(ev)) setTimeout(() => spawn(edges().toolsCtx, col, 7, { speed: .9 }), 200);
+    if (!ev.ok) pulse(nodes.tools, C.rose);
+  },
+  compact() { compactFlash = 1; pulse(nodes.context, C.violet); },
+  lessons() { pulse(nodes.lessons, C.violet); spawn(edges().lessonsCtx, C.violet, 8); },
+  subStart(ev) { placeSubNodes(); pulse(nodes.agents, C.violet); spawn(edges().modelAgents, C.violet, 8); },
+  subEnd(ev) { spawn(curve(nodes.agents, nodes.model, 0), ev.status === "ok" ? C.green : C.rose, 6); },
+};
+
+function drawEdge(cv, active, color) {
+  sctx.beginPath(); sctx.moveTo(cv.a.x, cv.a.y); sctx.quadraticCurveTo(cv.c.x, cv.c.y, cv.b.x, cv.b.y);
+  sctx.strokeStyle = active ? color + "66" : "rgba(94,234,212,.13)"; sctx.lineWidth = active ? 1.8 : 1.2;
+  sctx.setLineDash(active ? [] : [4, 6]); sctx.stroke(); sctx.setLineDash([]);
+}
+
+function drawNode(n, glow, sub) {
+  const g = sctx.createRadialGradient(n.x, n.y, n.r * .2, n.x, n.y, n.r * (2.2 + glow));
+  g.addColorStop(0, n.color + (glow > .05 ? "55" : "22")); g.addColorStop(1, n.color + "00");
+  sctx.fillStyle = g; sctx.beginPath(); sctx.arc(n.x, n.y, n.r * (2.2 + glow), 0, Math.PI * 2); sctx.fill();
+  sctx.beginPath(); sctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+  sctx.fillStyle = "#0b1d20"; sctx.fill();
+  sctx.lineWidth = 1.6 + glow * 1.5; sctx.strokeStyle = n.color; sctx.globalAlpha = .55 + glow * .45; sctx.stroke();
+  sctx.globalAlpha = 1;
+  sctx.fillStyle = C.text; sctx.font = `600 ${clamp(n.r * .38, 10, 14)}px ${getComputedStyle(document.body).fontFamily}`;
+  sctx.textAlign = "center"; sctx.textBaseline = "middle"; sctx.fillText(n.label, n.x, n.y);
+  if (sub) { sctx.fillStyle = C.dim; sctx.font = `11px ui-monospace, Consolas, monospace`; sctx.fillText(sub, n.x, n.y + n.r + 14); }
+}
+
+function drawRingArc(n, frac, color, width, pad) {
+  if (frac <= 0) return;
+  sctx.beginPath(); sctx.arc(n.x, n.y, n.r + pad, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * clamp(frac, 0, 1));
+  sctx.strokeStyle = color; sctx.lineWidth = width; sctx.lineCap = "round"; sctx.stroke(); sctx.lineCap = "butt";
+}
+
+let lastFrame = performance.now();
+function frame(now) {
+  const dt = Math.min(.05, (now - lastFrame) / 1000); lastFrame = now;
+  tick(dt);
+  sctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  sctx.clearRect(0, 0, W, H);
+  const e = edges(), n = nodes;
+  const llm = !!S.llmActive, toolsBusy = S.tools.size > 0;
+  const anySub = [...S.subagents.values()].some((s) => s.active);
+  drawEdge(e.youCtx, false, C.text); drawEdge(e.ctxModel, llm, C.teal); drawEdge(e.modelTools, toolsBusy, C.amber);
+  drawEdge(e.toolsCtx, toolsBusy, C.green); drawEdge(e.modelYou, llm, C.cyan);
+  drawEdge(e.lessonsCtx, S.lessons.length > 0, C.violet); drawEdge(e.modelAgents, anySub, C.violet);
+  satellites.forEach((s) => { drawEdge(curve(n.tools, s, 0), s.glow > .1, C.amber); });
+
+  // particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.t += dt * p.speed;
+    if (p.t >= 1) { particles.splice(i, 1); continue; }
+    if (p.t < 0) continue;
+    const pt = at(p.cv, p.t); const dx = p.cv.b.x - p.cv.a.x, dy = p.cv.b.y - p.cv.a.y, len = Math.hypot(dx, dy) || 1;
+    const off = Math.sin(p.t * Math.PI) * p.jitter;
+    const x = pt.x - dy / len * off, y = pt.y + dx / len * off;
+    sctx.globalAlpha = Math.sin(p.t * Math.PI) * .9 + .1;
+    sctx.fillStyle = p.color; sctx.shadowColor = p.color; sctx.shadowBlur = 8;
+    sctx.beginPath(); sctx.arc(x, y, p.size, 0, Math.PI * 2); sctx.fill();
+  }
+  sctx.shadowBlur = 0; sctx.globalAlpha = 1;
+
+  // context node: its size follows how full the window is
+  const frac = S.ctx.usable ? S.ctx.used / S.ctx.usable : 0;
+  const base = n.context.r;
+  n.context.r = base * (0.85 + .35 * clamp(frac, 0, 1));
+  drawNode(n.you, pulses.some((q) => q.node === n.you) ? .6 : 0);
+  drawNode(n.context, compactFlash, S.ctx.usable ? `${fmtNum(S.ctx.used)} / ${fmtNum(S.ctx.usable)}` : "");
+  let a0 = 0;
+  for (const k of ["system", "conversation", "tools"]) {
+    const v = (S.ctx.parts[k] || 0) / (S.ctx.usable || 1);
+    if (v > 0) { sctx.beginPath(); sctx.arc(n.context.x, n.context.y, n.context.r + 6, -Math.PI / 2 + a0 * Math.PI * 2,
+      -Math.PI / 2 + (a0 + v) * Math.PI * 2); sctx.strokeStyle = PART_COLORS[k]; sctx.lineWidth = 4; sctx.stroke(); }
+    a0 += v;
+  }
+  n.context.r = base;
+
+  drawNode(n.model, llm ? .7 + Math.sin(now / 180) * .25 : 0, S.model ? S.model.slice(0, 28) : "");
+  if (llm) {
+    modelSpin += dt * 3.2;
+    sctx.beginPath(); sctx.arc(n.model.x, n.model.y, n.model.r + 8, modelSpin, modelSpin + Math.PI * .7);
+    sctx.strokeStyle = C.cyan; sctx.lineWidth = 2.5; sctx.lineCap = "round"; sctx.stroke();
+    sctx.beginPath(); sctx.arc(n.model.x, n.model.y, n.model.r + 13, -modelSpin * .7, -modelSpin * .7 + Math.PI * .4);
+    sctx.strokeStyle = C.teal + "99"; sctx.lineWidth = 1.5; sctx.stroke(); sctx.lineCap = "butt";
+  }
+  drawNode(n.tools, toolsBusy ? .6 : 0, S.toolCalls ? `${S.toolCalls} calls` : "");
+  drawNode(n.lessons, S.lessons.length ? .4 : 0, S.lessons.length ? `${S.lessons.length} recalled` : "");
+  drawNode(n.agents, anySub ? .5 : 0, "");
+
+  satellites.forEach((s, name) => {
+    const busy = [...S.tools.values()].some((t) => t.name === name);
+    if (busy) s.glow = 1;
+    sctx.beginPath(); sctx.arc(s.x, s.y, 5 + s.glow * 3, 0, Math.PI * 2);
+    sctx.fillStyle = busy ? C.amber : C.amber + "55"; sctx.shadowColor = C.amber; sctx.shadowBlur = s.glow * 14; sctx.fill();
+    sctx.shadowBlur = 0;
+    sctx.fillStyle = busy ? C.text : C.dim; sctx.font = "11px ui-monospace, Consolas, monospace";
+    sctx.textAlign = s.labelLeft ? "right" : "left"; sctx.textBaseline = "middle";
+    sctx.fillText(name, s.labelLeft ? s.x - 12 : s.x + 12, s.y);
+  });
+  subNodes.forEach((s, name) => {
+    const st = S.subagents.get(name); const active = st && st.active;
+    s.alpha = active ? 1 : Math.max(.35, s.alpha - dt * .4);
+    sctx.globalAlpha = s.alpha;
+    sctx.beginPath(); sctx.arc(s.x, s.y, 9, 0, Math.PI * 2); sctx.fillStyle = "#0b1d20"; sctx.fill();
+    sctx.strokeStyle = C.violet; sctx.lineWidth = active ? 2.2 : 1.2; sctx.stroke();
+    sctx.fillStyle = C.violet; sctx.font = "11px ui-monospace, Consolas, monospace"; sctx.textAlign = "center";
+    sctx.fillText(name, s.x, s.y + 22); sctx.globalAlpha = 1;
+  });
+
+  for (let i = pulses.length - 1; i >= 0; i--) {
+    const q = pulses[i]; q.t += dt * 1.4;
+    if (q.t >= 1) { pulses.splice(i, 1); continue; }
+    sctx.beginPath(); sctx.arc(q.node.x, q.node.y, q.node.r * (1 + q.t * 1.3), 0, Math.PI * 2);
+    sctx.strokeStyle = q.color; sctx.globalAlpha = 1 - q.t; sctx.lineWidth = 2; sctx.stroke(); sctx.globalAlpha = 1;
+  }
+  satellites.forEach((s) => { s.glow = Math.max(0, s.glow - dt * .8); });
+  compactFlash = Math.max(0, compactFlash - dt * .7);
+
+  drawTimeline();
+  requestAnimationFrame(frame);
+}
+
+// ------------------------------------------------------------------ side panels
+
+const ring = $("ring"), rctx = ring.getContext("2d");
+function drawRing() {
+  const w = ring.width, cx = w / 2, r = w * .4;
+  rctx.clearRect(0, 0, w, w);
+  rctx.beginPath(); rctx.arc(cx, cx, r, 0, Math.PI * 2); rctx.strokeStyle = "rgba(94,234,212,.12)"; rctx.lineWidth = 18; rctx.stroke();
+  const usable = S.ctx.usable || 1; let a = -Math.PI / 2;
+  for (const k of ["system", "conversation", "tools"]) {
+    const v = (S.ctx.parts[k] || 0) / usable; if (v <= 0) continue;
+    const b = a + Math.PI * 2 * Math.min(v, 1);
+    rctx.beginPath(); rctx.arc(cx, cx, r, a, b); rctx.strokeStyle = PART_COLORS[k]; rctx.lineWidth = 18; rctx.stroke(); a = b;
+  }
+  const pct = S.ctx.usable ? Math.round(100 * S.ctx.used / S.ctx.usable) : 0;
+  rctx.fillStyle = C.text; rctx.font = "600 38px ui-monospace, Consolas, monospace"; rctx.textAlign = "center";
+  rctx.textBaseline = "middle"; rctx.fillText(pct + "%", cx, cx - 6);
+  rctx.fillStyle = C.dim; rctx.font = "20px ui-monospace, Consolas, monospace"; rctx.fillText("used", cx, cx + 26);
+}
+
+let lastPanel = "";
+function renderPanels(force) {
+  const key = [S.log.length, S.log.length && S.log[S.log.length - 1].t, S.turns, S.calls, S.toolCalls, S.tokIn, S.ctx.used,
+    S.todos.length, JSON.stringify(S.todos), S.lessons.length, S.caption, S.model, S.mode].join("|");
+  if (!force && key === lastPanel) return; lastPanel = key;
+  $("m-model").textContent = "model " + (S.model || "–");
+  $("m-provider").textContent = S.provider || "provider –";
+  $("m-mode").textContent = "mode " + (S.mode || "–");
+  $("m-window").textContent = "window " + (S.window ? fmtNum(S.window) : "–");
+  $("s-turns").textContent = S.turns; $("s-calls").textContent = S.calls; $("s-tools").textContent = S.toolCalls;
+  $("s-in").textContent = fmtNum(S.tokIn); $("s-out").textContent = fmtNum(S.tokOut); $("s-err").textContent = S.toolErrors;
+  $("caption").textContent = S.caption;
+  const legend = $("legend"); legend.replaceChildren();
+  for (const k of ["system", "conversation", "tools"]) {
+    const row = document.createElement("div"); const i = document.createElement("i"); i.style.background = PART_COLORS[k];
+    row.append(i, `${k} ${fmtNum(S.ctx.parts[k] || 0)}`); legend.append(row);
+  }
+  const free = document.createElement("div"); free.style.color = C.dim;
+  free.textContent = `free ${fmtNum(Math.max(0, (S.ctx.usable || 0) - (S.ctx.used || 0)))} of ${fmtNum(S.ctx.usable || 0)}`;
+  legend.append(free);
+  drawRing();
+  const todos = $("todos"); todos.replaceChildren();
+  if (!S.todos.length) todos.innerHTML = '<li class="empty">No plan yet</li>';
+  for (const t of S.todos) {
+    const li = document.createElement("li"); const m = document.createElement("span"); m.className = "mark";
+    m.textContent = t.status === "completed" ? "✓" : t.status === "in_progress" ? "▸" : "○";
+    const s = document.createElement("span"); s.textContent = t.content;
+    s.className = t.status === "completed" ? "todo-done" : t.status === "in_progress" ? "todo-active" : "";
+    li.append(m, s); todos.append(li);
+  }
+  const lessons = $("lessons"); lessons.replaceChildren();
+  if (!S.lessons.length) lessons.innerHTML = '<li class="empty">None this turn</li>';
+  for (const l of S.lessons) {
+    const li = document.createElement("li"); const m = document.createElement("span"); m.className = "mark"; m.textContent = "✦";
+    m.style.color = C.violet; const s = document.createElement("span"); s.textContent = l; li.append(m, s); lessons.append(li);
+  }
+  const box = $("log"); const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 30;
+  box.replaceChildren();
+  for (const row of S.log.slice(-200)) {
+    const d = document.createElement("div"); const tm = document.createElement("time"); tm.textContent = fmtTime(row.t);
+    const sp = document.createElement("span"); sp.className = row.kind; sp.textContent = row.text; sp.title = row.text;
+    d.append(tm, sp); box.append(d);
+  }
+  if (stick) box.scrollTop = box.scrollHeight;
+}
+
+const tl = $("timeline"), tctx = tl.getContext("2d");
+function drawTimeline() {
+  const r = tl.getBoundingClientRect(); const w = r.width, h = r.height;
+  if (tl.width !== Math.round(w * DPR)) { tl.width = Math.round(w * DPR); tl.height = Math.round(h * DPR); }
+  tctx.setTransform(DPR, 0, 0, DPR, 0, 0); tctx.clearRect(0, 0, w, h);
+  const now = clock(); const span = Math.max(30, Math.min(now, 120)); const t0 = Math.max(0, now - span);
+  const left = 78, x = (t) => left + (t - t0) / span * (w - left - 8);
+  const lanes = ["model", "tools", "sub-agents"], colors = [C.cyan, C.amber, C.violet], lh = (h - 16) / 3;
+  tctx.font = "11px ui-monospace, Consolas, monospace"; tctx.textBaseline = "middle";
+  lanes.forEach((name, i) => { tctx.fillStyle = C.dim; tctx.textAlign = "left"; tctx.fillText(name, 0, 6 + lh * i + lh / 2);
+    tctx.fillStyle = "rgba(94,234,212,.05)"; tctx.fillRect(left, 4 + lh * i, w - left - 8, lh - 4); });
+  const bar = (lane, s, e, ok, label) => {
+    if (e < t0) return; const x1 = x(Math.max(s, t0)), x2 = Math.max(x1 + 2, x(e));
+    tctx.fillStyle = ok ? colors[lane] + "cc" : C.rose; tctx.fillRect(x1, 7 + lh * lane, x2 - x1, lh - 10);
+    if (x2 - x1 > 46 && label) { tctx.fillStyle = "#06201e"; tctx.textAlign = "left"; tctx.fillText(label, x1 + 4, 6 + lh * lane + lh / 2); }
+  };
+  for (const sp of S.spans) bar(sp.lane, sp.start, sp.end, sp.ok, sp.label);
+  if (S.llmActive) bar(0, S.llmActive.start, now, true, "thinking");
+  S.tools.forEach((t) => bar(1, t.start, now, true, t.name));
+  S.subagents.forEach((s, n) => { if (s.active) bar(2, s.start, now, true, n); });
+  tctx.fillStyle = C.faint; tctx.textAlign = "right"; tctx.fillText(fmtTime(now), w - 8, h - 5);
+  tctx.textAlign = "left"; tctx.fillText(fmtTime(t0), left, h - 5);
+}
+
+// ------------------------------------------------------------------ live + replay
+
+const params = new URLSearchParams(location.search);
+const token = params.get("t") || "";
+let mode = "live", recorded = [], adjusted = [], replayPos = 0, replayClock = 0, playing = true, liveBase = null;
+
+function clock() {
+  if (mode === "replay") return replayClock;
+  if (!liveBase) return S.now;
+  return liveBase.t + (performance.now() - liveBase.at) / 1000;
+}
+function tick(dt) {
+  if (mode === "replay" && playing && adjusted.length) {
+    replayClock += dt * Number($("speed").value);
+    while (replayPos < adjusted.length && adjusted[replayPos].t <= replayClock) apply(adjusted[replayPos++], fx);
+    const end = adjusted[adjusted.length - 1].t;
+    if (replayPos >= adjusted.length && replayClock >= end + 1.5) { playing = false; $("play").textContent = "▶"; }
+    $("seek").value = String(Math.round(1000 * clamp(replayClock / Math.max(end, .001), 0, 1)));
+    $("clock").textContent = `${fmtTime(replayClock)} / ${fmtTime(end)}`;
+  }
+  renderPanels(false);
+}
+
+function compressGaps(events) {
+  let shift = 0, prev = null;
+  return events.map((ev) => {
+    const t = ev.t || 0;
+    if (prev !== null && t - prev > MAX_GAP) shift += t - prev - MAX_GAP;
+    prev = t;
+    return { ...ev, t: Math.max(0, t - shift) };
+  });
+}
+
+function seekTo(target) {
+  S = freshState(); particles.length = 0; pulses.length = 0; satellites = new Map(); subNodes = new Map();
+  replayPos = 0; replayClock = target;
+  while (replayPos < adjusted.length && adjusted[replayPos].t <= target) apply(adjusted[replayPos++], null);
+  placeSatellites(); placeSubNodes(); renderPanels(true);
+}
+
+function setStatus(text, cls) { const s = $("status"); s.textContent = text; s.className = "badge " + (cls || ""); }
+
+function connect() {
+  const es = new EventSource("events?t=" + encodeURIComponent(token));
+  let catching = true;
+  es.addEventListener("hello", (m) => {
+    const info = JSON.parse(m.data); mode = info.mode;
+    if (mode === "replay") { setStatus("replay", ""); $("controls").classList.add("on"); recorded = []; }
+    else { setStatus("live", "live"); S = freshState(); catching = true; }
+    if (info.title) document.title = "MUYAH-CODE · " + info.title;
+  });
+  es.onmessage = (m) => {
+    const ev = JSON.parse(m.data);
+    if (mode === "replay") { recorded.push(ev); return; }
+    liveBase = { t: ev.t || 0, at: performance.now() };
+    apply(ev, catching ? null : fx);
+    if (!catching && (ev.type === "tool_start" || ev.type === "subagent_start")) { placeSatellites(); placeSubNodes(); }
+  };
+  es.addEventListener("caughtup", () => { catching = false; placeSatellites(); placeSubNodes(); renderPanels(true); });
+  es.addEventListener("end", () => {
+    es.close();
+    adjusted = compressGaps(recorded);
+    if (!adjusted.length) { S.caption = "This session has no recorded events."; renderPanels(true); return; }
+    seekTo(0); playing = true; $("play").textContent = "❚❚";
+  });
+  es.onerror = () => { if (mode === "live") setStatus("disconnected", "off"); };
+  es.onopen = () => { if (mode === "live") setStatus("live", "live"); };
+}
+
+$("play").onclick = () => {
+  if (!adjusted.length) return;
+  if (!playing && replayPos >= adjusted.length) seekTo(0);
+  playing = !playing; $("play").textContent = playing ? "❚❚" : "▶";
+};
+$("restart").onclick = () => { if (adjusted.length) { seekTo(0); playing = true; $("play").textContent = "❚❚"; } };
+$("seek").oninput = (e) => {
+  if (!adjusted.length) return;
+  seekTo(adjusted[adjusted.length - 1].t * Number(e.target.value) / 1000);
+};
+document.addEventListener("keydown", (e) => {
+  if (e.code === "Space" && mode === "replay" && e.target.tagName !== "SELECT") { e.preventDefault(); $("play").click(); }
+});
+if (params.get("speed")) $("speed").value = params.get("speed");
+
+window.addEventListener("resize", layout);
+layout(); renderPanels(true); connect(); requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -137,6 +137,7 @@ class App:
         self.ctx = self._make_ctx(ui, depth=0)
         self.agent = self._make_agent(self.registry, self.ctx, ui, session=self.session)
         self.resumed = bool(history)
+        self.viz = None  # the /viz web server, started on demand
         if history:
             self.agent.load_history(history)
         self.emit_session()
@@ -371,6 +372,9 @@ class App:
         return f"Undid changes from: {label}\n" + "\n".join(f"  {r}" for r in restored)
 
     def shutdown(self) -> None:
+        if self.viz is not None:
+            self.viz.stop()
+            self.viz = None
         if self.hooks.has("SessionEnd"):
             self.hooks.run("SessionEnd", {"session_id": self.session_id})
         self.jobs.shutdown()

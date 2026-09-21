@@ -11,6 +11,7 @@
     muyah eval [tasks...]         run the benchmark and track the pass rate
     muyah config get|set|unset    edit ~/.muyah/settings.json
     muyah sessions                list sessions for this project
+    muyah viz [id|last]           replay a recorded session in your browser (live: /viz in a session)
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from pathlib import Path
 
 from muyah_code import __version__
 
-SUBCOMMANDS = {"login", "logout", "connect", "serve", "doctor", "eval", "config", "sessions"}
+SUBCOMMANDS = {"login", "logout", "connect", "serve", "doctor", "eval", "config", "sessions", "viz"}
 PICK = "__pick__"  # `--resume` given without an id
 
 
@@ -52,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="muyah", description="MUYAH-CODE: agentic coding in your terminal, on any "
                                 "OpenAI-compatible model.", epilog="Subcommands: login, logout, connect, serve, "
-                                "doctor, eval, config, sessions (run `muyah <subcommand> -h`).")
+                                "doctor, eval, config, sessions, viz (run `muyah <subcommand> -h`).")
     p.add_argument("prompt", nargs="*", help="Initial prompt")
     p.add_argument("-p", "--print", dest="headless", action="store_true", help="Headless: answer and exit")
     p.add_argument("--output-format", choices=["text", "json", "stream-json"], default="text")
@@ -281,7 +282,54 @@ def _subcommand(name: str, argv: list[str]) -> int:
         for s in Session.list_sessions(sessions_dir(cfg.home, cfg.project_root)):
             console.print(f"{s.id}  ({s.messages} msgs)  {s.title}")
         return 0
+
+    if name == "viz":
+        return _viz(argv, console)
     return 2
+
+
+def _viz(argv: list[str], console) -> int:
+    p = argparse.ArgumentParser(prog="muyah viz", description="Replay a recorded session in your browser: the "
+                                "model, context, tools and sub-agents, animated. For a live view, type /viz "
+                                "inside a session.")
+    p.add_argument("session", nargs="?", default="last", help="Session id (prefix ok) or 'last' (default)")
+    p.add_argument("--speed", type=int, choices=[1, 2, 4, 8, 16], default=2, help="Playback speed (default 2)")
+    p.add_argument("--port", type=int, default=0, help="Port on 127.0.0.1 (default: any free port)")
+    p.add_argument("--no-open", action="store_true", help="Print the link instead of opening a browser")
+    a = p.parse_args(argv)
+    import webbrowser
+
+    from muyah_code.config import load_config
+    from muyah_code.events import load_events
+    from muyah_code.session import sessions_dir
+    from muyah_code.viz import VizServer, find_events_file
+
+    cfg = load_config()
+    path = find_events_file(sessions_dir(cfg.home, cfg.project_root), a.session)
+    if path is None:
+        console.print(f"No recorded session '{a.session}' in this folder. Sessions are recorded as you use "
+                      "MUYAH-CODE; see `muyah sessions`.")
+        return 1
+    events = load_events(path)
+    if not events:
+        console.print(f"{path.name} has no events to replay.")
+        return 1
+    server = VizServer(events=events, title=path.name.removesuffix(".events.jsonl"), port=a.port)
+    url = f"{server.url}&speed={a.speed}"
+    console.print(f"Replaying {path.name.removesuffix('.events.jsonl')} ({len(events)} events): {url}")
+    console.print("[dim]Press Ctrl+C to stop.[/]")
+    if not a.no_open:
+        try:
+            webbrowser.open(url)
+        except webbrowser.Error:
+            console.print("[dim]Could not open a browser; open the link above.[/]")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        console.print("[dim]Stopped.[/]")
+    finally:
+        server.stop()
+    return 0
 
 
 def _default_tasks_dir() -> Path:
