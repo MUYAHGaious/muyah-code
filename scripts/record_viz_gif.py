@@ -5,7 +5,11 @@ the DevTools screencast, and turns them into a GIF with ffmpeg. Nothing is simul
 exactly as a user sees it.
 
     python scripts/make_viz_demo.py --out demo.events.jsonl       # record a session first
-    python scripts/record_viz_gif.py demo.events.jsonl docs/images/viz-demo.gif [--speed 2]
+    python scripts/record_viz_gif.py demo.events.jsonl docs/images/live-view.webp --mp4 docs/videos/live-view.mp4
+
+Frames are captured at 2x pixel density as lossless PNG and turned into a GIF with one 256-color palette
+per scene change and no dithering (the page is flat colors: dithering only adds noise), so text stays
+sharp. --mp4 also writes an H.264 video at full resolution.
 
 Needs Chrome (or Edge), ffmpeg on PATH, and `pip install websocket-client`.
 """
@@ -91,6 +95,9 @@ def redact_home(events: list[dict]) -> list[dict]:
     import os
 
     text = json.dumps(events)
+    # where this checkout lives says nothing useful to readers: show it as the project's name
+    for variant in (str(ROOT), str(ROOT).replace("\\", "/")):
+        text = text.replace(json.dumps(variant)[1:-1], "muyah-code")
     homes = {str(Path.home()), os.path.expanduser("~"), str(Path.home().resolve())}
     for home in sorted(homes, key=len, reverse=True):
         for variant in (home, home.replace("\\", "/")):
@@ -107,8 +114,10 @@ def main() -> int:
     ap.add_argument("--speed", type=float, default=2.0)
     ap.add_argument("--width", type=int, default=1400)
     ap.add_argument("--height", type=int, default=820)
-    ap.add_argument("--gif-width", type=int, default=960)
-    ap.add_argument("--fps", type=int, default=10)
+    ap.add_argument("--gif-width", type=int, default=1400)
+    ap.add_argument("--fps", type=int, default=12)
+    ap.add_argument("--scale", type=float, default=2.0, help="device pixel ratio of the capture")
+    ap.add_argument("--mp4", help="also write an H.264 MP4 here")
     a = ap.parse_args()
 
     server = VizServer(events=redact_home(load_events(Path(a.events))), title="demo")
@@ -116,7 +125,7 @@ def main() -> int:
     profile = tempfile.mkdtemp(prefix="muyah-gif-chrome-")
     chrome = subprocess.Popen([find_browser(), "--headless=new", f"--remote-debugging-port={PORT}",
                                f"--window-size={a.width},{a.height}", f"--user-data-dir={profile}",
-                               "--hide-scrollbars", "--force-device-scale-factor=1", "about:blank"],
+                               "--hide-scrollbars", f"--force-device-scale-factor={a.scale:g}", "about:blank"],
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     frames_dir = Path(tempfile.mkdtemp(prefix="muyah-gif-frames-"))
     try:
@@ -133,15 +142,15 @@ def main() -> int:
         dt = DevTools(page["webSocketDebuggerUrl"])
         dt.send("Page.enable")
         dt.send("Emulation.setDeviceMetricsOverride", {"width": a.width, "height": a.height,
-                                                       "deviceScaleFactor": 1, "mobile": False})
+                                                       "deviceScaleFactor": a.scale, "mobile": False})
         dt.send("Page.navigate", {"url": url})
         for _ in range(100):  # wait until the recording is loaded and playing
             if dt.evaluate("typeof adjusted !== 'undefined' && adjusted.length > 0"):
                 break
             time.sleep(0.1)
         dt.evaluate("seekTo(0); playing = true;")
-        dt.send("Page.startScreencast", {"format": "jpeg", "quality": 85, "maxWidth": a.width,
-                                         "maxHeight": a.height, "everyNthFrame": 1})
+        dt.send("Page.startScreencast", {"format": "png", "maxWidth": int(a.width * a.scale),
+                                         "maxHeight": int(a.height * a.scale), "everyNthFrame": 1})
         start = time.monotonic()
         while time.monotonic() - start < 180:
             done = dt.evaluate("replayPos >= adjusted.length && replayClock > adjusted[adjusted.length-1].t + 1")
@@ -163,14 +172,27 @@ def main() -> int:
         while t <= end:
             while i + 1 < len(frames) and frames[i + 1][0] <= t:
                 i += 1
-            (frames_dir / f"f{n:05d}.jpg").write_bytes(frames[i][1])
+            (frames_dir / f"f{n:05d}.png").write_bytes(frames[i][1])
             n += 1
             t += 1 / a.fps
-        palette = (f"fps={a.fps},scale={a.gif_width}:-1:flags=lanczos,split[x][y];"
-                   "[x]palettegen=max_colors=160:stats_mode=diff[p];[y][p]paletteuse=dither=bayer:bayer_scale=4:"
-                   "diff_mode=rectangle")
-        subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-framerate", str(a.fps), "-i",
-                        str(frames_dir / "f%05d.jpg"), "-vf", palette, "-loop", "0", a.out], check=True)
+        if a.out.endswith(".webp"):
+            # animated WebP: full color and sharp text at a fraction of a GIF's size; GitHub shows it as an image
+            subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-framerate", str(a.fps), "-i",
+                            str(frames_dir / "f%05d.png"), "-vf", f"scale={a.gif_width}:-1:flags=lanczos",
+                            "-c:v", "libwebp_anim", "-q:v", "90", "-compression_level", "6", "-loop", "0", a.out],
+                           check=True)
+        palette = (f"scale={a.gif_width}:-1:flags=lanczos,split[x][y];"
+                   "[x]palettegen=max_colors=256:stats_mode=single[p];"
+                   "[y][p]paletteuse=new=1:dither=none:diff_mode=rectangle")
+        if not a.out.endswith(".webp"):
+            subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-framerate", str(a.fps), "-i",
+                            str(frames_dir / "f%05d.png"), "-lavfi", palette, "-loop", "0", a.out], check=True)
+        if a.mp4:
+            subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-framerate", str(a.fps), "-i",
+                            str(frames_dir / "f%05d.png"), "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",
+                            "-c:v", "libx264", "-crf", "16", "-preset", "slow", "-pix_fmt", "yuv420p",
+                            "-movflags", "+faststart", a.mp4], check=True)
+            print(f"wrote {a.mp4}: {Path(a.mp4).stat().st_size / 1e6:.1f} MB")
         print(f"wrote {a.out}: {n} frames, {Path(a.out).stat().st_size / 1e6:.1f} MB")
     finally:
         chrome.terminate()

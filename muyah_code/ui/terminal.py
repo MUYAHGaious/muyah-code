@@ -1073,6 +1073,20 @@ class TerminalUI(UI):
             if len(ans) > 1:
                 return PermissionReply("no", feedback=ans)
 
+    def _short_path(self, path: str) -> str:
+        """A path as you would say it: relative inside the project, ~ for your home folder, else in full."""
+        p = Path(path)
+        for base, prefix in ((self.cwd, ""), (Path.home(), "~")):
+            if base is None:
+                continue
+            try:
+                rel = p.resolve().relative_to(Path(base).resolve())
+            except (ValueError, OSError):
+                continue
+            text = str(rel) if str(rel) != "." else "."
+            return text if not prefix else str(Path(prefix) / rel)
+        return path
+
     def handoff(self, command: str, targets: list[str]) -> None:
         """A delete the agent wanted to run: shown to you to run yourself (MUYAH-CODE never deletes)."""
         t = theme()
@@ -1083,7 +1097,7 @@ class TerminalUI(UI):
             body.append("\nWould remove:\n", style=t.dim)
             for path in targets[:12]:
                 exists = Path(path).exists()
-                body.append(f"  {path}", style="bold" if exists else t.dim)
+                body.append(f"  {self._short_path(path)}", style="bold" if exists else t.dim)
                 body.append("\n" if exists else "  (not found)\n", style=t.dim)
             if len(targets) > 12:
                 body.append(f"  … and {len(targets) - 12} more\n", style=t.dim)
@@ -1116,6 +1130,20 @@ class TerminalUI(UI):
         self._attention(f"Question: {question[:120]}")
         with self._keyboard_to_prompt():
             return self._ask_user(question, options)
+
+    def approve_plan(self, plan: str, options: list[str]) -> str:
+        self._attention("The plan is ready")
+        with self._keyboard_to_prompt():
+            self.show_plan(plan)
+            if self.prompter is None:
+                return self._ask_user("Would you like to proceed?", options)
+            picked = self.prompter.select("Would you like to proceed?", [(o, o) for o in options])
+            if picked is None or picked == options[-1]:          # Esc, or "No, keep planning"
+                said = self.prompter.ask("What should change? (Enter to skip) ").strip()
+                self._space("block")
+                return said or options[-1]
+            self._space("block")
+            return picked
 
     def _ask_user(self, question: str, options: list[str]) -> str:
         t = theme()

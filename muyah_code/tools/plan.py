@@ -41,11 +41,11 @@ class ExitPlanModeTool(Tool):
         if not plan:
             raise ToolError("Put the plan itself in `plan` (markdown).")
         ui = ctx.service("ui")
-        ui.show_plan(plan)
         if ctx.headless:
+            ui.show_plan(plan)
             return ToolResult("Plan shown. This run is not interactive: stay in plan mode and end with the plan.",
                               summary="plan shown")
-        answer = ui.ask_user("Would you like to proceed?", [*CHOICES, KEEP])
+        answer = ui.approve_plan(plan, [*CHOICES, KEEP])
         mode = CHOICES.get(answer)
         if mode:
             self.set_mode(mode)

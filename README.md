@@ -1,493 +1,161 @@
 <p align="center">
-  <img src="docs/images/logo.png" alt="MUYAH-CODE" width="520">
+  <img src="docs/images/logo.png" alt="MUYAH-CODE" width="560">
 </p>
 
+<h3 align="center">An AI coding agent for your terminal.<br>Any model. Safe by default. Honest about cost.</h3>
+
 <p align="center">
-  <b>An agentic coding CLI for any model: Claude, OpenAI, Gemini, OpenRouter, local Ollama/vLLM, or your own GPU.</b><br>
-  It reads, searches, edits and runs your code, asks before it acts, and learns from its own mistakes.
+  It reads your code, makes the change, runs the tests and tells you straight what happened.<br>
+  It works with Claude, GPT, Gemini, open models, or your own GPU, and it never deletes your files.
 </p>
 
 <p align="center">
   <a href="https://github.com/MUYAHGaious/muyah-code/actions/workflows/ci.yml"><img src="https://github.com/MUYAHGaious/muyah-code/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-3776AB?logo=python&logoColor=white" alt="Python">
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-6fd6c9" alt="Platforms">
+  <img src="https://img.shields.io/badge/python-3.10%E2%80%933.14-3776AB?logo=python&logoColor=white" alt="Python 3.10 to 3.14">
+  <img src="https://img.shields.io/badge/Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-6fd6c9" alt="Windows, macOS, Linux">
   <img src="https://img.shields.io/badge/providers-20-6fd6c9" alt="20 providers">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license"></a>
 </p>
 
 <p align="center">
-  <img src="docs/images/session.png" alt="MUYAH-CODE fixing a failing test: plan, read, edit with a diff, run the tests, answer" width="860">
+  <a href="#install">Install</a> ·
+  <a href="#problems-it-solves">Problems it solves</a> ·
+  <a href="#everything-else">Features</a> ·
+  <a href="docs/GUIDE.md">Guide</a>
 </p>
 
-## Why MUYAH-CODE
-
-- **Any model, one key away.** `muyah login` lists 20 providers. Pick one, paste your key, and you're coding. Claude runs through Anthropic's native API; everything else through an OpenAI-compatible one.
-- **Built for open-weights models too.** Strict tool calling with a fallback text protocol, and context compaction that adapts to any window size (8k–1M) and to how each model counts tokens.
-- **Asks before it acts.** You see the exact diff or command before approving it, and `/undo` reverts a whole turn.
-- **Gets better over time.** It turns its own failures and fixes into lessons, and `muyah eval` measures whether that's helping.
-- **Runs your own GPU.** `muyah serve` starts Ollama, vLLM, llama.cpp, colibri or Soup locally, and a Colab notebook serves big models through a tunnel.
-
-<table>
-  <tr>
-    <td width="50%"><img src="docs/images/trust.png" alt="Workspace trust check"><br><sub><b>Trust check</b>: asked once per folder, before any of the folder's own hooks or MCP servers load.</sub></td>
-    <td width="50%"><img src="docs/images/permission.png" alt="Permission prompt with the exact diff"><br><sub><b>Permission prompts</b> show the exact change. Choose with ↑/↓ and Enter.</sub></td>
-  </tr>
-  <tr>
-    <td colspan="2"><img src="docs/images/home.png" alt="Home screen with the slash-command menu"><br><sub><b>Type <code>/</code></b> for the command menu. The status line shows the mode and how full the context is.</sub></td>
-  </tr>
-</table>
+<p align="center">
+  <img src="docs/images/demo.webp" alt="MUYAH-CODE fixing a failing test: it plans, reads the file, edits it, runs the tests and explains the fix; then Shift+Tab through the modes and the / command menu" width="900">
+  <br><sub>A real session, recorded in the terminal. <a href="docs/videos/demo.mp4">Full-quality video</a></sub>
+</p>
 
 ## Install
 
-You need Python 3.10 or newer.
+**Windows** (PowerShell):
 
-```bash
-pipx install git+https://github.com/MUYAHGaious/muyah-code     # isolated install, `muyah` lands on your PATH
-# or: uv tool install git+https://github.com/MUYAHGaious/muyah-code
-# or: pip install git+https://github.com/MUYAHGaious/muyah-code
-# voice outside Windows: pipx install "muyah-code[voice] @ git+https://github.com/MUYAHGaious/muyah-code"
-
-muyah login                      # pick a provider, paste your API key
-muyah                            # start coding
+```powershell
+irm https://raw.githubusercontent.com/MUYAHGaious/muyah-code/main/install.ps1 | iex
 ```
 
-**Update:** `pipx upgrade muyah-code`. **Don't have pipx?** Run `python -m pip install --user pipx`, then `python -m pipx ensurepath`.
-
-**From source (development):** `git clone https://github.com/MUYAHGaious/muyah-code && cd muyah-code && pip install -e ".[dev]"`.
-
-> **Windows:** `python -m muyah_code` always works, even if `muyah` is not on your PATH yet.
-
-## Connect a model
-
-**The easy way: pick a provider and paste your key.**
+**macOS / Linux**:
 
 ```bash
-muyah login            # or /provider inside a session
+curl -fsSL https://raw.githubusercontent.com/MUYAHGaious/muyah-code/main/install.sh | sh
 ```
 
-1. Choose a provider from the list. It includes Anthropic (Claude), OpenAI, Google Gemini, OpenRouter, Groq, DeepSeek, Mistral, xAI, Together, Fireworks, Cerebras, Moonshot (Kimi), Z.ai (GLM), Qwen, NVIDIA NIM, Hugging Face, plus local Ollama, LM Studio, llama.cpp and vLLM.
-2. Paste your API key. The input is hidden.
-3. Pick a model. The best coding models are listed first, and pressing Enter takes the default.
-
-MUYAH-CODE then checks the key, tests one reply, saves everything and switches your session to it.
-
-Useful details:
-- **Keys you already have are detected.** If `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` or similar is set, it offers to use it. Those keys are never copied to disk.
-- **Where pasted keys go:** `~/.muyah/credentials.json`, never `settings.json`.
-- **Switching providers:** `/profile anthropic` or `muyah --profile openai`.
-- **Removing a key:** `/logout <provider>` or `muyah logout <provider>`.
-- **Skipping the prompts:** `muyah login anthropic --key sk-ant-... -m claude-opus-5`.
-- **Claude** is used through Anthropic's native API rather than a compatibility layer. That gives it adaptive thinking, prompt caching (cheaper repeat turns) and automatic refusal fallbacks. The default model is `claude-opus-5`.
-
-Or, for your own GPU or a custom server, choose one of the following.
-
-**A. Your Colab GPU (or RunPod / any Linux GPU box).**
-1. Open `backend/muyah_server.ipynb` in Colab and pick a GPU runtime.
-2. Choose the engine and model in the settings cell, then run all cells.
-3. The notebook starts the server, opens a tunnel, runs a PONG test and prints a command like this, which you then run on your computer:
+Then, in any project folder:
 
 ```bash
-muyah connect https://xyz.a.pinggy.link/v1 --model Qwen/Qwen2.5-Coder-32B-Instruct-AWQ --engine vllm --context-window 32768
+muyah login     # pick a provider, paste your key (or use a local model)
+muyah           # start
 ```
 
-**B. A server on your machine.**
+The installer works out where to install, and puts `muyah` on your PATH so it works from any folder. You need
+Python 3.10 or newer. If you prefer to install it yourself, run `pipx install git+https://github.com/MUYAHGaious/muyah-code`
+(or `uv tool install …`). If `muyah` is ever not found, `python -m muyah_code path` fixes that.
 
-```bash
-muyah connect --scan                      # finds Ollama (11434), LM Studio (1234), vLLM/colibri/Soup (8000), llama.cpp (8080)
-muyah serve ollama  -m qwen2.5-coder:14b --ctx 32768          # or start one: it waits until ready, then connects
-muyah serve colibri -m /nvme/glm52_i4 --ctx 65536
-muyah serve soup    -m ./output                                # your fine-tuned model
-muyah serve llamacpp -m ./qwen2.5-coder-7b-q4_k_m.gguf --ctx 32768
-muyah serve --status | --stop
-```
+## Problems it solves
 
-**C. A hosted API.**
+### "The AI deleted my files"
 
-```bash
-muyah connect https://openrouter.ai/api/v1 --api-key sk-or-... --model qwen/qwen3-coder
-```
+MUYAH-CODE never runs a delete, in any mode. It shows you the exact command and what it would remove, puts
+the command on your clipboard, and carries on without it. Whether anything gets deleted is always your call.
 
-Every `connect` or `serve` saves a **profile**. Switch between profiles with `muyah --profile colab` or `/profile ollama` inside a session. `muyah doctor --deep` checks the whole setup, including a real completion and a tool-calling test.
+<img src="docs/images/delete.png" alt="A delete handed to the user: the command, the folders it would remove, and a note that MUYAH-CODE never deletes files itself" width="820">
 
-### Huge models on your own hardware: colibri and Soup
+### "I can't undo what it did"
 
-MUYAH-CODE is built to drive models you run yourself, including ones far bigger than your GPU.
+Every turn is saved: the files it wrote and whatever its commands changed. `/rewind` (or Esc Esc) takes you
+back to before any turn. You choose the code, the conversation, or both, and you can undo the rewind too.
 
-- **[colibri](https://github.com/JustVugg/colibri)** runs very large mixture-of-experts models from NVMe
-  and RAM instead of VRAM. Build a model with colibri's tools, then start it and connect in one command:
-  ```bash
-  muyah serve colibri --model /nvme/glm52_i4 --ctx 65536
-  ```
-  MUYAH-CODE applies a preset made for it:
-  - no request timeout, because the first token can take minutes;
-  - no extra reflection calls;
-  - one request at a time.
+<img src="docs/images/rewind.png" alt="The rewind list: pick the turn to go back to" width="820">
 
-  The live view shows the long waits for what they are: *sent · waiting for reply*.
-- **Soup** serves models you fine-tuned with it:
-  ```bash
-  muyah serve soup --model ./output
-  ```
-- **Free GPU:** the [server notebook](backend/) runs vLLM, colibri or Soup on Colab. It prints the
-  `muyah connect …` line to run on your computer.
-- `muyah serve --status` shows the running server and `muyah serve --stop` stops it.
+### "Either it asks about everything, or it asks about nothing"
 
-MUYAH-CODE starts and connects these engines, but it does not download or convert models: getting a model
-ready is done with each engine's own tools. For one-command downloads, use `muyah serve ollama --model
-qwen2.5-coder:14b`.
+Pick how much freedom it gets with **Shift+Tab**: manual, edit, ask, plan or auto. In auto mode it gets on
+with routine work and tells you, under each step, why it didn't ask. Risky actions, like a force-push,
+still stop and ask.
 
-### Engine modes
+<img src="docs/images/auto.png" alt="Auto mode: a test written and run on its own, each marked auto-approved, then a force-push that still asks" width="820">
 
-Each engine gets a tuned preset. You select it with `--engine` or `muyah serve <engine>`.
+### "It starts coding before I've thought it through"
 
-| engine | preset | notes |
+**Ask mode** is for talking an idea through first. It asks questions and weighs the options, and it doesn't
+touch a file. **Plan mode** reads the code, then shows a plan. You choose how to build it (on its own,
+accepting edits, or approving each change), or you send it back with changes.
+
+<img src="docs/images/plan.png" alt="Plan mode: the plan, then a choice of auto, accept edits, approve each change, or keep planning" width="820">
+
+<details>
+<summary><b>See ask mode</b></summary>
+<br>
+<img src="docs/images/ask.png" alt="Ask mode: the agent asks the three questions that decide the design and suggests an answer" width="820">
+</details>
+
+### "It says it's done, but it isn't"
+
+It checks its own work with real commands before it tells you something is fixed, and it reports failures
+as they are. If you push back, it looks at the evidence again instead of simply agreeing. You can run
+`/verify` whenever you like, for a quick check, the whole test suite, or the app end to end.
+
+<img src="docs/images/session.png" alt="A full turn: a plan, the file read, the exact edit, the tests run and passing, then a short explanation of the fix" width="820">
+
+### "I have no idea what it costs"
+
+The status line shows what the session has cost so far. `/usage` shows where every token went: the main
+agent, sub-agents, and summaries. Set a daily or per-session budget and it warns you before you reach it.
+Models you run yourself count as free.
+
+<img src="docs/images/usage.png" alt="/usage: session cost, a breakdown by main agent and sub-agent, context use, today and the last 7 days" width="820">
+
+### "I can't see what it's doing"
+
+Open the live view next to your terminal. You see every file it touches, every command it runs, what the
+model is doing right now, and its sub-agents, as it happens. You can also replay any past session.
+
+<img src="docs/images/live-view.webp" alt="The live view: panels for the prompt, the model, the terminal, each file, sub-agents, skills, MCP and usage, updating as the agent works" width="900">
+
+<sub><a href="docs/videos/live-view.mp4">Full-quality video</a></sub>
+
+### "It only works with one company's models"
+
+Choose from 20 providers with `muyah login`: Anthropic, OpenAI, Gemini, OpenRouter, Groq, DeepSeek, Mistral
+and more. You can also use models on your own machine (Ollama, LM Studio, llama.cpp, vLLM), or on a free
+Colab GPU. Each part of the work can use a different model, with a stronger one stepping in when a cheaper
+one gets stuck.
+
+### "It's too heavy for my laptop"
+
+| | startup | memory when idle |
 |---|---|---|
-| `vllm` | timeout 600s | serve with `--enable-auto-tool-choice --tool-call-parser hermes` (Qwen) for native tools |
-| `colibri` | **no timeout**, no reflection calls, 4k output | huge MoE on NVMe/RAM; first token can take minutes; one request at a time |
-| `soup` | timeout 600s, 4k output | fine-tuned models via `soup serve`; runs in its own Python 3.10-3.12 env |
-| `ollama` | started with `OLLAMA_CONTEXT_LENGTH` | Ollama silently truncates at its small default context otherwise |
-| `llamacpp` | `--jinja` | native tool calling from the model's chat template |
+| **MUYAH-CODE** | **0.11 s** | **66 MB** |
+| Claude Code | 0.08 s | 230 MB |
+| Codex CLI | 0.17 s | 106 MB |
+| Gemini CLI | 2.09 s | 391 MB |
+| OpenCode | 0.94 s | 795 MB |
 
-> **Tunnels:** Cloudflare quick tunnels drop requests that stay silent for about 100s (HTTP 524). A big model working through a long prompt can hit that before its first token. MUYAH-CODE detects a 524 and tells you to switch to the **Pinggy** URL, which has no such limit. The server notebook prints both.
+<sub>Windows 11, measured with <code>scripts/bench_resources.py</code>. Small local models get a lean mode that
+cuts the fixed cost of every request from about 4,400 to 1,200 tokens.</sub>
 
-## Use it
+## Everything else
 
-```bash
-muyah                                   # interactive
-muyah "fix the failing test in tests/test_api.py"
-muyah -p "summarize this repo" --output-format json      # headless (CI, scripts)
-git diff | muyah -p "review this diff"                   # stdin is attached to the prompt
-muyah -c                                # continue the last session
-muyah --resume                          # pick an earlier conversation from a list (or: muyah --resume <id>)
-```
+| | | |
+|---|---|---|
+| 🎙️ **Talk instead of type.** Press F2, speak, and your words land in the prompt. | ⌨️ **Keep typing while it works.** Queue messages, or ask a side question with `/btw`. | 🧭 **`/` menu** with every command, even mid-turn. |
+| 🖼️ **Sees images**: screenshots, diagrams, and a built-in browser to check web apps. | 🧩 **Editor support**: Zed, JetBrains and Neovim, through `muyah acp`. | 🔌 **MCP servers**: it can set them up for you when you ask. |
+| 🧠 **Learns from mistakes** and measures whether that helps (`muyah eval`). | 🤖 **Sub-agents and skills**: debugging, planning, TDD, code review, commits. | 🌿 **Worktrees** keep parallel sessions out of each other's way. |
+| 🔔 **Notifies you** when it's done or needs you. | 🔐 **Trust check** before a new folder's hooks or tools can run. | 📦 **Works with your Claude Code setup**: `.claude/skills`, hooks, `CLAUDE.md`, MCP. |
 
-**Interactive shortcuts:**
-- `/` opens the command menu: move with **↑/↓**, choose with **Enter**. Every list works this way (providers, models, permission prompts).
-- `@path` attaches a file.
-- `#note` saves a note to `MUYAH.md`.
-- **Shift+Tab** cycles the modes, in this order:
-  - **manual** asks before edits and commands;
-  - **edit** accepts edits and asks before commands;
-  - **ask** talks the idea through (questions, options, trade-offs) and changes nothing;
-  - **plan** explores read-only and then shows a plan; you choose to build it in auto, edit or manual mode, or to keep planning;
-  - **auto** runs on its own and asks only for risky actions.
-- **Talk instead of typing:** press **F2** (or Ctrl+Space, or `/mic`), speak, then press it again or just stop talking. The words land in your prompt for you to edit; they are never sent on their own.
-  - On Windows this opens Windows voice typing.
-  - Elsewhere it records and transcribes with Groq Whisper (your `/provider groq` key), OpenAI, or any `/audio/transcriptions` URL (`"voice": {"url": ...}`).
-  - Offline: `"voice": {"engine": "local"}` with the `voice-local` extra (faster-whisper).
-  - The key can be changed with `"mic_key"`.
-- **Type `/`** for the command list, at the prompt and while it works. ↑↓ choose, Tab completes, Enter runs it. While it works, a command runs when the turn ends.
-- **Big pastes** show as `[Pasted text #1 +245 lines]`; the full text is sent.
-- **While it works, keep typing.** **Enter** queues a message; the model gets it at the next step. **Esc** stops the current step and sends it right away.
-- **Alt+Enter** / **Ctrl+J** inserts a newline.
-- **Ctrl+C** stops a running reply, or clears what you typed. Press it twice on an empty line (or **Ctrl+D**) to exit.
+## Learn more
 
-| command | what it does |
-|---|---|
-| `/help` | all commands |
-| `/provider` (or `/login`), `/logout <provider>` | pick a provider + paste an API key; remove a saved key |
-| `/model [id]`, `/models`, `/profile [name]`, `/connect <url>` | switch backends at runtime (the context window is re-detected) |
-| `/mode [manual\|edit\|ask\|plan\|auto]`, `/plan` | modes (also Shift+Tab) |
-| `/undo`, `/rewind` (Esc Esc) | go back to before the last turn, or any earlier one: code, conversation or both (commands' changes included) |
-| `/verify [quick\|full\|e2e]` | check the last changes only when you ask: lint + the changed files' tests, the whole suite, or run the app end to end |
-| `/mic` (F2, Ctrl+Space) | talk instead of typing (Windows voice typing, or Whisper elsewhere) |
-| `/btw <question>` | a side question, answered now and never added to the conversation (also while it works) |
-| `/mcp [enable\|disable\|reconnect <name>]` | MCP servers: status, or switch one off/on (remembered per project) |
-| `/compact [focus]`, `/context` | context management |
-| `/skills`, `/<skill> [args]`, `/agents` | workflows and sub-agents |
-| `/lessons`, `/good [note]`, `/bad [what was wrong]`, `/learn on\|off` | the learning system |
-| `/init`, `/memory` | project instructions (`MUYAH.md`) |
-| `/resume`, `/sessions`, `/export` | sessions |
-| `/viz`, `/viz stop` | live view of the agent in your browser (or run `muyah viz` in another terminal) |
-| `/theme [teal\|muyah\|ocean\|forest\|mono\|light]` | color theme (saved; default: light teal) |
-| `/usage [--all]` (or `muyah usage`) | cost, tokens, cache hits, where the tokens went, the context, today and 7 days, your provider's limits |
-| `/status`, `/doctor`, `/config`, `/permissions`, `/tools`, `/mcp` | inspection |
+The **[guide](docs/GUIDE.md)** covers every command, model setup (including your own GPU), configuration,
+budgets, hooks, and how it learns.
 
-### While it works
-
-- **Type while it works.** What you type goes into the queue, shown as one grey block under the spinner.
-  - Queued messages go in at the agent's next step.
-  - **↑** picks a queued message; then **Enter** edits it and **Delete** removes it.
-  - **Esc** stops the current step. Your queued messages then run one at a time, oldest first, and each
-    Esc moves on to the next.
-- **`/btw …`** typed there is answered on the side, without stopping or changing the turn.
-- **Notifications.** When a turn finishes or needs your approval while you are in another window,
-  MUYAH-CODE notifies you:
-  - OSC 9/777/99 on iTerm2, WezTerm, Ghostty, kitty and VTE terminals;
-  - a toast on Windows;
-  - a notification on macOS;
-  - otherwise the terminal bell.
-
-  `"notify": "off"` turns this off, and a `Notification` hook runs your own command.
-
-### In your editor (ACP)
-
-`muyah acp` runs MUYAH-CODE as an [Agent Client Protocol](https://agentclientprotocol.com) agent. Editors
-start it for you: you chat in the editor's agent panel, approve changes there, and see real diffs.
-- **What the agent sees:** your unsaved buffers.
-- **Plans and modes:** the plan and the mode switcher (plan, edit, manual, auto) work.
-- **Stop:** stops the turn.
-- **Everything else** is the same MUYAH-CODE: your providers, models, skills, hooks, lessons and cost tracking.
-
-**Zed** (`settings.json`):
-
-```json
-{ "agent_servers": { "MUYAH-CODE": { "command": "muyah", "args": ["acp"] } } }
-```
-
-**JetBrains IDEs** (AI Assistant, then *Add custom agent*, in `acp.json`):
-
-```json
-{ "agent_servers": { "MUYAH-CODE": { "command": "muyah", "args": ["acp"] } } }
-```
-
-**Neovim**: in CodeCompanion or avante.nvim, add an ACP adapter whose command is `muyah acp`.
-
-### Worktrees
-
-`muyah --worktree fix-login` works in `.muyah/worktrees/fix-login` on branch `muyah/fix-login`, so
-parallel sessions never touch each other's files.
-- **When it's created:** files listed in `.worktreeinclude` (such as `.env`) are copied in, and
-  `.muyah/worktree-setup` runs.
-- **On exit:** a worktree with no changes is removed. One with changes is kept, and you get the commands
-  to merge it or remove it.
-- **Sub-agents** with `isolation: worktree` get one of their own.
-
-### Images and the browser
-
-- **How images get in:**
-  - `@screenshot.png` in your prompt;
-  - dragging an image into the terminal;
-  - Read on an image;
-  - an MCP tool that returns a screenshot.
-- **Models that can't see images** get a note instead. `"vision": true/false` overrides the detection.
-- **The built-in browser** (Playwright MCP, Node 18+) starts the first time the agent calls `Browser`, so
-  it costs nothing until then. The `ui-check` skill and `/verify e2e` use it to check web UIs like a
-  user would. `"mcp": {"browser": false}` turns it off.
-
-### Permission modes
-
-**Shift+Tab** cycles **manual → edit → plan → auto** (the same order as Claude Code). Each mode has its own
-color in the status line, and a switch while it works applies from the agent's next action.
-
-| Mode | What it does |
-|---|---|
-| **plan** (green) | Read-only: the agent explores and proposes a plan. |
-| **edit** (violet) | Accepts file edits inside the project; asks before commands. |
-| **manual** (default) | Asks before edits, commands and network access. Read-only commands such as `git status` or `ls` never ask. |
-| **auto** (yellow) | Runs on its own. Still asks for risky actions: bulk or forced deletes, `git push`, `git reset --hard`, publishing, `sudo`, piping downloads into a shell, and edits outside the project. |
-| bypassPermissions | No checks at all. Only with `--mode bypassPermissions`, for throwaway environments. |
-
-When asked, you can answer **y**, **a** (always allow this session), **p** (always allow in this project, saved to `.muyah/settings.local.json`), **n**, or type what to do instead.
-
-Rules use the Claude Code syntax:
-
-```json
-{"permissions": {"allow": ["Bash(npm run test:*)", "Edit(src/**)", "WebFetch(domain:docs.python.org)"],
-                 "deny":  ["Bash(rm -rf *)", "Write(**/.env)"]}}
-```
-
-## How it thinks
-
-These habits are written into the system prompt:
-- It explores before it edits, and it must **Read a file before editing it**.
-- It plans anything with 3 or more steps in a **todo list**.
-- It **verifies with real commands** before claiming success, and it reports failures honestly.
-
-**Skills** are workflows it loads on demand. The bundled ones are `debugging`, `planning`, `verification`, `tdd`, `code-review`, `brainstorming` and `commit`. You can add your own:
-- Put them in `.muyah/skills/<name>/SKILL.md` or `~/.muyah/skills/`.
-- Claude Code `.claude/skills` also load.
-
-**Sub-agents** (`explore`, `general`, or your own in `.muyah/agents/*.md`) work in a fresh context and hand back only a report. That keeps a small context window clean.
-
-## Watch it think
-
-Open the live view in your browser and keep it next to your terminal. It is a board of panels you can pan
-and zoom, like a design canvas. Every panel shows the real content, as it happens:
-- **You**: your prompt, and messages you typed while it works (queued, then delivered).
-- **Model**: its true state (preparing, *sent · waiting for reply*, streaming, idle, failed), with the
-  thinking and the answer as they stream.
-- **Terminal**: every command, its output and exit code.
-- **A panel per file**: the content being written, the diff of an edit, the lines that were read.
-- **A panel per sub-agent**, created when it spawns, with its own steps.
-- **Skills** (the skill in use and its instructions), **MCP** servers and their calls, **Hooks**, the
-  **Plan**, **Lessons** and the **Context** window.
-
-Click any panel or item for the full detail: a whole file history, full command output, a lesson and where
-it is stored. States are real events, never animation guesses: a tool waiting for your approval shows as
-waiting, not running. **Fit all** shows the whole board and **Follow** keeps the active panel in view.
-
-The **Activity** panel is the full log of every state change. Filter it (model calls, tools, commands,
-sub-agents, hooks, errors) and open any line to see the raw event. Every session's log is also saved
-next to its transcript, so `muyah viz --replay` can play any past session again.
-
-<p align="center">
-  <img src="docs/images/viz-demo.gif" alt="Live view of a two-turn session: a skill, an MCP call, two sub-agents, approvals, tests written first, a message queued while it works, live charts" width="900">
-</p>
-
-There are two ways to open it:
+Contributions are welcome:
 
 ```bash
-muyah viz                 # in a second terminal, in the same folder: follows your session live,
-                          #   and switches to the next one when you start another
-/viz                      # or type this inside a session (MUYAH-CODE also offers it at startup)
-muyah viz --replay [id]   # replay the last (or any) recorded session: --speed 0.1 to 16, seek, pause
+git clone https://github.com/MUYAHGaious/muyah-code && cd muyah-code
+pip install -e ".[dev]" && python -m pytest -q
 ```
 
-The page is served on `127.0.0.1` only, behind a random token. It is self-contained, so nothing is loaded from the internet.
-
-## It learns
-
-1. **Signals.** During each turn MUYAH-CODE records what happened: tool errors, *errors that were later fixed*, loops and step limits. It also records your feedback: `/good`, `/bad`, and corrections such as "no, that's wrong…".
-2. **Reflection.** When a turn produced meaningful signals, one small model call extracts 0–3 generalizable **lessons**. They're stored in `~/.muyah/lessons.jsonl` (global) and `.muyah/lessons.jsonl` (this project), and near-duplicates are merged.
-3. **Recall.** For each new request, the most relevant lessons (BM25 × usefulness score) are attached to your message.
-4. **Scoring.** Lessons used in turns you accept gain score. Lessons used in turns you correct lose score, and consistently harmful ones are pruned. `/lessons` shows them and lets you delete any.
-
-**Measure it.** `muyah eval` runs the bundled benchmark tasks (fix a bug, add a CLI flag, implement a function, a multi-file rename, a traceback fix) headless against your current model and records the pass rate in `~/.muyah/evals.jsonl`. `muyah eval --no-learn` gives a baseline without lessons.
-
-## Configuration
-
-Settings are layered. Each layer overrides the one before it:
-1. defaults
-2. `~/.muyah/settings.json`
-3. `.muyah/settings.json`
-4. `.muyah/settings.local.json`
-5. `--settings`
-6. the active profile
-7. `MUYAH_*` environment variables
-8. CLI flags
-
-Your old colab-code config is imported automatically on first run.
-
-```json
-{
-  "base_url": "http://localhost:8000/v1", "model": "…", "api_key": "none",
-  "context_window": 0,          // 0 = ask the server, then the model table, then 16384
-  "max_tokens": 4096, "temperature": 0.2, "request_timeout": 300,   // 0 = never time out
-  "tool_mode": "auto",          // auto | native | text
-  "compact_threshold": 0.8, "max_steps": 60, "bash_timeout": 120, "shell": "auto",
-  "theme": "teal",
-  "learning": {"enabled": true, "reflect": true, "max_lessons_in_prompt": 5},
-  "permissions": {"mode": "default", "allow": [], "ask": [], "deny": []},
-  "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "python guard.py"}]}]},
-  "profiles": {"colab": {"base_url": "https://…/v1", "model": "…", "engine": "vllm"}}
-}
-```
-
-**Context handling for any model size:**
-- **Window size:** taken from your setting, else the server's `/v1/models`, else a table of known models.
-- **Estimate calibration:** the token estimate is corrected using the real `prompt_tokens` the server reports.
-- **When to compact:** at 80% of the window. Old tool outputs are pruned first, then older turns are summarized.
-- **Overflow errors:** if the server still reports a context overflow, an emergency compaction runs and the request is retried.
-- **Scaled budgets:** output and tool-output limits scale with the window.
-- **Prompt caching:** the system prompt stays byte-for-byte stable between turns, and per-turn material goes after it.
-  - Local servers (vLLM, colibri, llama.cpp) reuse their prefix cache instead of re-reading everything.
-  - On Anthropic the stable part is marked for caching. Cached input is billed at about a tenth of the normal price, so long sessions cost much less.
-
-**Cost and budgets.** Every model call is counted: the agent's, sub-agents', compaction, learning and web page
-summaries. Each one is priced, and cached input is priced separately.
-- **Prices** come from your own `pricing.models` first, then OpenRouter's live list, then LiteLLM's public
-  price table. A copy of that table ships with MUYAH-CODE and is refreshed once a day.
-- **Self-hosted is free:** a model on your machine, your network or your own tunnel (Colab) costs $0.
-- **Never guessed:** a model found in no price list shows as "unpriced".
-- **Where it shows:** the status line shows what the session has cost so far, and the line after each turn shows that turn's cost.
-- **Budgets:** `{"budget": {"session_usd": 5, "daily_usd": 20}}`.
-  - At 80% of a limit you get a warning.
-  - At 100% the agent asks before sending the next request. With `-p`, it stops instead; `--max-cost 2` sets a session limit there.
-
-```json
-{"pricing": {"models": {"my-finetune": {"input": 0.5, "output": 1.5, "cache_read": 0.05}}}}   // $ per 1M tokens
-```
-
-**Several models working together.** Each part of the work can use the model that fits it. Anything not set
-uses your main model.
-
-```json
-{
-  "models": {
-    "explore":   "groq:llama-3.1-8b-instant",   // the explore sub-agent: many cheap reads
-    "edit":      "deepseek-chat",                // the editor sub-agent applies changes the main model describes
-    "summarize": "gemini:gemini-2.5-flash",      // compaction, learning, web page summaries
-    "strong":    "anthropic:claude-opus-5"       // where the main model escalates when it is stuck
-  },
-  "fallback": ["openrouter"]                     // answers when your provider fails (rate limit, 5xx, network)
-}
-```
-
-- **What a model can be:** a saved profile, `provider:model` (that provider's own saved key is used; your main
-  key is never sent to another provider), or a bare model id on your main endpoint.
-- **Sub-agent definitions** can set `model:`. Claude Code's `opus`/`sonnet`/`haiku`/`inherit` also work. The
-  Agent tool can also pick a model role per call.
-- **Escalation happens only on hard failure signals:**
-  - two malformed tool calls;
-  - the same edit failing twice;
-  - the same failing command twice;
-  - four steps in a row where every call failed.
-
-  When one of these happens, the next bigger model takes over (explore/edit → main → strong) and sees the
-  failed attempts. The terminal says so, e.g. `Escalated explore (llama-3.1-8b) → main (…): two malformed
-  tool calls`. An escalation lasts for the rest of that turn.
-- **Fallback** switches for that one request only, and it is always announced. `/status` lists the roles and
-  the fallbacks.
-
-**Lean mode for small models.** `"prompt_profile": "auto"` (the default) switches to lean when the context
-window is under 32k, or when a model of 14B or fewer runs on your own machine.
-- **What changes:** a ~400-token prompt and the six core tools with short descriptions (Read, Edit, Write,
-  Bash, Grep, Glob). Everything else (web, todos, skills, sub-agents, MCP) is one `find_tools` call away.
-- **The saving:** each request's fixed cost drops from about 4,400 to 1,200 tokens.
-- **Compare the two** on your model with `muyah eval --prompt lean` and `--prompt full`.
-
-**Hooks** follow Claude Code's format: `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `Stop` and more.
-- The hook gets JSON on stdin.
-- Exit code `2` blocks the action.
-- To modify the action, print JSON such as `{"hookSpecificOutput": {"permissionDecision": "deny"}}`.
-
-**MCP servers** are configured in `.mcp.json` or `~/.muyah/mcp.json` (stdio or HTTP). Their tools appear as `mcp__<server>__<tool>`.
-
-## Light on your machine
-
-Measured with `python scripts/bench_resources.py --others` on Windows 11 (12 CPUs, 32 GB). **Startup** is the
-wall time of `--version`. **Ready** is the time to the first prompt; the pseudo-terminal's own 3.1 s is
-subtracted. **Idle** is the prompt sitting still, sampled over 5 s after start-up settled.
-
-The 50-step columns come from a scripted 50-step session with reads, searches, commands and streamed replies,
-run against a local fake model. They measure the CLI itself, not the model. Other CLIs can't be pointed at that
-fake model without their accounts, so only their startup and idle numbers are shown. Their first screen may be a
-login screen.
-
-| CLI | startup (s) | ready (s) | idle RAM (MB) | idle CPU % | 50-step peak RAM (MB) | 50-step CPU % |
-|---|---|---|---|---|---|---|
-| MUYAH-CODE 1.0.0 | 0.11 | 1.84 | 66 | 0.0 | 75 | 15 |
-| Claude Code 2.1.278 | 0.08 | – | 230 | 0.6 | – | – |
-| Codex CLI 0.130.0 | 0.17 | – | 106 | 0.0 | – | – |
-| Gemini CLI 0.60.0 | 2.09 | – | 391 | 0.0 | – | – |
-| OpenCode 1.18.31 | 0.94 | – | 795 | 8.4 | – | – |
-
-CI runs the same script on every push and fails if MUYAH-CODE goes over its ceilings (4 s startup, 250 MB
-idle, 350 MB during a session).
-
-## Development
-
-```bash
-pip install -e ".[dev]"
-python -m pytest -q          # 188 tests: parser, tools, permissions, context, learning, hooks, full agent loop
-python -m ruff check .       #   against a scripted fake OpenAI server, headless CLI, REPL, eval harness
-```
-
-**Layout:**
-- `muyah_code/llm`: client and text tool-call parser.
-- `tools/`: the built-in tools.
-- `agent/`: the loop, context management and prompts.
-- `permissions.py`, `hooks.py`, `session.py`, `subagents.py`
-- `learning/`: lessons and eval.
-- `ui/`: terminal, REPL and commands.
-- `events.py` + `viz/`: the event stream and the live/replay web view (`scripts/make_viz_demo.py` records the demo).
-- `mcp/`
-- `backends.py` / `serve.py`: model servers.
-- `backend/`: the server notebook.
-- `evals/`: benchmark tasks.
-
-## Roadmap
-
-- **Self-training loop:** MUYAH-CODE's session transcripts and lessons are a record of its own successful work. Once there's enough of it, [Soup](https://github.com/MakazhanAlpamys/Soup) can fine-tune a LoRA on that data, and `muyah serve soup` can serve the result.
-- More eval tasks, per language.
+MIT licensed.

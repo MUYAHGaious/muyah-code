@@ -5,6 +5,33 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **One-line install that puts `muyah` on your PATH.**
+  - Run `install.ps1` (Windows) or `install.sh` (macOS/Linux). It uses uv or pipx when you have one. Otherwise it uses pip on Windows, or a private virtual environment on macOS/Linux.
+  - Before this, `pip install --user` could leave `muyah` "not recognized".
+- **`muyah path`** (also `python -m muyah_code path`) adds the launcher's folder to your user PATH.
+  - Windows: the user PATH in the registry. macOS/Linux: one marked line in your shell start-up files.
+  - Starting with `python -m muyah_code` while `muyah` isn't on PATH shows a one-line hint.
+- **The README is rebuilt around the problems MUYAH-CODE solves**, each with a screenshot of the real UI:
+  - deletes it never runs;
+  - rewind;
+  - auto mode that still asks for risky actions;
+  - ask and plan mode;
+  - checking its own work;
+  - cost;
+  - the live view;
+  - any provider;
+  - memory use.
+
+  The full reference moved to `docs/GUIDE.md`.
+- **Sharper images and video:**
+  - screenshots are drawn at 2×, with box borders drawn as shapes, so they join up with no gaps;
+  - a new terminal demo (`scripts/record_cli_demo.py`) is the real CLI in a pseudo-console;
+  - the live view is re-recorded at 2× from lossless frames.
+
+  The README uses animated WebP (sharp, full colour: 1.8 MB where the GIF was 48 MB), with MP4s in `docs/videos`.
+- **Plan approval asks right under the plan** ("Would you like to proceed?"), as Claude Code does. Choosing to keep planning asks what should change.
+- **The delete panel shows paths as you'd say them:** relative inside the project, `~` for your home folder.
+
 - **Why a change ran without asking** is tucked under the tool, for example `Auto-approved · auto mode (risky actions still ask)`, `Auto-approved · edit mode` or the saved rule that allowed it.
 - **Approvals look calm:**
   - a plain green ✓ (the heavy check mark showed as a purple emoji in Windows Terminal);

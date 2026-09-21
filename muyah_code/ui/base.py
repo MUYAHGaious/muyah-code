@@ -44,6 +44,11 @@ class UI:
     def show_plan(self, plan: str) -> None:   # plan mode: the plan, before the user decides
         self.info(plan)
 
+    def approve_plan(self, plan: str, options: list[str]) -> str:
+        """Show the plan and ask how to go on; returns the chosen option, or what the user typed instead."""
+        self.show_plan(plan)
+        return self.ask_user("Would you like to proceed?", options)
+
     def compact_finished(self, summary: str) -> None:   # what it did, one line
         self.info(summary)
 

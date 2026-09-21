@@ -14,6 +14,7 @@
     muyah usage [--all]           cost, tokens and cache hits today and in the last 7 days
     muyah acp                     run as an ACP agent inside your editor (Zed, JetBrains, Neovim)
     muyah viz [--replay [id]]     watch this folder's session live in your browser, or replay one
+    muyah path                    make `muyah` work from any folder (adds it to your PATH)
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ from pathlib import Path
 
 from muyah_code import __version__
 
-SUBCOMMANDS = {"login", "logout", "connect", "serve", "doctor", "eval", "config", "sessions", "viz", "usage", "acp"}
+SUBCOMMANDS = {"login", "logout", "connect", "serve", "doctor", "eval", "config", "sessions", "viz", "usage", "acp", "path"}
 PICK = "__pick__"  # `--resume` given without an id
 
 
@@ -252,6 +253,11 @@ def _interactive(cfg, cwd, args, prompt: str | None) -> int:
         args.resume = pick_session(sessions_dir(cfg.home, cfg.project_root), Prompter())
         if args.resume is None:
             console.print("[dim]No earlier conversations in this folder - starting a new one.[/]")
+    from muyah_code.pathfix import startup_hint
+
+    hint = startup_hint()
+    if hint:
+        console.print(f"[dim]{hint}[/]")
     ui = TerminalUI(console, show_reasoning=args.show_reasoning)
     try:
         with console.status("Starting MUYAH-CODE..."):
@@ -346,6 +352,11 @@ def _subcommand(name: str, argv: list[str]) -> int:
         from muyah_code.acp import serve
 
         return serve()
+
+    if name == "path":
+        from muyah_code.pathfix import fix
+
+        return fix(console)
 
     if name == "usage":
         from muyah_code.ui.commands import render_usage

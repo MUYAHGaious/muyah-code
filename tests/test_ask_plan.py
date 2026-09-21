@@ -20,8 +20,9 @@ class PlanUI(RecUI):
         self.plans = []
         self.questions = []
 
-    def show_plan(self, plan):
+    def approve_plan(self, plan, options):
         self.plans.append(plan)
+        return self.ask_user("Would you like to proceed?", options)
 
     def ask_user(self, question, options):
         self.questions.append((question, options))

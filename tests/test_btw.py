@@ -233,3 +233,22 @@ def test_answers_are_not_a_rainbow():
     text = out.getvalue()
     assert "\x1b[36m" not in text and "\x1b[35m" not in text      # no cyan numbers, no magenta headings
     assert "\x1b[1mProgress so far" in text                       # headings: bold, plain white
+
+
+def test_delete_handoff_shows_paths_as_you_would_say_them(tmp_path):
+    from pathlib import Path
+
+    out = io.StringIO()
+    ui = TerminalUI(Console(file=out, width=120))
+    ui.cwd = tmp_path
+    (tmp_path / "build").mkdir()
+    import muyah_code.ui.terminal as terminal
+
+    original, terminal._copy_to_clipboard = terminal._copy_to_clipboard, lambda text: False
+    try:
+        ui.handoff("rm -rf build", [str(tmp_path / "build"), str(Path.home() / "elsewhere" / "x")])
+    finally:
+        terminal._copy_to_clipboard = original
+    text = out.getvalue()
+    assert "  build" in text and str(tmp_path) not in text                 # inside the project: relative
+    assert "~" in text and str(Path.home()) not in text                      # your home folder: ~
