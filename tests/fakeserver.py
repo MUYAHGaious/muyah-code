@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 def reply(content: str = "", tool_calls: list[dict] | None = None, finish: str | None = None,
           prompt_tokens: int | None = None, think: float = 0.0) -> dict:
-    """tool_calls: [{"name": "Read", "arguments": {...}}]. think: seconds to wait before streaming (demos)."""
+    """tool_calls: [{"name": "Read", "arguments": {...}, "extra": {provider fields}}]. think: seconds to wait before streaming (demos)."""
     return {"content": content, "tool_calls": tool_calls or [], "finish": finish, "prompt_tokens": prompt_tokens,
             "think": think}
 
@@ -74,7 +74,8 @@ class FakeOpenAI:
                     return
                 calls = [{"id": "call_" + uuid.uuid4().hex[:8], "type": "function",
                           "function": {"name": c["name"], "arguments": c["arguments"] if isinstance(c["arguments"], str)
-                                       else json.dumps(c["arguments"])}} for c in step["tool_calls"]]
+                                       else json.dumps(c["arguments"])}, **c.get("extra", {})}
+                         for c in step["tool_calls"]]
                 finish = step["finish"] or ("tool_calls" if calls else "stop")
                 # realistic default: ~4 chars per token over the whole request
                 ptoks = step["prompt_tokens"] or max(1, len(json.dumps(body["messages"])) // 4)
@@ -101,7 +102,8 @@ class FakeOpenAI:
                         args = c["function"]["arguments"]
                         send({**base, "choices": [{"index": 0, "delta": {"tool_calls": [
                             {"index": idx, "id": c["id"], "type": "function",
-                             "function": {"name": c["function"]["name"], "arguments": args[: len(args) // 2]}}]},
+                             "function": {"name": c["function"]["name"], "arguments": args[: len(args) // 2]},
+                             **{k: v for k, v in c.items() if k not in ("id", "type", "function")}}]},
                             "finish_reason": None}]})
                         send({**base, "choices": [{"index": 0, "delta": {"tool_calls": [
                             {"index": idx, "function": {"arguments": args[len(args) // 2:]}}]},

@@ -17,9 +17,29 @@ import httpx
 import openai
 from openai import OpenAI
 
-from muyah_code.llm.models import is_billing_error, is_context_overflow
+from muyah_code.llm.models import is_billing_error, is_context_overflow, is_tools_unsupported
 
 THINK_RE = re.compile(r"<think>([\s\S]*?)(?:</think>|$)")
+
+
+ENDPOINT_KEY = "_endpoint"  # on assistant messages whose tool calls carry provider fields
+
+
+def _extra_fields(obj) -> dict:
+    """Fields the OpenAI SDK model did not define (the server's own additions), without empty values."""
+    extra = getattr(obj, "model_extra", None) or {}
+    return {k: v for k, v in extra.items() if v is not None}
+
+
+def _merge(into: dict, new: dict) -> None:
+    """Merge streamed pieces of provider fields (nested dicts merge; strings from later chunks append)."""
+    for k, v in new.items():
+        if isinstance(v, dict) and isinstance(into.get(k), dict):
+            _merge(into[k], v)
+        elif isinstance(v, str) and isinstance(into.get(k), str) and into[k] != v:
+            into[k] += v
+        else:
+            into[k] = v
 
 
 class LLMError(Exception):
@@ -41,6 +61,9 @@ class ToolCall:
     id: str = field(default_factory=lambda: "call_" + uuid.uuid4().hex[:12])
     raw_arguments: str = ""
     parse_error: str | None = None
+    # provider fields to send back unchanged with this call, e.g. Gemini's
+    # {"extra_content": {"google": {"thought_signature": "..."}}} (required for its next request)
+    extra: dict = field(default_factory=dict)
 
     def signature(self) -> str:
         return self.name + ":" + json.dumps(self.arguments, sort_keys=True, default=str)
@@ -68,6 +91,7 @@ class AssistantMessage:
                         "name": tc.name,
                         "arguments": tc.raw_arguments or json.dumps(tc.arguments or {}),
                     },
+                    **tc.extra,
                 }
                 for tc in self.tool_calls
             ]
@@ -248,8 +272,7 @@ class LLMClient:
         max_tokens: int | None = None,
         temperature: float | None = None,
     ) -> AssistantMessage:
-        # drop provider-private keys (e.g. "_anthropic_content") that other servers would reject
-        messages = [{k: v for k, v in m.items() if not k.startswith("_")} for m in messages]
+        messages = [self._outgoing(m) for m in messages]
         kwargs: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
@@ -284,7 +307,7 @@ class LLMClient:
                         shrunk = True
                         continue
                     raise ContextOverflowError(self._describe(e)) from e
-                if tools and ("tool" in msg or "function" in msg):
+                if tools and is_tools_unsupported(msg):
                     raise ToolsUnsupportedError(str(e)) from e
                 raise LLMError(self._describe(e)) from e
             except openai.NotFoundError as e:
@@ -323,12 +346,12 @@ class LLMClient:
         for tc in msg.tool_calls or []:
             args, err = parse_arguments(tc.function.arguments)
             call = ToolCall(name=tc.function.name, arguments=args,
-                            raw_arguments=tc.function.arguments or "", parse_error=err)
+                            raw_arguments=tc.function.arguments or "", parse_error=err, extra=_extra_fields(tc))
             if tc.id:
                 call.id = tc.id
             calls.append(call)
         usage = resp.usage.model_dump() if resp.usage else {}
-        return AssistantMessage(visible, reasoning, calls, choice.finish_reason, usage)
+        return self._tag(AssistantMessage(visible, reasoning, calls, choice.finish_reason, usage))
 
     def _chat_stream(self, kwargs, on_text, on_reasoning) -> AssistantMessage:
         kwargs = {**kwargs, "stream": True, "stream_options": {"include_usage": True}}
@@ -376,9 +399,10 @@ class LLMClient:
                     filt.feed(delta.content)
                 for tcd in delta.tool_calls or []:
                     idx = tcd.index if tcd.index is not None else len(pending)
-                    slot = pending.setdefault(idx, {"id": None, "name": "", "args": ""})
+                    slot = pending.setdefault(idx, {"id": None, "name": "", "args": "", "extra": {}})
                     if tcd.id:
                         slot["id"] = tcd.id
+                    _merge(slot["extra"], _extra_fields(tcd))
                     if tcd.function:
                         if tcd.function.name:
                             slot["name"] += tcd.function.name
@@ -396,13 +420,30 @@ class LLMClient:
             if not slot["name"]:
                 continue
             args, err = parse_arguments(slot["args"])
-            tc = ToolCall(name=slot["name"], arguments=args, raw_arguments=slot["args"], parse_error=err)
+            tc = ToolCall(name=slot["name"], arguments=args, raw_arguments=slot["args"], parse_error=err,
+                          extra=slot["extra"])
             if slot["id"]:
                 tc.id = slot["id"]
             calls.append(tc)
-        return AssistantMessage("".join(text_parts).strip(), "".join(reasoning_parts), calls, finish, usage)
+        return self._tag(AssistantMessage("".join(text_parts).strip(), "".join(reasoning_parts), calls, finish,
+                                          usage))
 
     # ------------------------------------------------------------------ helpers
+
+    def _tag(self, msg: AssistantMessage) -> AssistantMessage:
+        """Remember which endpoint produced provider-specific tool-call fields (see `_outgoing`)."""
+        if any(tc.extra for tc in msg.tool_calls):
+            msg.raw[ENDPOINT_KEY] = self.base_url
+        return msg
+
+    def _outgoing(self, message: dict) -> dict:
+        """The message as this server should see it: without provider-private keys ("_..."), and without
+        another provider's tool-call fields (after /provider or /model switches mid-conversation)."""
+        out = {k: v for k, v in message.items() if not k.startswith("_")}
+        if out.get("tool_calls") and message.get(ENDPOINT_KEY) != self.base_url:
+            out["tool_calls"] = [{k: v for k, v in tc.items() if k in ("id", "type", "function")}
+                                 for tc in out["tool_calls"]]
+        return out
 
     def _describe(self, e: Exception) -> str:
         status = getattr(e, "status_code", None)

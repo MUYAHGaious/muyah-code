@@ -5,6 +5,7 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **Fix: Gemini tool calls.** Gemini attaches a *thought signature* to every tool call and rejects the next request without it ("Function call is missing a thought_signature"). MUYAH-CODE now sends provider fields on tool calls back unchanged, and drops them if you switch to another provider mid-conversation. That error also no longer switches the session to the text tool protocol: only real "no tool support" errors do.
 - **Watch it think: `/viz`** opens a live view of the agent in your browser. It shows prompt → context → model, streaming tokens, tool calls and results, sub-agents, recalled lessons, the context window by part, and a timeline. **`muyah viz [id]`** replays any recorded session, with speed control and seeking. It is served on 127.0.0.1 with a random token and has no external requests.
 - **`muyah --resume`** opens an arrow-key list of this folder's recent conversations (title, age, message count). The one you pick opens with its prompts, tool calls and answers back on screen. `/resume` without an id does the same inside a session, and `muyah --resume <id>` still works.
 - **Workspace trust check:** the first time you open a folder, MUYAH-CODE asks whether you trust it before loading anything from it. That folder's hooks and MCP servers can run commands, so they wait for your answer.

@@ -78,3 +78,26 @@ def is_billing_error(message: str) -> bool:
     """The account cannot pay (no credits / quota). Retrying or switching models will not help."""
     low = message.lower()
     return any(p in low for p in BILLING_PATTERNS)
+
+
+# The server cannot do native tool calling at all (so the text tool protocol is the way forward).
+TOOLS_UNSUPPORTED_PATTERNS = ("enable-auto-tool-choice", "does not support tools", "tools is not supported",
+                              "tools are not supported", "tool use is not supported", "tool calling is not supported",
+                              "function calling is not enabled", "function calling is not supported",
+                              "unrecognized request argument supplied: tools", "tool_choice is not supported")
+# Errors about the conversation's own tool calls: the server supports tools, a request was malformed.
+TOOL_REQUEST_PATTERNS = ("thought_signature", "thought signature", "function call is missing", "tool_call_id",
+                         "tool call id", "must be followed by tool", "function response", "functionresponse",
+                         "tool_use_id", "tool_result")
+UNSUPPORTED_WORDS = ("not support", "unsupported", "not enabled", "unrecognized", "unknown", "not allowed",
+                     "not permitted", "extra inputs")
+
+
+def is_tools_unsupported(message: str) -> bool:
+    """A 400 that means "this server has no native tool calling", as opposed to a malformed tool request."""
+    low = message.lower()
+    if any(p in low for p in TOOL_REQUEST_PATTERNS):
+        return False
+    if any(p in low for p in TOOLS_UNSUPPORTED_PATTERNS):
+        return True
+    return ("tool" in low or "function" in low) and any(w in low for w in UNSUPPORTED_WORDS)

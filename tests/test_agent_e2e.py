@@ -298,3 +298,50 @@ def test_cli_headless(project, fmt, isolated_home):
         assert data["result"] == "There is a .muyah folder." and data["status"] == "ok" and data["tool_calls"] == 1
     else:
         assert proc.stdout.strip() == "There is a .muyah folder."
+
+
+GEMINI_SIG = {"extra_content": {"google": {"thought_signature": "EpgFCpUF-signature"}}}
+GEMINI_ERROR = ("Function call is missing a thought_signature in functionCall parts. This is required for tools to "
+                "work correctly. Additional data, function call `default_api:LS` , position 6.")
+
+
+def test_provider_tool_call_fields_are_sent_back_gemini_thought_signature(project):
+    # Gemini attaches a thought signature to each tool call and rejects the next request without it
+    script = [reply("", [{"name": "Glob", "arguments": {"pattern": "*"}, "extra": GEMINI_SIG}]), reply("Nothing.")]
+    for stream in (True, False):
+        with FakeOpenAI(list(script)) as srv:
+            app = make_app(srv, project)
+            app.llm.stream = stream
+            res = app.run_prompt("list files")
+        assert res.status == "ok", stream
+        sent = [m for m in srv.requests[1]["messages"] if m.get("tool_calls")][0]["tool_calls"][0]
+        assert sent["extra_content"] == GEMINI_SIG["extra_content"], stream
+        assert not any(k.startswith("_") for m in srv.requests[1]["messages"] for k in m)
+
+
+def test_provider_tool_call_fields_are_dropped_for_another_endpoint(project):
+    from muyah_code.llm.client import ENDPOINT_KEY
+
+    with FakeOpenAI([]) as srv:
+        app = make_app(srv, project)
+        msg = {"role": "assistant", "content": "", ENDPOINT_KEY: "https://generativelanguage.googleapis.com/v1beta/openai",
+               "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "LS", "arguments": "{}"},
+                               **GEMINI_SIG}]}
+        out = app.llm._outgoing(msg)
+    assert out["tool_calls"] == [{"id": "c1", "type": "function", "function": {"name": "LS", "arguments": "{}"}}]
+    assert ENDPOINT_KEY not in out
+
+
+def test_malformed_tool_request_is_not_mistaken_for_no_tool_support(project):
+    from muyah_code.llm.models import is_tools_unsupported
+
+    assert not is_tools_unsupported(GEMINI_ERROR)
+    assert is_tools_unsupported('"auto" tool choice requires --enable-auto-tool-choice and --tool-call-parser')
+    assert is_tools_unsupported("registry.ollama.ai/library/gemma:2b does not support tools")
+    script = [reply("", [{"name": "Glob", "arguments": {"pattern": "*"}}]), error(400, GEMINI_ERROR)]
+    with FakeOpenAI(script) as srv:
+        app = make_app(srv, project)
+        res = app.run_prompt("list files")
+    assert res.status == "error"
+    assert not app.agent.text_mode       # it stays on native tool calling
+    assert len(srv.requests) == 2        # and does not retry the same broken request in text mode
