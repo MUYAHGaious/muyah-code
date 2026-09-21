@@ -103,7 +103,7 @@ def test_input_field_has_rule_with_folder_and_status_line(project):
     assert set(lines[at - 1].strip()) == {"─"} and len(lines[at - 1].strip()) >= 70   # rule above the input
     below = [ln for ln in lines[at + 1:] if ln.strip()]
     assert set(below[0].strip()) == {"─"}                                          # rule below the input
-    assert "accept edits on" in below[1] and "shift+tab to cycle" in below[1]       # then the status line
+    assert "edit" in below[1] and "accepts file edits" in below[1] and "(shift+tab)" in below[1]  # status line
 
 
 def test_double_ctrl_c_exits_without_typing_exit(project):

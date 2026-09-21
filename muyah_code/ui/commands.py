@@ -64,7 +64,7 @@ class CommandRouter:
             Command("logout", "Remove a provider's saved API key", self.logout, "<provider>"),
             Command("profile", "Show or switch backend profile", self.profile, "[name]"),
             Command("connect", "Point at a new endpoint (URL) and pick a model", self.connect, "<url> [model]"),
-            Command("mode", "Permission mode: default | acceptEdits | plan | bypassPermissions", self.mode, "[mode]"),
+            Command("mode", "Permission mode: plan | edit | manual | auto (or bypassPermissions)", self.mode, "[mode]"),
             Command("plan", "Toggle plan mode (read-only exploration, then a plan)", self.plan),
             Command("undo", "Revert the file changes of the last turn", self.undo),
             Command("todos", "Show the current todo list", self.todos),

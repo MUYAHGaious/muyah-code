@@ -21,14 +21,20 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
+from muyah_code.risk import risky_command
 from muyah_code.tools.base import EXEC, META, NETWORK, READ, WRITE, Tool, ToolContext
 from muyah_code.tools.search import matches_glob
 
-MODES = ("default", "acceptEdits", "plan", "bypassPermissions")
+MODES = ("default", "acceptEdits", "plan", "auto", "bypassPermissions")
+# Shift+Tab order. bypassPermissions (no checks at all) is deliberately not in it: only --mode sets it.
+CYCLE = ("plan", "acceptEdits", "default", "auto")
+MODE_NAMES = {"default": "manual", "acceptEdits": "edit", "plan": "plan", "auto": "auto",
+              "bypassPermissions": "bypass"}
 MODE_ALIASES = {
     "default": "default", "ask": "default", "normal": "default", "manual": "default",
     "acceptedits": "acceptEdits", "accept-edits": "acceptEdits", "auto-edit": "acceptEdits", "edits": "acceptEdits",
-    "plan": "plan", "readonly": "plan", "read-only": "plan",
+    "plan": "plan", "readonly": "plan", "read-only": "plan", "edit": "acceptEdits",
+    "auto": "auto", "automatic": "auto",
     "bypasspermissions": "bypassPermissions", "bypass": "bypassPermissions", "yolo": "bypassPermissions",
 }
 PATH_TOOLS = {"Read", "Write", "Edit", "LS", "Glob", "Grep"}
@@ -182,9 +188,12 @@ class PermissionManager:
         return self.mode
 
     def cycle_mode(self) -> str:
-        order = ["default", "acceptEdits", "plan"]
-        self.mode = order[(order.index(self.mode) + 1) % len(order)] if self.mode in order else "default"
+        """Shift+Tab: plan -> edit -> manual -> auto -> plan."""
+        self.mode = CYCLE[(CYCLE.index(self.mode) + 1) % len(CYCLE)] if self.mode in CYCLE else CYCLE[0]
         return self.mode
+
+    def _auto(self, tool: Tool, args: dict, subject: str, read_only: bool) -> Decision:
+        return _auto_decision(tool, args, subject, read_only, self.project_root)
 
     def _find(self, rules: list[Rule], name: str, subject: str) -> Rule | None:
         return next((r for r in rules if r.matches(name, subject, self.project_root)), None)
@@ -210,6 +219,8 @@ class PermissionManager:
 
         if self.mode == "bypassPermissions":
             return Decision("allow", "bypassPermissions mode")
+        if self.mode == "auto":
+            return self._auto(tool, args, subject, read_only)
         if tool.kind in (READ, META) or read_only:
             return Decision("allow", "read-only")
         if tool.kind == NETWORK and self.mode == "plan":
@@ -222,6 +233,23 @@ class PermissionManager:
         return Decision("ask", KIND_REASON.get(tool.kind, f"{tool.kind} action"))
 
 
+def _auto_decision(tool: Tool, args: dict, subject: str, read_only: bool, project_root: Path) -> Decision:
+    """Auto mode: do the work without asking, except for actions that are hard to undo."""
+    if tool.kind in (READ, META) or read_only:
+        return Decision("allow", "read-only")
+    if tool.name == "Bash":
+        why = risky_command(args.get("command", ""))
+        return Decision("ask", f"auto mode still asks: this {why}") if why else Decision("allow", "auto mode")
+    if tool.kind == WRITE:
+        target = Path(subject) if subject else None
+        if target is not None and _is_within(target, project_root):
+            return Decision("allow", "auto mode")
+        return Decision("ask", "auto mode still asks: the file is outside the project")
+    if tool.name.startswith("mcp__"):
+        return Decision("ask", "auto mode still asks: this MCP tool can change things outside this project")
+    return Decision("allow", "auto mode")
+
+
 def _is_within(path: Path, root: Path) -> bool:
     try:
         path.resolve().relative_to(root)
@@ -230,4 +258,4 @@ def _is_within(path: Path, root: Path) -> bool:
         return False
 
 
-__all__ = ["MODES", "Decision", "PermissionManager", "Rule", "normalize_mode", "suggest_rule"]
+__all__ = ["CYCLE", "MODE_NAMES", "MODES", "Decision", "PermissionManager", "Rule", "normalize_mode", "suggest_rule"]

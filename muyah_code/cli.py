@@ -67,7 +67,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--profile", help="Backend profile from settings")
     p.add_argument("--context-window", type=int, help="Override the model context window (tokens)")
     p.add_argument("--mode", "--permission-mode", dest="mode",
-                   help="default | acceptEdits | plan | bypassPermissions")
+                   help="plan | edit | manual | auto | bypassPermissions (manual = default: asks before changes)")
     p.add_argument("--allowedTools", "--allowed-tools", dest="allowed", action="append", default=[],
                    help='Allow rules, e.g. "Bash(git *)" "Edit" (repeatable or comma-separated)')
     p.add_argument("--disallowedTools", "--disallowed-tools", dest="disallowed", action="append", default=[],

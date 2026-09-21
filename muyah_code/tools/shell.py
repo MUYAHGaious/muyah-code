@@ -148,9 +148,23 @@ _SAFE_SUBCOMMANDS = {
 _UNSAFE_GIT_FLAGS = {"--output", "-o", "--delete", "-d", "-D", "-m", "-M", "--set-upstream-to", "--unset",
                      "--add", "--replace-all", "--global", "--system"}
 _META = re.compile(r"[;&|<>`$()]|\n")
+_WRITES = re.compile(r"[<>`]|\$\(|\n")          # redirects, command substitution, multi-line scripts
+_CHAIN = re.compile(r"\s*(?:&&|\|\||;|\|)\s*")  # a && b, a || b, a ; b, a | b
 
 
 def is_read_only_command(command: str) -> bool:
+    """True if every part of the command only reads (`python --version && pip --version` is fine;
+    redirects, subshells and anything not on the known-safe list are not)."""
+    cmd = command.strip()
+    if not cmd or _WRITES.search(cmd):
+        return False
+    parts = [p for p in _CHAIN.split(cmd) if p.strip()]
+    if len(parts) > 1:
+        return all(_is_read_only_simple(p) for p in parts)
+    return _is_read_only_simple(cmd)
+
+
+def _is_read_only_simple(command: str) -> bool:
     cmd = command.strip()
     if not cmd or _META.search(cmd):
         return False

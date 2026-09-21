@@ -28,10 +28,11 @@ from muyah_code.ui.terminal import ReplayConsole, TerminalUI
 from muyah_code.ui.theme import theme
 
 MODE_LABEL = {
-    "default": "",
-    "acceptEdits": "⏵⏵ accept edits on",
-    "plan": "⏸ plan mode on",
-    "bypassPermissions": "⚠ bypass permissions on",
+    "plan": ("⏸ plan", "read-only: explores and proposes a plan"),
+    "acceptEdits": ("⏵ edit", "accepts file edits, asks before commands"),
+    "default": ("● manual", "asks before edits and commands"),
+    "auto": ("⏵⏵ auto", "runs on its own, asks only for risky actions"),
+    "bypassPermissions": ("⚠ bypass", "no permission checks at all"),
 }
 EXIT_WINDOW = 2.0  # seconds between two Ctrl+C presses to exit
 RESIZE_POLL = 0.1     # how often the prompt checks the terminal width
@@ -160,11 +161,9 @@ class Repl:
         rule = [("fg:ansibrightblack", "─" * max(1, self._cols() - 1) + "\n")]
         if time.monotonic() - self._last_interrupt < EXIT_WINDOW:
             return rule + [(f"fg:{t.accent}", "  Press Ctrl+C again to exit")]
-        mode = MODE_LABEL.get(self.app.permissions.mode, "")
-        if mode:
-            status = [("", "  "), (f"fg:{t.accent} bold", mode), ("fg:ansibrightblack", " (shift+tab to cycle)")]
-        else:
-            status = [("fg:ansibrightblack", "  / for commands · shift+tab for modes")]
+        label, what = MODE_LABEL.get(self.app.permissions.mode, (self.app.permissions.mode, ""))
+        style = f"fg:{t.warn} bold" if self.app.permissions.mode == "bypassPermissions" else f"fg:{t.accent} bold"
+        status = [("", "  "), (style, label), ("fg:ansibrightblack", f" · {what} (shift+tab)")]
         status.append(("fg:ansibrightblack", f" · ctx {self._ctx_pct()}%"))
         return rule + status
 
