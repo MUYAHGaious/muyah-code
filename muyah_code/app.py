@@ -216,6 +216,7 @@ class App:
         if history:
             self.agent.load_history(history)
         self.emit_session()
+        self.emit_tree()
 
         if self.hooks.has("SessionStart"):
             out = self.hooks.run("SessionStart", {"session_id": self.session_id, "source":
@@ -387,6 +388,25 @@ class App:
         return [{"name": name, "status": status,
                  "tools": [t.get("name") for t in (self.mcp.clients[name].tools if name in self.mcp.clients else [])]}
                 for name, status in self.mcp.status.items()]
+
+    TREE_CAP = 4000
+    _tree_sig = ""
+
+    def emit_tree(self) -> None:
+        """The project's files (git-tracked + untracked, honoring .gitignore) for the live view's explorer.
+        Sent only when the listing changed, so recordings stay small."""
+        from muyah_code.tools.search import list_files
+
+        try:
+            paths = sorted({p.relative_to(self.cwd).as_posix() for p in list_files(self.cwd)
+                            if p.is_file() or not p.exists()})
+        except (OSError, ValueError):
+            return
+        sig = f"{len(paths)}:{hash(tuple(paths))}"
+        if sig == self._tree_sig:
+            return
+        self._tree_sig = sig
+        self.events.emit("tree", files=paths[:self.TREE_CAP], total=len(paths))
 
     def emit_session(self) -> None:
         from muyah_code.providers import BY_ID
@@ -620,6 +640,7 @@ class App:
         self.agent.escalation.reset()
         self.rewind.begin_turn(prompt, start_index)   # snapshot before anything in this turn changes
         result = self.agent.run(self.expand_mentions(prompt), images=self.mention_images(prompt))
+        self.emit_tree()          # files the turn created or removed (commands included) show up in the explorer
         self.last_turn = TurnRecord(prompt, result, [x.id for x in self._current_lessons], start_index)
         if self.learning_enabled and self.cfg.get("learning.reflect", True) and \
                 Reflector.worth_reflecting(result.signals, result.status):

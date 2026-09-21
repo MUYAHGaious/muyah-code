@@ -44,6 +44,21 @@ RESIZE_POLL = 0.1     # how often the prompt checks the terminal width
 RESIZE_SETTLE = 0.3   # redraw once the width has stayed the same this long (user stopped dragging)
 _RESIZED = object()   # prompt result meaning "the terminal was resized; redraw and ask again"
 MENU_ROWS = 8      # rows the "/" and "@" menus may use
+HISTORY_LIMIT = 1000   # ↑ goes back through at most this many earlier prompts (all projects)
+
+
+class RecentHistory(FileHistory):
+    """Your earlier prompts for ↑/↓, the newest HISTORY_LIMIT only (the file itself keeps growing)."""
+
+    def load_history_strings(self):
+        for i, item in enumerate(super().load_history_strings()):   # newest first
+            if i >= HISTORY_LIMIT:
+                return
+            yield item
+
+    def recent(self, n: int = HISTORY_LIMIT) -> list[str]:
+        """Oldest to newest, for ↑ while it works."""
+        return list(reversed(list(self.load_history_strings())[:n]))
 PASTE_LINES = 8    # a paste longer than this (or PASTE_CHARS) shows as "[Pasted text #1 +245 lines]"
 PASTE_CHARS = 1200
 
@@ -161,7 +176,7 @@ class Repl:
             else:
                 event.app.exit(exception=KeyboardInterrupt())
 
-        history = FileHistory(str(app.home / "history"))
+        history = RecentHistory(str(app.home / "history"))
         t = theme()
         style = Style.from_dict({
             "completion-menu.completion": "bg:default fg:default",
@@ -269,14 +284,18 @@ class Repl:
         status = [("", "  "), (style, label), ("fg:ansibrightblack", f" · {what} (shift+tab)")]
         if windows_dictation_available():
             status.append(("fg:ansibrightblack", " · ctrl+space: speak"))
-        status.append(("fg:ansibrightblack", f" · ctx {self._ctx_pct()}%"))
-        spent = self._spent()
-        if spent:
-            status.append(("fg:ansibrightblack", f" · {spent}"))
         viz = getattr(self.app, "viz", None)
         if viz is not None and viz.running:
             status.append((f"fg:{t.accent}", " · ● live view on (/viz reopens it)"))
-        return rule + status
+        # context use (and cost) at the bottom right, like Claude Code
+        spent = self._spent()
+        right = f"{spent} · " if spent else ""
+        right += f"ctx {self._ctx_pct()}%"
+        used = sum(len(text) for _, text in status)
+        gap = self._cols() - 1 - used - len(right) - 1
+        if gap < 2:           # too narrow: keep it on the same line, right after the rest
+            return rule + status + [("fg:ansibrightblack", " · " + right)]
+        return rule + status + [("", " " * gap), ("fg:ansibrightblack", right)]
 
     def _prompt_message(self):
         """A rule above the ❯ prompt (the input sits between two rules, like Claude Code)."""
@@ -482,6 +501,7 @@ class Repl:
                     continue
             self.ui.context_pct = self._ctx_pct()
             self.ui.on_btw = self._btw_async
+            self.ui.history = self.session.history.recent if hasattr(self.session.history, "recent") else None
             self.ui.on_attention = self._attention
             self._turn_started = time.monotonic()
             self.ui.begin_typing(carried=self._carry)

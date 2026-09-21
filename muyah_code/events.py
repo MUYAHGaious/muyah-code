@@ -67,6 +67,9 @@ class EventBus:
             self.started -= _last_time(record_to) + 1.0
         self.history: list[dict] = []   # events so far, so a late viewer can catch up
         self.max_history = 5000
+        if record_to is not None and record_to.exists():
+            # a resumed session: the live view shows everything from before the restart too
+            self.history = load_events(record_to)[-self.max_history:]
         self.record_to = record_to
 
     def subscribe(self, listener: Listener) -> Callable[[], None]:

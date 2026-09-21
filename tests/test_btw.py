@@ -117,3 +117,26 @@ def test_the_input_box_stays_while_the_answer_streams():
     Console(file=shown, width=100, color_system=None).print(ui._StatsRenderable(ui))
     screen = shown.getvalue()
     assert screen.index("the answer so far") < screen.index("next question") < screen.index("❯ Press up")
+
+
+def test_up_with_nothing_queued_walks_back_through_earlier_prompts():
+    ui = TerminalUI(Console(file=io.StringIO(), width=100))
+    ui.history = lambda: ["fix the parser", "run the tests"]
+    keys(ui, "up")
+    assert ui._draft == "run the tests"
+    keys(ui, "up", "up")
+    assert ui._draft == "fix the parser"          # stops at the oldest
+    keys(ui, "down", "down")
+    assert ui._draft == ""                        # back to what you were typing
+    keys(ui, "up", " please", "enter")
+    assert ui._queued == ["run the tests please"]
+
+
+def test_history_is_capped(tmp_path):
+    from muyah_code.ui.repl import HISTORY_LIMIT, RecentHistory
+
+    h = RecentHistory(str(tmp_path / "history"))
+    for i in range(HISTORY_LIMIT + 50):
+        h.store_string(f"prompt {i}")
+    recent = h.recent()
+    assert len(recent) == HISTORY_LIMIT and recent[-1] == f"prompt {HISTORY_LIMIT + 49}"

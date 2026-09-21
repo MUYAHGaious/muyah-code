@@ -259,6 +259,9 @@ class TerminalUI(UI):
         self._hold_queue = False
         self.on_btw = None         # (question) -> None: answer a /btw side question now (set by the REPL)
         self.focused: bool | None = None   # the terminal window has focus (None: it never said)
+        self.history = None        # () -> earlier prompts, oldest first: ↑ with nothing queued (set by the REPL)
+        self._hist: list[str] | None = None
+        self._hist_pos = 0
         self.on_attention = None   # (message) -> None: it needs you (an approval, a question); set by the REPL
         self._keys = threading.Lock()
         self._reader = None
@@ -422,6 +425,8 @@ class TerminalUI(UI):
                 self._selected = len(self._queued) - 1 if sel is None else max(0, sel - 1)
             elif key == "down" and sel is not None:
                 self._selected = sel + 1 if sel + 1 < len(self._queued) else None
+            elif key in ("up", "down") and self.history is not None:
+                self._history_step(-1 if key == "up" else 1)
             elif key == "delete" and sel is not None:
                 self._queued.pop(sel)
                 self._selected = min(sel, len(self._queued) - 1) if self._queued else None
@@ -451,6 +456,8 @@ class TerminalUI(UI):
             elif len(key) == 1:
                 self._draft += key
                 self._selected = None
+            if key not in ("up", "down"):
+                self._hist = None        # typing (or sending) starts a fresh walk through the history
         if btw:
             self.on_btw(btw)
         if key == "shift-tab" and self.on_mode_cycle is not None:
@@ -463,6 +470,17 @@ class TerminalUI(UI):
             self._emit_queue()
         if interrupt and self._turn_active:
             _thread.interrupt_main()   # same as Ctrl+C: the turn stops; the REPL sends what is queued
+
+    def _history_step(self, step: int) -> None:
+        """↑/↓ with nothing queued: your earlier prompts, into the box (called with the key lock held)."""
+        if self._hist is None:
+            try:
+                self._hist = list(self.history()) + [self._draft]
+            except (OSError, ValueError):
+                self._hist = [self._draft]
+            self._hist_pos = len(self._hist) - 1
+        self._hist_pos = max(0, min(len(self._hist) - 1, self._hist_pos + step))
+        self._draft = self._hist[self._hist_pos]
 
     def side_answer(self, question: str, answer: str) -> None:
         """A /btw answer: shown in its own panel, never added to the conversation."""
