@@ -116,11 +116,12 @@ muyah -c                                # continue the last session;  muyah -r <
 ```
 
 **Interactive shortcuts:**
+- `/` opens the command menu: move with **↑/↓**, choose with **Enter**. Every list works this way (providers, models, permission prompts).
 - `@path` attaches a file.
 - `#note` saves a note to `MUYAH.md`.
 - **Shift+Tab** cycles permission modes.
 - **Alt+Enter** / **Ctrl+J** inserts a newline.
-- **Ctrl+C** interrupts.
+- **Ctrl+C** stops a running reply, or clears what you typed. Press it twice on an empty line (or **Ctrl+D**) to exit.
 
 | command | what it does |
 |---|---|
@@ -135,7 +136,7 @@ muyah -c                                # continue the last session;  muyah -r <
 | `/init`, `/memory` | project instructions (`MUYAH.md`) |
 | `/resume`, `/sessions`, `/export` | sessions |
 | `/theme [teal\|muyah\|ocean\|forest\|mono\|light]` | color theme (saved; default: light teal) |
-| `/doctor`, `/config`, `/permissions`, `/tools`, `/mcp`, `/cost` | inspection |
+| `/status`, `/doctor`, `/config`, `/permissions`, `/tools`, `/mcp`, `/cost` | inspection |
 
 ### Permission modes
 
@@ -223,7 +224,7 @@ Your old colab-code config is imported automatically on first run.
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest -q          # 156 tests: parser, tools, permissions, context, learning, hooks, full agent loop
+python -m pytest -q          # 164 tests: parser, tools, permissions, context, learning, hooks, full agent loop
 python -m ruff check .       #   against a scripted fake OpenAI server, headless CLI, REPL, eval harness
 ```
 

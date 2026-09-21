@@ -229,14 +229,10 @@ def _subcommand(name: str, argv: list[str]) -> int:
         p.add_argument("--no-test", action="store_true", help="Skip the test reply")
         a = p.parse_args(argv)
         from muyah_code.provider_setup import setup_provider
+        from muyah_code.ui.select import Prompter
 
-        def ask(message: str, password: bool = False) -> str:
-            try:
-                return console.input(message, password=password)
-            except (EOFError, KeyboardInterrupt):
-                return ""
-
-        return 0 if setup_provider(load_config(), console, ask, a.provider, a.key, a.model, not a.no_test) else 1
+        prompter = Prompter()
+        return 0 if setup_provider(load_config(), console, prompter, a.provider, a.key, a.model, not a.no_test) else 1
 
     if name == "logout":
         from muyah_code.providers import get_provider, remove_credential

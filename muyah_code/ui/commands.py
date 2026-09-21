@@ -85,6 +85,7 @@ class CommandRouter:
             Command("export", "Export the conversation to a markdown file", self.export, "[file]"),
             Command("cost", "Token usage for this session", self.cost),
             Command("config", "Show effective configuration", self.config),
+            Command("status", "Model, endpoint, context, mode and what's loaded", self.status),
             Command("doctor", "Check the setup", self.doctor),
             Command("theme", "Switch color theme (saved): teal | muyah | ocean | forest | mono | light", self.theme,
                     "[name]"),
@@ -98,6 +99,15 @@ class CommandRouter:
     @property
     def console(self):
         return self.repl.console
+
+    def menu(self) -> list[tuple[str, str]]:
+        """(name, one-line help) for the "/" menu: commands first, then skills."""
+        items = [(c.name, c.help) for c in self.commands.values() if c.name not in ("quit", "login")]
+        for s in self.app.skills.all():
+            if s.user_invocable:
+                desc = s.description if len(s.description) <= 70 else s.description[:67] + "..."
+                items.append((s.name, f"skill · {desc}"))
+        return items
 
     def names(self) -> list[str]:
         return list(self.commands) + [s.name for s in self.app.skills.all() if s.user_invocable]
@@ -168,12 +178,14 @@ class CommandRouter:
         profiles = self.app.cfg.profiles()
         if not arg:
             if not profiles:
-                self.console.print("No profiles. Create one with `muyah connect <url>` or `muyah connect --scan`.")
-            for name, p in profiles.items():
-                cur = " [green](active)[/]" if name == self.app.cfg.get("profile") else ""
-                self.console.print(f"  [bold]{escape(name)}[/]{cur}: {escape(p.get('base_url', ''))} "
-                                   f"{escape(p.get('model', ''))}")
-            return
+                self.console.print("No profiles yet. Add one with /provider.")
+                return
+            active = self.app.cfg.get("profile")
+            options = [(name, f"{name}  ·  {p.get('model', '')}" + ("  (active)" if name == active else ""))
+                       for name, p in profiles.items()]
+            arg = self.repl.prompter.select("Switch to", options, default=active)
+            if not arg or arg == active:
+                return
         if arg not in profiles:
             self.console.print(f"[red]Unknown profile {escape(arg)}[/]")
             return
@@ -186,7 +198,7 @@ class CommandRouter:
         from muyah_code.provider_setup import setup_provider
 
         parts = arg.split()
-        name = setup_provider(self.app.cfg, self.console, self.repl.ask, choice=parts[0] if parts else None,
+        name = setup_provider(self.app.cfg, self.console, self.repl.prompter, choice=parts[0] if parts else None,
                               model=parts[1] if len(parts) > 1 else None)
         if name:
             with self.console.status("Switching this session..."):
@@ -375,6 +387,25 @@ class CommandRouter:
             holder["api_key"] = mask_secret(holder.get("api_key"))
         self.console.print_json(json.dumps(data, default=str))
         self.console.print("[dim]Sources: " + escape(" -> ".join(self.app.cfg.sources)) + "[/]")
+
+    def status(self, arg):
+        a = self.app
+        used, usable = a.context_usage()
+        rows = [
+            ("model", a.llm.model),
+            ("provider", a.cfg.get("provider") or a.cfg.get("profile") or "custom endpoint"),
+            ("endpoint", a.llm.base_url),
+            ("context", f"{a.window:,} tokens ({a.window_source}) · {100 * used // max(1, usable)}% used"),
+            ("mode", a.permissions.mode),
+            ("folder", str(a.cwd)),
+            ("session", a.session_id or "(not saved)"),
+            ("loaded", f"{len(a.instructions)} instruction files · {len(a.skills.names())} skills · "
+                       f"{len(a.lessons.lessons)} lessons · {len(a.mcp_tools)} MCP tools"),
+        ]
+        t = Table(show_header=False, box=None, padding=(0, 2))
+        for k, v in rows:
+            t.add_row(f"[dim]{k}[/]", escape(str(v)))
+        self.console.print(t)
 
     def doctor(self, arg):
         from muyah_code.doctor import run_doctor

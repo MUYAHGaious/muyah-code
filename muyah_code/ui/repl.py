@@ -1,22 +1,29 @@
-"""Interactive REPL: prompt_toolkit input, slash commands, @file completion, Shift+Tab mode cycling."""
+"""Interactive REPL: prompt_toolkit input, slash-command menu, @file completion, Shift+Tab mode cycling.
+
+Keys: Enter send · Alt+Enter / Ctrl+J newline · Shift+Tab mode · Ctrl+C clear line (twice on an empty line
+to exit) · Ctrl+D exit · typing "/" opens the command menu (↑/↓ + Enter).
+"""
 
 from __future__ import annotations
 
 import html
+import time
+from pathlib import Path
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.styles import Style
 from rich.markup import escape
-from rich.panel import Panel
 from rich.text import Text
 
 from muyah_code import __version__
 from muyah_code.tools.search import list_files
 from muyah_code.ui.commands import EXIT, CommandRouter
-from muyah_code.ui.terminal import TerminalUI, banner_text
+from muyah_code.ui.select import Prompter
+from muyah_code.ui.terminal import TerminalUI
 from muyah_code.ui.theme import theme
 
 MODE_LABEL = {
@@ -25,6 +32,7 @@ MODE_LABEL = {
     "plan": "⏸ plan mode on",
     "bypassPermissions": "⚠ bypass permissions on",
 }
+EXIT_WINDOW = 2.0  # seconds between two Ctrl+C presses to exit
 
 
 class _Completer(Completer):
@@ -44,9 +52,10 @@ class _Completer(Completer):
     def get_completions(self, document, complete_event):
         text = document.text_before_cursor
         if text.startswith("/") and " " not in text:
-            for name in self.repl.router.names():
+            for name, help_text in self.repl.router.menu():
                 if name.startswith(text[1:]):
-                    yield Completion("/" + name, start_position=-len(text))
+                    yield Completion("/" + name, start_position=-len(text), display="/" + name,
+                                     display_meta=help_text)
             return
         word = text.split()[-1] if text.split() and not text.endswith(" ") else ""
         if word.startswith("@"):
@@ -61,11 +70,14 @@ class _Completer(Completer):
 
 
 class Repl:
-    def __init__(self, app, ui: TerminalUI, **session_kwargs):
+    def __init__(self, app, ui: TerminalUI, prompter: Prompter | None = None, **session_kwargs):
         self.app = app
         self.ui = ui
         self.console = ui.console
+        self.prompter = prompter or Prompter()
+        self.ui.prompter = self.prompter
         self.router = CommandRouter(self)
+        self._last_interrupt = 0.0
         kb = KeyBindings()
 
         @kb.add("s-tab")
@@ -81,18 +93,29 @@ class Repl:
         def _(event):
             event.current_buffer.insert_text("\n")
 
-        self._io = {k: v for k, v in session_kwargs.items() if k in ("input", "output")}
+        @kb.add("c-c")
+        def _(event):
+            buf = event.current_buffer
+            if buf.text:
+                buf.reset()  # first Ctrl+C clears what you typed
+            else:
+                event.app.exit(exception=KeyboardInterrupt())
+
         history = FileHistory(str(app.home / "history"))
+        t = theme()
+        style = Style.from_dict({
+            "completion-menu.completion": "bg:default fg:default",
+            "completion-menu.completion.current": f"bg:default fg:{t.accent} bold",
+            "completion-menu.meta.completion": "bg:default fg:ansibrightblack",
+            "completion-menu.meta.completion.current": "bg:default fg:ansibrightblack",
+            "bottom-toolbar": "noreverse fg:ansibrightblack",
+        })
         self.session = PromptSession(history=history, completer=_Completer(self), key_bindings=kb,
-                                     complete_while_typing=True, bottom_toolbar=self._toolbar, **session_kwargs)
+                                     complete_while_typing=True, bottom_toolbar=self._toolbar, style=style,
+                                     reserve_space_for_menu=8, refresh_interval=0.5, **session_kwargs)
 
     def ask(self, message: str, password: bool = False) -> str:
-        """One-line question (hidden input for secrets such as API keys)."""
-        try:
-            return PromptSession(**self._io).prompt([(f"fg:{theme().accent}", "? "), ("", message)],
-                                                    is_password=password)
-        except (EOFError, KeyboardInterrupt):
-            return ""
+        return self.prompter.ask(message, password=password)
 
     def _ctx_pct(self) -> int:
         used, usable = self.app.context_usage()
@@ -103,45 +126,32 @@ class Repl:
         return len(turns[-1]["changes"]) if turns else 0
 
     def _toolbar(self):
-        pct = self._ctx_pct()
+        if time.monotonic() - self._last_interrupt < EXIT_WINDOW:
+            return HTML(" Press Ctrl+C again to exit")
         mode = MODE_LABEL.get(self.app.permissions.mode, "")
-        left = f"<b>{mode}</b> (shift+tab to cycle) · " if mode else "shift+tab: modes · "
-        return HTML(f" {left}{html.escape(self.app.llm.model)} · context {pct}% · /help")
+        left = f"{mode} (shift+tab) · " if mode else ""
+        return HTML(f" {left}{html.escape(self.app.llm.model)} · ctx {self._ctx_pct()}% · / for commands")
 
-    def banner(self) -> None:
+    def header(self) -> None:
+        """Just what you need: which model, which folder, where to go next."""
         a = self.app
         t = theme()
-        if self.console.width >= 60:
-            self.console.print(banner_text())
-            self.console.print()
-        body = Text()
-        body.append("MUYAH-CODE", style=f"bold {t.accent}")
-        body.append(f"  v{__version__}", style=t.dim)
-        if a.cfg.get("profile"):
-            body.append(f"  ·  profile {a.cfg.get('profile')}", style=t.dim)
-        body.append("\n")
-        rows = [("model", a.llm.model), ("endpoint", a.llm.base_url),
-                ("context", f"{a.window:,} tokens ({a.window_source})"), ("mode", a.permissions.mode),
-                ("cwd", str(a.cwd))]
-        for label, value in rows:
-            body.append(f"{label:<9}", style=t.dim)
-            body.append(f"{value}\n", style="default" if label == "model" else t.dim)
-        extras = []
-        if a.instructions:
-            extras.append(f"{len(a.instructions)} instruction file(s)")
-        extras.append(f"{len(a.skills.names())} skills")
-        if a.lessons.lessons:
-            extras.append(f"{len(a.lessons.lessons)} lessons learned")
-        if a.mcp:
-            extras.append(f"{len(a.mcp_tools)} MCP tools")
-        body.append(" · ".join(extras) + "\n", style=t.dim)
-        body.append("/help · @file to attach · #note to remember · shift+tab modes · ctrl+c interrupt",
-                    style=t.dim)
-        self.console.print(Panel(body, border_style=t.accent, expand=False, padding=(0, 1)))
+        cwd = str(a.cwd)
+        home = str(Path.home())
+        if cwd.lower().startswith(home.lower()):
+            cwd = "~" + cwd[len(home):]
+        line = Text()
+        line.append("✻ ", style=t.accent)
+        line.append("MUYAH-CODE", style=f"bold {t.accent}")
+        line.append(f" v{__version__}", style=t.dim)
+        self.console.print(line)
+        self.console.print(Text(f"  {a.llm.model} · {cwd}", style=t.dim))
+        self.console.print(Text("  / for commands · /provider to switch model · Ctrl+C twice to exit", style=t.dim))
         if a.mcp:
             for name, status in a.mcp.status.items():
                 if status.startswith("failed"):
                     self.ui.warn(f"MCP server {name}: {status}")
+        self.console.print()
 
     def add_memory(self, note: str) -> str:
         path = self.app.root / "MUYAH.md"
@@ -156,16 +166,26 @@ class Repl:
         self.app.agent.invalidate_system_prompt()
         return f"Saved to {path}"
 
+    def _read_line(self) -> str | None:
+        """Returns the typed line, or None to exit."""
+        while True:
+            try:
+                return self.session.prompt(HTML(f'<style fg="{theme().accent}">❯</style> '))
+            except KeyboardInterrupt:  # Ctrl+C on an empty line
+                now = time.monotonic()
+                if now - self._last_interrupt < EXIT_WINDOW:
+                    return None
+                self._last_interrupt = now
+            except EOFError:  # Ctrl+D
+                return None
+
     def run(self, initial_prompt: str | None = None) -> int:
-        self.banner()
+        self.header()
         pending = initial_prompt
         while True:
             if pending is None:
-                try:
-                    line = self.session.prompt(HTML(f'<style fg="{theme().accent}">❯</style> '))
-                except KeyboardInterrupt:
-                    continue
-                except EOFError:
+                line = self._read_line()
+                if line is None:
                     break
             else:
                 line, pending = pending, None
@@ -195,7 +215,7 @@ class Repl:
             self.ui.turn_footer(result.status, result.duration, result.tool_calls, self._files_changed(),
                                 self._ctx_pct())
             self.console.print()
-        self.console.print("[dim]Bye. Session saved as " + escape(self.app.session_id) + "[/]")
+        self.console.print(f"[dim]Bye. Resume this session with: muyah -r {escape(self.app.session_id)}[/]")
         return 0
 
 

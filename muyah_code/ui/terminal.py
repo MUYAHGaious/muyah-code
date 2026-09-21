@@ -122,6 +122,7 @@ class TerminalUI(UI):
         self._chars = 0
         self._reasoning_chars = 0
         self.context_pct = None  # set by the REPL so the stats line can show context usage
+        self.prompter = None     # arrow-key menus; set by the REPL (ui.select.Prompter)
 
     # ------------------------------------------------------------------ live status
 
@@ -301,6 +302,17 @@ class TerminalUI(UI):
                 body.append("\n".join(detail.splitlines()[:30]) + "\n", style=t.tool)
         self.console.print(Panel(body, title=f"[bold {t.accent}]Allow this {req.kind} action?[/]",
                                  border_style=t.accent, expand=False, padding=(0, 1)))
+        if self.prompter is not None:
+            picked = self.prompter.select("Allow?", [
+                ("yes", "Yes"),
+                ("always", f"Yes, and don't ask again this session for {req.suggested_rule}"),
+                ("project", "Yes, always in this project"),
+                ("feedback", "No, and tell MUYAH-CODE what to do instead"),
+                ("no", "No"),
+            ], default="yes")
+            if picked == "feedback":
+                return PermissionReply("no", feedback=self.prompter.ask("What should it do instead? ").strip())
+            return PermissionReply(picked or "no")
         self.console.print(
             f"  [bold]⏎/y[/] yes   [bold]a[/] always this session [{t.dim}]({escape(req.suggested_rule)})[/]   "
             f"[bold]p[/] always in project   [bold]n[/] no   [{t.dim}]or type what to do instead[/]")
@@ -326,6 +338,13 @@ class TerminalUI(UI):
         self._stop_live()
         self.console.print(Panel(Text(question), title=f"[bold {t.accent}]Question[/]", border_style=t.accent,
                                  expand=False))
+        if self.prompter is not None:
+            if not options:
+                return self.prompter.ask("Your answer: ").strip()
+            picked = self.prompter.select("Your answer", [(o, o) for o in options] + [("__type__", "Type my own answer")])
+            if picked == "__type__":
+                return self.prompter.ask("Your answer: ").strip()
+            return picked or ""
         for i, opt in enumerate(options, 1):
             self.console.print(f"  [bold]{i}[/]. {escape(opt)}")
         try:

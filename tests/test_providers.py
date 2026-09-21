@@ -24,15 +24,30 @@ from muyah_code.tools import default_registry
 
 
 class Answers:
-    """Scripted replies for the ask() prompts; records what was asked and whether input was hidden."""
+    """Scripted user: answers the Prompter questions (select / ask / confirm) in order.
+    None means "just press Enter" (the default). Records every question and whether input was hidden."""
 
     def __init__(self, *answers):
         self.answers = list(answers)
         self.asked = []
 
-    def __call__(self, message, password=False):
-        self.asked.append((message, password))
-        return self.answers.pop(0) if self.answers else ""
+    def _next(self):
+        return self.answers.pop(0) if self.answers else None
+
+    def select(self, message, options, default=None):
+        self.asked.append(("select", message, [v for v, _ in options]))
+        picked = self._next()
+        return default if picked is None else picked
+
+    def ask(self, message, password=False, default=""):
+        self.asked.append(("ask", message, password))
+        picked = self._next()
+        return default if picked is None else picked
+
+    def confirm(self, message, default=True):
+        self.asked.append(("confirm", message, None))
+        picked = self._next()
+        return default if picked is None else picked
 
 
 # ---------------------------------------------------------------------------------------------- catalog
@@ -103,11 +118,11 @@ def test_setup_flow_paste_key_pick_model_and_activate(project, isolated_home, mo
     with FakeOpenAI([reply("PONG")], models=[{"id": "fake-model"}, {"id": "other-model"}],
                     require_key="sk-test-123") as srv:
         monkeypatch.setattr(provider_setup, "get_provider", lambda _: _test_provider(srv.url))
-        ask = Answers("sk-test-123", "2")  # paste key, choose model #2
+        ask = Answers("sk-test-123", "other-model")  # paste key, pick a model
         cfg = load_config(cwd=project)
         name = provider_setup.setup_provider(cfg, Console(quiet=True), ask, choice="testprov")
     assert name == "testprov"
-    assert ask.asked[0][1] is True  # the key prompt hides input
+    assert ask.asked[0] == ("ask", "Paste your Test Provider API key: ", True)  # hidden input
     assert load_credentials(isolated_home)["testprov"] == "sk-test-123"
     fresh = load_config(cwd=project)
     assert fresh.get("profile") == "testprov" and fresh["model"] == "other-model"
@@ -119,7 +134,7 @@ def test_setup_flow_rejected_key_then_retry(project, isolated_home, monkeypatch)
 
     with FakeOpenAI([reply("PONG")], require_key="sk-test-good") as srv:
         monkeypatch.setattr(provider_setup, "get_provider", lambda _: _test_provider(srv.url))
-        ask = Answers("sk-test-bad", "sk-test-good", "")  # wrong key, right key, default model
+        ask = Answers("sk-test-bad", "sk-test-good", None)  # wrong key, right key, Enter
         name = provider_setup.setup_provider(load_config(cwd=project), Console(quiet=True), ask, choice="x")
     assert name == "testprov" and load_credentials(isolated_home)["testprov"] == "sk-test-good"
 
@@ -130,9 +145,9 @@ def test_setup_flow_offers_env_key(project, isolated_home, monkeypatch):
     monkeypatch.setenv("TESTPROV_API_KEY", "sk-test-env")
     with FakeOpenAI([reply("PONG")], require_key="sk-test-env") as srv:
         monkeypatch.setattr(provider_setup, "get_provider", lambda _: _test_provider(srv.url))
-        ask = Answers("", "")  # accept env key, default model
+        ask = Answers(None, None)  # accept env key, Enter on the model menu
         assert provider_setup.setup_provider(load_config(cwd=project), Console(quiet=True), ask, choice="x")
-    assert "TESTPROV_API_KEY" in ask.asked[0][0]
+    assert ask.asked[0][0] == "confirm" and "TESTPROV_API_KEY" in ask.asked[0][1]
     assert "testprov" not in load_credentials(isolated_home)  # env keys are not copied to disk
 
 
@@ -230,7 +245,7 @@ def test_no_credits_keeps_the_valid_key_and_explains(project, isolated_home, mon
 
         monkeypatch.setattr(ac.AnthropicClient, "__init__", to_fake)
         console = Console(record=True, width=120)
-        ask = Answers("sk-ant-test", "")
+        ask = Answers("sk-ant-test", None)
         name = provider_setup.setup_provider(load_config(cwd=project), console, ask, choice="anthropic")
         out = console.export_text()
     assert name is None  # not activated: every request would fail
@@ -256,7 +271,7 @@ def test_retired_model_offers_the_providers_suggestion(project, isolated_home, m
     monkeypatch.setattr(provider_setup, "_list_models", lambda p, k: (
         ["models/gemini-2.5-pro", "models/gemini-3.1-pro-preview", "models/gemini-2.5-flash-preview-tts"], None))
     console = Console(record=True, width=140)
-    ask = Answers("", "gemini-2.5-pro", "")  # accept env key, insist on the retired model, then Enter
+    ask = Answers(None, "gemini-2.5-pro", None)  # accept env key, pick the retired model, then Enter
     monkeypatch.setenv("GEMINI_API_KEY", "AQ.test")
     name = provider_setup.setup_provider(load_config(cwd=project), console, ask, choice="gemini")
     out = console.export_text()

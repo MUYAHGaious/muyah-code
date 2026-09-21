@@ -1,17 +1,16 @@
 """Interactive provider setup used by `/provider` (REPL) and `muyah login` (CLI).
 
-    pick a provider -> paste a key (or reuse a saved / environment key) -> key is verified by listing models
-    -> pick a model (sensible default preselected) -> one tiny test reply -> profile saved and activated
+    pick a provider (↑/↓) -> paste a key (or reuse a saved / environment key) -> key is verified by listing
+    models -> pick a model (↑/↓, best first) -> one tiny test reply -> profile saved and activated
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from typing import Any, Protocol
 
 from rich.console import Console
 from rich.markup import escape
-from rich.table import Table
 
 from muyah_code.backends import probe, smoke_test
 from muyah_code.config import Config
@@ -30,14 +29,18 @@ from muyah_code.providers import (
     save_credential,
 )
 
-Ask = Callable[..., str]  # ask(prompt, password=False) -> str
 MAX_KEY_ATTEMPTS = 3
-SHOWN_MODELS = 12
-
-
 MAX_MODEL_ATTEMPTS = 3
+SHOWN_MODELS = 12
+OTHER = "__other__"
 UNAVAILABLE = ("404", "not found", "no longer available", "does not exist", "not available", "not supported",
                "decommissioned", "deprecated", "model_not_found", "unknown model", "invalid model")
+
+
+class Prompts(Protocol):
+    def select(self, message: str, options: list[tuple[Any, str]], default: Any = None) -> Any | None: ...
+    def ask(self, message: str, password: bool = False, default: str = "") -> str: ...
+    def confirm(self, message: str, default: bool = True) -> bool: ...
 
 
 def error_message(text: str) -> str:
@@ -60,18 +63,15 @@ def suggested_model(text: str) -> str | None:
     return m.group(1).rstrip(".,;") if m else None
 
 
-def provider_table(cfg: Config) -> Table:
-    t = Table(show_header=True, header_style="bold", box=None, padding=(0, 2))
-    t.add_column("#", justify="right")
-    t.add_column("provider")
-    t.add_column("status")
+def provider_options(cfg: Config) -> list[tuple[str, str]]:
     active = cfg.get("provider")
-    for i, p in enumerate(PROVIDERS, 1):
+    options = []
+    for p in PROVIDERS:
         status = key_status(cfg.home, p)
         if p.id == active:
-            status = (status + " · " if status else "") + "[bold]active[/]"
-        t.add_row(str(i), p.name, status)
-    return t
+            status = (status + ", " if status else "") + "active"
+        options.append((p.id, f"{p.name}" + (f"  ({status})" if status else "")))
+    return options
 
 
 def _list_models(p: Provider, key: str) -> tuple[list[str] | None, str | None]:
@@ -89,7 +89,7 @@ def _list_models(p: Provider, key: str) -> tuple[list[str] | None, str | None]:
         return ep.models, None
     if ep.error and ep.error.startswith("401"):
         return None, "the key was rejected (401)"
-    return [], ep.error  # some providers don't expose /models: continue with the default model
+    return [], ep.error  # some providers don't expose /models: continue with a typed model id
 
 
 def _test(p: Provider, key: str, model: str) -> tuple[bool, str]:
@@ -105,42 +105,36 @@ def _test(p: Provider, key: str, model: str) -> tuple[bool, str]:
     return smoke_test(p.base_url, model, key or "none", timeout=120)
 
 
-def _choose_model(p: Provider, models: list[str], ask: Ask, console: Console, preset: str | None,
-                  suggested: str | None = None) -> str:
+def _choose_model(p: Provider, models: list[str], ui: Prompts, preset: str | None,
+                  suggested: str | None = None) -> str | None:
     if preset:
         return preset
     ranked = rank_models(p, models)
     # The live list beats any hard-coded default: providers retire models all the time.
     default = suggested or (ranked[0] if ranked else p.default_model)
     if not ranked:
-        answer = ask(f"Model id [{default or 'required'}]: ").strip()
-        return answer or default
+        return ui.ask("Model id: ", default=default or "").strip() or None
     shown = ranked[:SHOWN_MODELS]
     if default and default not in shown:
         shown = [default] + shown[: SHOWN_MODELS - 1]
-    console.print(f"[bold]Models[/] ({len(ranked)} available{', showing the best matches' if len(ranked) > len(shown) else ''}):")
-    for i, m in enumerate(shown, 1):
-        mark = "  [dim]<- default[/]" if m == default else ""
-        console.print(f"  {i:>2}. {escape(m)}{mark}")
-    answer = ask("Model number or id [Enter = default]: ").strip()
-    if not answer:
-        return default
-    if answer.isdigit() and 1 <= int(answer) <= len(shown):
-        return shown[int(answer) - 1]
-    return answer
+    options = [(m, m + ("   (suggested)" if m == suggested else "")) for m in shown]
+    options.append((OTHER, f"Other… ({len(ranked)} available, type an id)"))
+    picked = ui.select("Choose a model", options, default=default)
+    if picked == OTHER:
+        return ui.ask("Model id: ").strip() or None
+    return picked
 
 
-def setup_provider(cfg: Config, console: Console, ask: Ask, choice: str | None = None, key: str | None = None,
+def setup_provider(cfg: Config, console: Console, ui: Prompts, choice: str | None = None, key: str | None = None,
                    model: str | None = None, test: bool = True) -> str | None:
     """Run the whole flow. Returns the activated profile name, or None if cancelled/failed."""
     if not choice:
-        console.print(provider_table(cfg))
-        choice = ask("Provider (number or name): ").strip()
+        choice = ui.select("Choose a provider", provider_options(cfg), default=cfg.get("provider"))
         if not choice:
             return None
     p = get_provider(choice)
     if p is None:
-        console.print(f"[red]Unknown provider '{escape(choice)}'.[/] Try a number from the list.")
+        console.print(f"[red]Unknown provider '{escape(choice)}'.[/] Run /provider to pick from the list.")
         return None
     console.print(f"[bold]{escape(p.name)}[/]")
 
@@ -159,29 +153,29 @@ def setup_provider(cfg: Config, console: Console, ask: Ask, choice: str | None =
         if not key:
             saved = load_credentials(cfg.home).get(p.id)
             env = env_key(p)
-            if saved and ask(f"Use your saved {p.name} key {mask(saved)}? [Y/n] ").strip().lower() in ("", "y", "yes"):
+            if saved and ui.confirm(f"Use your saved {p.name} key {mask(saved)}?"):
                 key, source = saved, "saved"
-            elif env and ask(f"Found ${env[0]} ({mask(env[1])}). Use it? [Y/n] ").strip().lower() in ("", "y", "yes"):
+            elif env and ui.confirm(f"Use ${env[0]} ({mask(env[1])})?"):
                 key, source = env[1], "env"
         models = None
         for attempt in range(MAX_KEY_ATTEMPTS):
             if not key:
                 if p.key_url:
                     console.print(f"[dim]Get a key at {p.key_url}[/]")
-                key = ask(f"Paste your {p.name} API key: ", password=True).strip()
+                key = ui.ask(f"Paste your {p.name} API key: ", password=True).strip()
                 source = "pasted"
                 if not key:
                     console.print("Cancelled.")
                     return None
                 problem = looks_wrong(p, key)
-                if problem and ask(f"Hmm, {problem}. Use it anyway? [y/N] ").strip().lower() not in ("y", "yes"):
+                if problem and not ui.confirm(f"{problem[0].upper() + problem[1:]}. Use it anyway?", default=False):
                     key = None
                     continue
             with console.status("Checking the key..."):
                 models, err = _list_models(p, key)
             if models is not None:
                 if err:
-                    console.print(f"[dim]Could not list models ({escape(err)}); you can still type a model id.[/]")
+                    console.print(f"[dim]Could not list models ({escape(err)}); you can type a model id.[/]")
                 break
             console.print(f"[red]{escape(err or 'key check failed')}[/]")
             key = None
@@ -190,7 +184,7 @@ def setup_provider(cfg: Config, console: Console, ask: Ask, choice: str | None =
         console.print(f"[green]Key OK[/] ({mask(key)}, {source}).")
 
     available = list(models or [])
-    chosen = _choose_model(p, available, ask, console, model)
+    chosen = _choose_model(p, available, ui, model)
     for attempt in range(MAX_MODEL_ATTEMPTS if test else 0):
         if not chosen:
             break
@@ -204,7 +198,7 @@ def setup_provider(cfg: Config, console: Console, ask: Ask, choice: str | None =
             suggestion = suggested_model(out)
             console.print(f"[yellow]{escape(chosen)} is not available:[/] {escape(error_message(out))}")
             available = [m for m in available if m.split("/")[-1] != chosen]
-            chosen = _choose_model(p, available, ask, console, None, suggested=suggestion)
+            chosen = _choose_model(p, available, ui, None, suggested=suggestion)
             continue
         if is_billing_error(out):
             # The key is valid (it listed models) but the account cannot pay: no other model will work either.
@@ -221,7 +215,7 @@ def setup_provider(cfg: Config, console: Console, ask: Ask, choice: str | None =
                       "Nothing was saved. Run /provider again and pick another model.")
         return None
     if not chosen:
-        console.print("[red]No model selected.[/]")
+        console.print("Cancelled.")
         return None
 
     if not p.local and source == "pasted":
@@ -231,5 +225,5 @@ def setup_provider(cfg: Config, console: Console, ask: Ask, choice: str | None =
         console.print(f"[dim]Using the key from ${env_key(p)[0]} (not copied to disk).[/]")
     cfg.persist(f"profiles.{p.id}", build_provider_profile(p, chosen), scope="user")
     cfg.persist("profile", p.id, scope="user")
-    console.print(f"[bold green]Ready:[/] {escape(p.name)} · {escape(chosen)} (profile '{p.id}', now the default).")
+    console.print(f"[bold green]Ready:[/] {escape(p.name)} · {escape(chosen)}")
     return p.id
