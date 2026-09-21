@@ -55,7 +55,8 @@ TOOL_TIPS = """\
 which keeps your context small.
 - Skills are proven workflows. If one matches the task (debugging, planning, tdd, verification, code-review...), \
 load it with the Skill tool BEFORE starting and follow it.
-- Long outputs are truncated in the middle; re-run with filters (grep, head, tail, --tb=short, -q) if needed."""
+- Long outputs are truncated in the middle; re-run with filters (grep, head, tail, --tb=short, -q) if needed.
+- The user can type MUYAH-CODE slash commands that you cannot run: /usage (tokens, cost, context), /rewind and /undo, /verify, /btw, /mcp, /model, /status. When one answers their question, tell them to type it."""
 
 PLAN_MODE = """\
 # PLAN MODE IS ACTIVE

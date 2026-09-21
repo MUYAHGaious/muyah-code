@@ -41,7 +41,6 @@ HUNK_RE = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 THINKING_WORDS = ("Thinking", "Reasoning", "Working it out", "Weighing options", "Connecting the dots",
                   "Planning the next step", "Checking the details")
 WORD_SECONDS = 4.0
-PROSE_WIDTH = 110  # answers wrap at this width even on very wide terminals (readable line length)
 
 
 def render_diff(diff: str, limit: int = MAX_DIFF_LINES) -> Text:
@@ -156,7 +155,7 @@ class PrefixedMarkdown:
         self.text = text
 
     def __rich_console__(self, console, options):
-        width = max(20, min(options.max_width - 2, PROSE_WIDTH))
+        width = max(20, options.max_width - 2)          # the full terminal width, like Claude Code
         lines = console.render_lines(Markdown(self.text, code_theme=theme().code_theme),
                                      options.update(width=width), pad=False)
         while lines and not "".join(s.text for s in lines[-1]).strip():
@@ -166,6 +165,15 @@ class PrefixedMarkdown:
             yield bullet if i == 0 else Segment("  ")
             yield from line
             yield Segment.line()
+
+
+def _clock(seconds: float) -> str:
+    seconds = int(seconds)
+    return f"{seconds // 60}m {seconds % 60:02d}s" if seconds >= 60 else f"{seconds}s"
+
+
+def _tokens(n: float) -> str:
+    return f"{n / 1000:.1f}k" if n >= 1000 else f"{int(n)}"
 
 
 class _MarkdownStream:
@@ -183,7 +191,7 @@ class _MarkdownStream:
         self._last_render = 0.0
 
     def _lines(self, text: str) -> list[str]:
-        width = max(20, min(self.console.width - 2, PROSE_WIDTH))
+        width = max(20, self.console.width - 2)
         buf = io.StringIO()
         c = Console(file=buf, force_terminal=True, width=width, color_system=self.console.color_system or "standard",
                     highlight=False)
@@ -193,8 +201,13 @@ class _MarkdownStream:
             lines.pop()
         return lines
 
-    def _prefix(self, i: int) -> Text:
-        return Text("● ", style=f"bold {theme().accent}") if i == 0 else Text("  ")
+    def _line(self, i: int, ansi: str) -> Text:
+        """One rendered line with the bullet (first line) or indent. Built by appending: `Text + Text` would
+        give the whole line the bullet's color (the first line of every answer came out teal)."""
+        line = Text()
+        line.append("● " if i == 0 else "  ", style=f"bold {theme().accent}" if i == 0 else "")
+        line.append_text(Text.from_ansi(ansi))
+        return line
 
     def update(self, chunk: str, final: bool = False) -> None:
         self.text += chunk
@@ -212,13 +225,13 @@ class _MarkdownStream:
         # the whole message as markdown instead (see ReplayConsole).
         with _paused(self.console):
             for i in range(self.printed, settled):
-                self.live.console.print(self._prefix(i) + Text.from_ansi(lines[i]))
+                self.live.console.print(self._line(i, lines[i]))
         if final and isinstance(self.console, ReplayConsole):
             self.console.remember(PrefixedMarkdown(self.text))
         self.printed = max(self.printed, settled)
         tail = Text()
         for i in range(self.printed, len(lines)):
-            tail.append_text(self._prefix(i) + Text.from_ansi(lines[i]))
+            tail.append_text(self._line(i, lines[i]))
             tail.append("\n")
         if self.set_tail is not None:
             self.set_tail(None if final else tail)
@@ -259,6 +272,11 @@ class TerminalUI(UI):
         self._hold_queue = False
         self.on_btw = None         # (question) -> None: answer a /btw side question now (set by the REPL)
         self.focused: bool | None = None   # the terminal window has focus (None: it never said)
+        from muyah_code.ui.tips import TipRotation
+
+        self.tips = TipRotation()  # "⎿ Tip: ..." under the spinner (the REPL fills it at each turn)
+        self._turn_t0 = 0.0        # when this turn started (the spinner shows the turn's time, like Claude Code)
+        self._turn_chars = 0       # characters received this turn (shown as ↓ tokens)
         self.history = None        # () -> earlier prompts, oldest first: ↑ with nothing queued (set by the REPL)
         self._hist: list[str] | None = None
         self._hist_pos = 0
@@ -293,7 +311,9 @@ class TerminalUI(UI):
                 step.no_wrap, step.overflow = True, "ellipsis"
                 return Group(spin, step)
             return spin
-        parts = [f"{elapsed:.0f}s"]
+        parts = [_clock(time.monotonic() - self._turn_t0) if self._turn_active and self._turn_t0 else f"{elapsed:.0f}s"]
+        if self._turn_active and self._turn_chars:
+            parts.append(f"↓ {_tokens(self._turn_chars / 3.5)} tokens")
         if self._phase == "thinking" and self._sent_at:
             # the request is out and nothing has come back yet: say so (slow providers queue requests)
             label = f"Waiting for {self.model_name or 'the model'}"
@@ -317,6 +337,17 @@ class TerminalUI(UI):
             parts.append(f"ctx {self.context_pct}%")
         return self._spin(Text.assemble((f"{label}… ", t.accent), (" · ".join(parts), t.dim),
                                         ("  (esc to interrupt · type to queue a message)", t.dim)))
+
+    def _tip_line(self):
+        if not self._turn_active or self._tool is not None:
+            return None
+        tip = self.tips.at(time.monotonic() - self._turn_t0)
+        if not tip:
+            return None
+        line = Text("  ⎿ Tip: ", style=theme().dim)
+        line.append(tip, style=theme().dim)
+        line.no_wrap, line.overflow = True, "ellipsis"
+        return line
 
     def _spin(self, text: Text) -> Spinner:
         self._spinner.update(text=text, style=theme().accent)
@@ -371,6 +402,7 @@ class TerminalUI(UI):
         from muyah_code.ui.typeahead import KeyReader
 
         self._turn_active = True
+        self._turn_t0, self._turn_chars = time.monotonic(), 0
         if carried:
             with self._keys:
                 self._queued = list(carried) + self._queued
@@ -518,6 +550,9 @@ class TerminalUI(UI):
 
         def __rich__(self):
             body = self.ui._stats_line()
+            tip = self.ui._tip_line()
+            if tip is not None:
+                body = Group(body, tip)
             tail = self.ui._stream_tail
             return self.ui._with_typing(Group(tail, body) if tail is not None else body)
 
@@ -545,6 +580,7 @@ class TerminalUI(UI):
 
     def reasoning(self, chunk: str) -> None:
         self._reasoning_chars += len(chunk)
+        self._turn_chars += len(chunk)
         if self.show_reasoning and self._live is not None:
             self._live.console.print(Text(chunk, style=f"italic {theme().dim}"), end="")
 
@@ -563,6 +599,7 @@ class TerminalUI(UI):
                                            set_tail=lambda tail: setattr(self, "_stream_tail", tail))
             chunk = chunk.lstrip("\n")
         self._chars += len(chunk)
+        self._turn_chars += len(chunk)
         self._stream.update(chunk)
 
     def busy(self, label: str) -> None:

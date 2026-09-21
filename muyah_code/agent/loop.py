@@ -140,7 +140,7 @@ class _Cancelled(Exception):
     """Raised inside an abandoned model request so it stops at its next chunk."""
 
 
-def interruptible_call(chat, messages, on_text=None, on_reasoning=None, **kwargs):
+def interruptible_call(chat, messages, on_text=None, on_reasoning=None, cancel=None, **kwargs):
     """Run a model request on a worker thread and wait in short slices.
 
     A blocked network read cannot be interrupted in Python, so Ctrl+C / Esc used to take effect only when
@@ -171,6 +171,8 @@ def interruptible_call(chat, messages, on_text=None, on_reasoning=None, **kwargs
     try:
         while worker.is_alive():
             worker.join(0.1)
+            if cancel is not None and cancel.is_set():   # cancelled from elsewhere (an editor over ACP)
+                raise KeyboardInterrupt
     except KeyboardInterrupt:
         cancelled.set()
         raise
@@ -282,6 +284,7 @@ class Agent:
 
         self.escalation = Escalation()
         self.summarizer = None   # the model that writes compaction summaries (models.summarize; None = self.llm)
+        self.cancel_event = None  # threading.Event: set from another thread to stop the turn (ACP session/cancel)
         # escalate(client) -> (bigger client, "from" label, "to" label) or None (set by the app: models.py ladder)
         self.escalate = None
         self._tool_seq = 0
@@ -452,6 +455,8 @@ class Agent:
 
         for step in range(1, self.max_steps + 1):
             result.steps = step
+            if self.cancel_event is not None and self.cancel_event.is_set():
+                raise KeyboardInterrupt
             if step > 1:
                 self._take_queued_messages()
                 if self._prompt_dirty:        # e.g. the mode changed (Shift+Tab) while it worked
@@ -644,7 +649,8 @@ class Agent:
                 self.llm.on_status = on_status
             try:
                 resp = interruptible_call(self.llm.chat, self.messages, tools=tools, on_text=on_text,
-                                          on_reasoning=on_reasoning, max_tokens=max_tokens, purpose=self.purpose)
+                                          on_reasoning=on_reasoning, max_tokens=max_tokens, purpose=self.purpose,
+                                          cancel=self.cancel_event)
                 opener.flush()
                 if hider:
                     hider.flush()

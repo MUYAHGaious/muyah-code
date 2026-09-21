@@ -209,6 +209,29 @@ muyah --resume                          # pick an earlier conversation from a li
 
   `"notify": "off"` turns this off, and a `Notification` hook runs your own command.
 
+### In your editor (ACP)
+
+`muyah acp` runs MUYAH-CODE as an [Agent Client Protocol](https://agentclientprotocol.com) agent. Editors
+start it for you: you chat in the editor's agent panel, approve changes there, and see real diffs.
+- **What the agent sees:** your unsaved buffers.
+- **Plans and modes:** the plan and the mode switcher (plan, edit, manual, auto) work.
+- **Stop:** stops the turn.
+- **Everything else** is the same MUYAH-CODE: your providers, models, skills, hooks, lessons and cost tracking.
+
+**Zed** (`settings.json`):
+
+```json
+{ "agent_servers": { "MUYAH-CODE": { "command": "muyah", "args": ["acp"] } } }
+```
+
+**JetBrains IDEs** (AI Assistant, then *Add custom agent*, in `acp.json`):
+
+```json
+{ "agent_servers": { "MUYAH-CODE": { "command": "muyah", "args": ["acp"] } } }
+```
+
+**Neovim**: in CodeCompanion or avante.nvim, add an ACP adapter whose command is `muyah acp`.
+
 ### Worktrees
 
 `muyah --worktree fix-login` works in `.muyah/worktrees/fix-login` on branch `muyah/fix-login`, so

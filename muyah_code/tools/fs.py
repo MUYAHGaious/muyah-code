@@ -130,6 +130,11 @@ class ReadTool(Tool):
             return ToolResult(f"{describe(ctx.rel(path), data)} is an image; it is attached for you to look at.",
                               summary="image", images=[(media, b64)])
         raw = path.read_bytes()
+        editor_read = ctx.service("editor_read")
+        if editor_read is not None and not is_binary(raw):
+            unsaved = editor_read(path)        # the editor's buffer, unsaved changes included (ACP)
+            if unsaved is not None:
+                raw = unsaved.encode("utf-8")
         if is_binary(raw):
             kind = "image" if path.suffix.lower() in IMAGE_EXT else "binary"
             return ToolResult(f"{ctx.rel(path)} is a {kind} file ({len(raw)} bytes); it cannot be shown as text.",

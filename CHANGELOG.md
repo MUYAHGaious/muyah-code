@@ -5,6 +5,16 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **`muyah acp`:** MUYAH-CODE in Zed, JetBrains IDEs and Neovim over the Agent Client Protocol (v1).
+  - It streams answers and thinking, tool calls with real before/after diffs, and the plan.
+  - Approvals happen in the editor's own UI, and the agent reads your unsaved buffers.
+  - It supports modes, the editor's MCP servers, resuming sessions, and Stop, which interrupts even a model that is still thinking.
+  - Only protocol messages go to stdout.
+- **While it works:** the spinner shows the turn's total time and the tokens received (`1m 35s · ↓ 93.4k tokens`), with a `⎿ Tip:` line under it. The tips are built each turn from every slash command, skill, sub-agent, tool and MCP server that is installed, so new ones get tips automatically. `"tips": false` turns them off.
+- **Fixes:**
+  - The first line of every answer came out teal.
+  - Answers stopped at 110 columns; they now use the full terminal width.
+- **The model knows your slash commands** (`/usage`, `/rewind`, `/verify`...), so it tells you to type them instead of saying they don't exist.
 - **Images end to end.**
   - **How images get in:** Read on an image, MCP tools that return screenshots, `@image.png` in your prompt, and images dragged into the terminal all reach models that can see.
   - **Claude** gets native image blocks.

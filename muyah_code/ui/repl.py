@@ -501,6 +501,10 @@ class Repl:
                     continue
             self.ui.context_pct = self._ctx_pct()
             self.ui.on_btw = self._btw_async
+            if self.app.cfg.get("tips", True):
+                from muyah_code.ui.tips import build_tips
+
+                self.ui.tips.reset(build_tips(self.app, self.router.commands))   # rebuilt: new skills/tools show up
             self.ui.history = self.session.history.recent if hasattr(self.session.history, "recent") else None
             self.ui.on_attention = self._attention
             self._turn_started = time.monotonic()
