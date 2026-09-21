@@ -7,19 +7,21 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath fill='%235eead4' d='M0 0h2v1h1v1h1v1h2V2h1V1h1V0h2v6H8V4H7v1H3V4H2v2H0z'/%3E%3C/svg%3E">
 <style>
 :root {
-  --bg: #071012; --bg2: #0b181b; --panel: rgba(15, 32, 36, .72); --line: rgba(94, 234, 212, .14);
+  --bg: #071012; --bg2: #0b181b; --panel: #0d1d20; --panel2: #10252a; --line: rgba(94, 234, 212, .16);
+  --line2: rgba(94, 234, 212, .08);
   --text: #d8f3ee; --dim: #7fa6a0; --faint: #4b6b67;
-  --teal: #5eead4; --teal2: #2dd4bf; --cyan: #67e8f9; --amber: #fbbf24; --rose: #fb7185;
+  --teal: #5eead4; --cyan: #67e8f9; --amber: #fbbf24; --rose: #fb7185;
   --green: #86efac; --violet: #c4b5fd; --pink: #f0abfc; --orange: #fdba74; --blue: #93c5fd;
   --mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.45 var(--sans); }
-body { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-columns: minmax(0, 1fr); height: 100vh; overflow-x: hidden;
-  background: radial-gradient(1200px 700px at 30% 20%, #0e2a2c 0%, var(--bg) 60%); }
-header { display: flex; align-items: center; gap: 14px; padding: 12px 18px; border-bottom: 1px solid var(--line);
-  flex-wrap: wrap; }
+body { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-columns: minmax(0, 1fr); height: 100vh; overflow: hidden; }
+button, select { font: 12px var(--mono); color: var(--text); background: var(--bg2); border: 1px solid var(--line); border-radius: 6px;
+  padding: 4px 10px; cursor: pointer; }
+button:hover { border-color: var(--teal); }
+header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; min-width: 0; }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: .08em; }
 .brand svg { width: 30px; height: 18px; }
 .brand small { font-weight: 400; color: var(--dim); letter-spacing: 0; }
@@ -28,127 +30,142 @@ header { display: flex; align-items: center; gap: 14px; padding: 12px 18px; bord
 .badge.live { color: var(--bg); background: var(--teal); border-color: var(--teal); }
 .badge.live::before { content: "● "; animation: blink 1.4s infinite; }
 .badge.off { color: var(--rose); border-color: rgba(251,113,133,.4); }
-@keyframes blink { 50% { opacity: .25; } }
-.meta { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; min-width: 0; }
+@keyframes blink { 50% { opacity: .3; } }
+.meta { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; min-width: 0; }
 .controls { display: none; align-items: center; gap: 8px; width: 100%; }
 .controls.on { display: flex; }
-.controls button, .controls select { background: var(--bg2); color: var(--text); border: 1px solid var(--line);
-  border-radius: 6px; padding: 4px 10px; font: 12px var(--mono); cursor: pointer; }
-.controls button:hover { border-color: var(--teal); }
 .controls input[type=range] { flex: 1; accent-color: var(--teal); min-width: 60px; }
 .controls .clock { font: 12px var(--mono); color: var(--dim); min-width: 96px; text-align: right; }
-main { display: grid; grid-template-columns: minmax(0, 1fr) 370px; gap: 14px; padding: 14px 18px; min-height: 0; }
-.stage { position: relative; min-height: 440px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
-  background: linear-gradient(180deg, rgba(10,26,29,.6), rgba(7,16,18,.6)); }
-#scene { position: absolute; inset: 0; width: 100%; height: 100%; }
-.caption { position: absolute; left: 14px; bottom: 10px; right: 14px; font: 12px var(--mono); color: var(--dim);
+
+/* ---------------------------------------------------------------- stage: an infinite canvas of panels */
+main { position: relative; min-height: 0; min-width: 0; }
+#viewport { position: absolute; inset: 0; overflow: hidden; cursor: grab; touch-action: none;
+  background: var(--bg); }
+#viewport.panning { cursor: grabbing; }
+#world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+#wires { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.wire { fill: none; stroke: rgba(94,234,212,.16); stroke-width: 1.5; transition: stroke calc(.3s * var(--k, 1)); }
+.wire.active { stroke: var(--c); stroke-width: 2; }
+.wire.hot { stroke: var(--c); stroke-width: 2.2; stroke-dasharray: 7 7; animation: flow calc(.55s * var(--k, 1)) linear infinite; }
+@keyframes flow { to { stroke-dashoffset: -14; } }
+.toolbar { position: absolute; top: 10px; right: 12px; display: flex; gap: 6px; z-index: 5; }
+.toolbar button.on { color: var(--bg); background: var(--teal); border-color: var(--teal); }
+.caption { position: absolute; left: 12px; bottom: 10px; max-width: calc(100% - 24px); font: 12px var(--mono); color: var(--dim);
+  background: var(--bg2); border: 1px solid var(--line); border-radius: 6px; padding: 3px 9px; z-index: 5;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
-aside { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto; scrollbar-width: thin;
-  scrollbar-color: #1f3b3d transparent; padding-right: 2px; }
-.card { flex: none; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
-  backdrop-filter: blur(8px); min-width: 0; }
-.card h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim);
-  font-weight: 600; display: flex; align-items: baseline; gap: 8px; }
-.card h3 .count { margin-left: auto; letter-spacing: 0; font: 11px var(--mono); color: var(--faint); text-transform: none; }
-.ctx { display: flex; align-items: center; gap: 14px; }
-#ring { width: 96px; height: 96px; flex: none; }
-.legend { font: 12px var(--mono); display: grid; gap: 3px; min-width: 0; }
-.legend i, .lg i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; }
-.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.stat { background: rgba(0,0,0,.18); border-radius: 8px; padding: 6px 8px; min-width: 0; }
-.stat b { display: block; font: 600 16px var(--mono); color: var(--text); }
-.stat span { font-size: 11px; color: var(--dim); }
-ul.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 12px; }
-ul.list li { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
-ul.list .mark { font-family: var(--mono); width: 14px; flex: none; text-align: center; }
+
+.pnl { position: absolute; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column;
+  transition: left calc(.45s * var(--k, 1)) ease, top calc(.45s * var(--k, 1)) ease, opacity calc(.35s * var(--k, 1)) ease,
+    border-color calc(.3s * var(--k, 1)); overflow: hidden; cursor: pointer; }
+.pnl.new { opacity: 0; }
+.pnl.dragging { transition: none; z-index: 3; border-color: var(--teal); }
+.pnl.collapsed .pb { display: none; }
+.pnl.collapsed .ph { border-bottom: 0; }
+.ph { cursor: grab; user-select: none; }
+.pnl.dragging .ph { cursor: grabbing; }
+.ph .tog { flex: none; width: 20px; height: 20px; padding: 0; border-radius: 5px; font: 11px var(--mono); line-height: 18px;
+  color: var(--dim); background: transparent; border: 1px solid transparent; cursor: pointer; }
+.ph .tog:hover { border-color: var(--line); color: var(--text); }
+.flychip { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 5px; padding: 2px 8px 2px 6px;
+  font: 600 11.5px var(--mono); color: var(--text); background: var(--bg2); border: 1px solid var(--c, var(--teal)); border-radius: 999px;
+  white-space: nowrap; pointer-events: none; z-index: 4; will-change: transform; }
+.flychip svg { width: 11px; height: 13px; flex: none; }
+.pnl.s-run, .pnl.s-stream { border-color: rgba(94,234,212,.5); }
+.pnl.s-ask { border-color: var(--amber); }
+.pnl.s-fail { border-color: rgba(251,113,133,.6); }
+.ph { display: flex; align-items: center; gap: 7px; padding: 7px 10px; border-bottom: 1px solid var(--line2); background: var(--panel2); flex: none; min-width: 0; }
+.ph .pt { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+.ph .ps { font: 11px var(--mono); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 auto; }
+.ph .pm { font: 11px var(--mono); color: var(--dim); flex: none; }
+.pb { flex: 1; min-height: 0; overflow: auto; padding: 8px 10px; scrollbar-width: thin; scrollbar-color: #1f3b3d transparent; font-size: 12px; cursor: auto; }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; display: inline-block; background: var(--faint); }
+.d-idle { background: var(--faint); } .d-wait { background: transparent; border: 1.5px solid var(--dim); }
+.d-ask { background: var(--amber); } .d-run { background: var(--teal); animation: blink 1s infinite; }
+.d-stream { background: var(--cyan); animation: blink 1s infinite; } .d-ok { background: var(--green); } .d-fail { background: var(--rose); }
+.d-sent { background: transparent; border: 1.5px solid var(--cyan); }
+.c-ask { color: var(--amber); } .c-run { color: var(--teal); } .c-ok { color: var(--green); } .c-fail { color: var(--rose); }
+.c-dim { color: var(--dim); } .c-faint { color: var(--faint); } .c-cyan { color: var(--cyan); } .c-violet { color: var(--violet); } .c-pink { color: var(--pink); }
+.empty { color: var(--faint); font-size: 12px; }
+pre, .mono { font: 11.5px/1.45 var(--mono); }
+pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: #b9d8d2; }
+.diff .add { color: var(--green); background: rgba(134,239,172,.07); display: block; }
+.diff .del { color: var(--rose); background: rgba(251,113,133,.07); display: block; }
+.diff .hunk { color: var(--cyan); display: block; }
+.diff .ctx { display: block; }
+.row { display: flex; align-items: baseline; gap: 7px; min-width: 0; padding: 2px 0; }
+.row .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .dot { align-self: center; }
+.item { border-radius: 6px; padding: 3px 5px; margin: 0 -5px; }
+.item:hover { background: rgba(94,234,212,.06); }
+.tag { font: 10px var(--mono); color: var(--violet); border: 1px solid rgba(196,181,253,.35); border-radius: 4px; padding: 0 4px; flex: none; }
+.sub { color: var(--dim); font-size: 11px; }
+.sec { font: 600 10.5px var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--faint); margin: 8px 0 4px; }
+.sec:first-child { margin-top: 0; }
+.think { color: var(--faint); font-style: italic; white-space: pre-wrap; overflow-wrap: anywhere; }
+.answer { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 var(--mono); }
+.cursor { display: inline-block; width: 7px; height: 12px; background: var(--cyan); vertical-align: -2px; animation: blink 1s infinite; }
+.cmd { border-bottom: 1px solid var(--line2); padding: 5px 0; }
+.cmd:last-child { border-bottom: 0; }
+.cmd pre { max-height: 132px; overflow: hidden; color: #9fc3bd; margin-top: 3px; }
+.bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: rgba(94,234,212,.07); }
+.bar i { display: block; height: 100%; }
+.stack { display: flex; height: 12px; border-radius: 4px; overflow: hidden; background: rgba(94,234,212,.07); margin: 4px 0 6px; }
+.stack i { display: block; height: 100%; }
+.legend { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; font: 11.5px var(--mono); }
+.legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; }
+.tstat { display: grid; grid-template-columns: minmax(0, 104px) minmax(0, 1fr) auto; gap: 7px; align-items: center; font: 11.5px var(--mono); padding: 1px 0; }
+.tstat .tn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tstat .tv { color: var(--dim); font-size: 11px; white-space: nowrap; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip { font: 11px var(--mono); padding: 0 7px; border-radius: 999px; border: 1px solid rgba(94,234,212,.12); color: var(--faint);
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip.used { color: var(--text); border-color: currentColor; }
 .todo-done { color: var(--faint); text-decoration: line-through; }
 .todo-active { color: var(--amber); }
-.empty { color: var(--faint); font-size: 12px; }
-/* right now */
-.now li { align-items: center; }
-.now .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
-.now .st { font: 11px var(--mono); flex: none; padding: 0 6px; border-radius: 999px; border: 1px solid currentColor;
-  opacity: .9; white-space: nowrap; }
-.now .secs { font-family: var(--mono); color: var(--dim); flex: none; min-width: 42px; text-align: right; }
-.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; display: inline-block; background: currentColor; }
-.dot.hollow { background: transparent; border: 1.5px solid currentColor; }
-.dot.spin { animation: blink 1s infinite; }
-.stream { margin-top: 8px; font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word;
-  max-height: 130px; overflow: hidden; display: flex; flex-direction: column-reverse; color: var(--text);
-  border-top: 1px dashed var(--line); padding-top: 6px; }
-.stream:empty { display: none; }
-.stream .thinking { color: var(--faint); font-style: italic; }
-.stream .cursor { display: inline-block; width: 7px; height: 13px; background: var(--cyan); vertical-align: -2px;
-  animation: blink 1s infinite; }
-/* commands */
-.cmds { display: grid; gap: 6px; max-height: 340px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #1f3b3d transparent; }
-.cmd { background: rgba(0,0,0,.2); border: 1px solid rgba(94,234,212,.08); border-radius: 8px; min-width: 0; }
-.cmd > .row, .cmd > summary { display: flex; align-items: center; gap: 8px; padding: 6px 8px; min-width: 0; list-style: none; }
-.cmd > summary { cursor: pointer; }
-.cmd > summary::-webkit-details-marker { display: none; }
-.cmd > summary::after { content: "▸"; color: var(--faint); font-size: 10px; flex: none; }
-.cmd[open] > summary::after { content: "▾"; }
-.cmd code { font: 12px var(--mono); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
-.cmd .cm { font: 11px var(--mono); color: var(--dim); flex: none; white-space: nowrap; }
-.cmd .tag, .tag { font: 10px var(--mono); color: var(--violet); border: 1px solid rgba(196,181,253,.35); border-radius: 4px;
-  padding: 0 4px; flex: none; }
-.cmd pre { margin: 0; padding: 6px 8px 8px; font: 11px/1.45 var(--mono); color: #b9d8d2; white-space: pre-wrap;
-  overflow-wrap: anywhere; max-height: 200px; overflow-y: auto; border-top: 1px solid rgba(94,234,212,.08); }
-.c-requested { color: var(--dim); } .c-asking { color: var(--amber); } .c-approved { color: var(--amber); }
-.c-running { color: var(--teal); } .c-ok { color: var(--green); } .c-fail { color: var(--rose); } .c-denied { color: var(--rose); }
-/* tools used */
-.tstat { display: grid; grid-template-columns: minmax(0, 118px) minmax(0, 1fr) auto; gap: 8px; align-items: center;
-  font: 12px var(--mono); padding: 2px 0; }
-.tstat .tn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tstat .bar { height: 8px; background: rgba(94,234,212,.06); border-radius: 4px; overflow: hidden; display: flex; }
-.tstat .bar i { display: block; height: 100%; }
-.tstat .tv { color: var(--dim); font-size: 11px; white-space: nowrap; }
-.avail { margin-top: 8px; font-size: 11px; color: var(--faint); line-height: 1.5; }
-/* extensions */
-.ext h4 { margin: 10px 0 5px; font: 600 11px var(--sans); color: var(--dim); display: flex; gap: 6px; align-items: baseline; }
-.ext h4:first-child { margin-top: 0; }
-.ext h4 small { font: 11px var(--mono); color: var(--faint); font-weight: 400; }
-.chips { display: flex; flex-wrap: wrap; gap: 5px; }
-.chip { font: 11px var(--mono); padding: 1px 7px; border-radius: 999px; border: 1px solid rgba(94,234,212,.12);
-  color: var(--faint); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chip b { font-weight: 600; margin-left: 4px; }
-.chip.used { color: var(--text); border-color: currentColor; }
-.chip.err b { color: var(--rose); }
-.srv { margin: 4px 0 6px; }
-.srv .sh { display: flex; align-items: center; gap: 7px; font: 12px var(--mono); min-width: 0; }
-.srv .sh span:last-child { color: var(--faint); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.srv .chips { margin: 4px 0 0 15px; }
-.hk { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 7px; align-items: baseline; font: 11px var(--mono);
-  color: var(--faint); padding: 1px 0; }
-.hk .hc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hk.used { color: var(--dim); } .hk.used .he { color: var(--orange); }
-/* activity */
-.logcard { display: flex; flex-direction: column; height: 280px; }
-#log { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: #1f3b3d transparent; font: 12px/1.5 var(--mono); }
-#log div { display: flex; gap: 8px; white-space: nowrap; }
-#log time { color: var(--faint); flex: none; width: 44px; text-align: right; }
-#log span { overflow: hidden; text-overflow: ellipsis; }
-.k-turn { color: var(--teal); } .k-llm { color: var(--cyan); } .k-tool { color: var(--amber); }
-.k-mcp { color: var(--pink); } .k-hook { color: var(--orange); } .k-ask { color: var(--amber); }
-.k-err { color: var(--rose); } .k-ok { color: var(--green); } .k-sub { color: var(--violet); } .k-dim { color: var(--dim); }
-footer { padding: 0 18px 14px; }
-.timeline { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 8px 12px; }
-.timeline h3 { margin: 0 0 4px; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim);
-  display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.log div { display: flex; gap: 8px; white-space: nowrap; font: 11.5px/1.5 var(--mono); }
+.log time { color: var(--faint); flex: none; width: 40px; text-align: right; }
+.log span { overflow: hidden; text-overflow: ellipsis; }
+.k-turn { color: var(--teal); } .k-llm { color: var(--cyan); } .k-tool { color: var(--amber); } .k-mcp { color: var(--pink); }
+.k-hook { color: var(--orange); } .k-ask { color: var(--amber); } .k-err { color: var(--rose); } .k-ok { color: var(--green); }
+.k-sub { color: var(--violet); } .k-dim { color: var(--dim); }
+
+/* ---------------------------------------------------------------- detail drawer */
+#drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(580px, 100vw); background: var(--bg2); border-left: 1px solid var(--line);
+  transform: translateX(100%); transition: transform .25s ease; z-index: 20; display: flex; flex-direction: column; }
+#drawer.open { transform: none; }
+#drawer .dh { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+#drawer .dh b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+#dbody { flex: 1; overflow: auto; padding: 12px 14px 24px; scrollbar-width: thin; scrollbar-color: #1f3b3d transparent; }
+#dbody pre { background: var(--bg); border: 1px solid var(--line2); border-radius: 6px; padding: 8px 10px; margin: 4px 0 10px; }
+#dbody .kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font: 12px var(--mono); margin-bottom: 10px; }
+#dbody .kv span:nth-child(odd) { color: var(--dim); }
+#dbody .blk { border: 1px solid var(--line2); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
+
+/* ---------------------------------------------------------------- timeline strip */
+footer { border-top: 1px solid var(--line); padding: 4px 16px 8px; }
+footer summary { cursor: pointer; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim);
+  display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; list-style: none; padding: 4px 0; }
+footer summary::-webkit-details-marker { display: none; }
+footer summary::before { content: "▸"; color: var(--faint); }
+footer details[open] summary::before { content: "▾"; }
 .lg { display: flex; flex-wrap: wrap; gap: 2px 10px; font: 10px var(--mono); letter-spacing: 0; text-transform: none; color: var(--faint); }
+.lg i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
 .lg .hatch { background: repeating-linear-gradient(135deg, var(--amber) 0 2px, transparent 2px 4px); }
-#timeline { width: 100%; height: 112px; display: block; }
+#timeline { width: 100%; height: 108px; display: block; }
+
+/* ---------------------------------------------------------------- phones and narrow windows: one scrolling column */
 @media (max-width: 900px) {
-  body { height: auto; min-height: 100vh; }
-  aside { overflow: visible; padding-right: 0; }
-  main { grid-template-columns: minmax(0, 1fr); padding: 12px 16px; }
-  header, footer { padding-left: 16px; padding-right: 16px; }
-  .stage { min-height: 460px; }
+  body { height: auto; min-height: 100vh; overflow: auto; overflow-x: hidden; }
+  main { position: static; }
+  #viewport { position: static; overflow: visible; cursor: auto; touch-action: auto; }
+  #world { position: static; transform: none !important; display: flex; flex-direction: column; gap: 12px; padding: 12px 14px 60px; }
+  #wires, .toolbar, .flychip { display: none; }
+  .ph { cursor: auto; }
+  .pnl { position: static; width: auto !important; height: auto !important; }
+  .pnl .pb { max-height: 300px; }
+  .caption { position: fixed; left: 10px; right: 10px; bottom: 10px; max-width: none; }
+  header, footer { padding-left: 14px; padding-right: 14px; }
   .meta { margin-left: 0; }
-}
-@media (max-width: 560px) {
-  .stage { min-height: 500px; }
-  .tstat { grid-template-columns: minmax(0, 96px) minmax(0, 1fr) auto; }
 }
 </style>
 </head>
@@ -169,7 +186,8 @@ footer { padding: 0 18px 14px; }
     <button id="play" title="Play / pause (space)">❚❚</button>
     <button id="restart" title="Restart">↺</button>
     <select id="speed" title="Playback speed">
-      <option value="1">1×</option><option value="2" selected>2×</option><option value="4">4×</option>
+      <option value="0.1">0.1×</option><option value="0.25">0.25×</option><option value="0.5">0.5×</option>
+      <option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option>
       <option value="8">8×</option><option value="16">16×</option>
     </select>
     <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Position">
@@ -178,55 +196,21 @@ footer { padding: 0 18px 14px; }
 </header>
 
 <main>
-  <section class="stage">
-    <canvas id="scene"></canvas>
-    <div class="caption" id="caption">Waiting for the agent…</div>
-  </section>
-  <aside>
-    <div class="card now">
-      <h3>Right now</h3>
-      <ul class="list" id="now"><li class="empty">Idle</li></ul>
-      <div class="stream" id="stream"></div>
-    </div>
-    <div class="card">
-      <h3>Commands <span class="count" id="cmd-count"></span></h3>
-      <div class="cmds" id="cmds"><div class="empty">No commands run yet</div></div>
-    </div>
-    <div class="card">
-      <h3>Tools used <span class="count" id="tool-count"></span></h3>
-      <div id="toolstats"><div class="empty">No tools used yet</div></div>
-    </div>
-    <div class="card ext">
-      <h3>Extensions (skills · agents · MCP · hooks)</h3>
-      <div id="ext"><div class="empty">Waiting for the session inventory</div></div>
-    </div>
-    <div class="card">
-      <h3>Context window</h3>
-      <div class="ctx">
-        <canvas id="ring" width="192" height="192"></canvas>
-        <div class="legend" id="legend"></div>
-      </div>
-    </div>
-    <div class="card">
-      <h3>This session</h3>
-      <div class="stats">
-        <div class="stat"><b id="s-turns">0</b><span>turns</span></div>
-        <div class="stat"><b id="s-calls">0</b><span>model calls</span></div>
-        <div class="stat"><b id="s-tools">0</b><span>tool calls</span></div>
-        <div class="stat"><b id="s-in">0</b><span>tokens in</span></div>
-        <div class="stat"><b id="s-out">0</b><span>tokens out</span></div>
-        <div class="stat"><b id="s-err">0</b><span>tool errors</span></div>
-      </div>
-    </div>
-    <div class="card"><h3>Todos</h3><ul class="list" id="todos"><li class="empty">No plan yet</li></ul></div>
-    <div class="card"><h3>Lessons recalled</h3><ul class="list" id="lessons"><li class="empty">None this turn</li></ul></div>
-    <div class="card logcard"><h3>Activity</h3><div id="log"></div></div>
-  </aside>
+  <div id="viewport">
+    <div id="world"><svg id="wires" width="10" height="10"></svg></div>
+  </div>
+  <div class="toolbar">
+    <button id="fit" title="Fit everything (F)">Fit all</button>
+    <button id="reset" title="Forget panels you moved or collapsed; back to the automatic layout">Reset layout</button>
+    <button id="follow" class="on" title="Keep what is active in view">Follow</button>
+    <button id="zoom" title="Zoom 100% (0)">100%</button>
+  </div>
+  <div class="caption" id="caption">Waiting for the agent…</div>
 </main>
 
 <footer>
-  <div class="timeline">
-    <h3>Timeline
+  <details open>
+    <summary>Timeline
       <span class="lg">
         <span><i style="background:#67e8f9;opacity:.3"></i>model waiting</span>
         <span><i style="background:#67e8f9"></i>model streaming</span>
@@ -238,26 +222,27 @@ footer { padding: 0 18px 14px; }
         <span><i class="hatch"></i>awaiting approval</span>
         <span><i style="background:#fb7185"></i>failed</span>
       </span>
-    </h3>
+    </summary>
     <canvas id="timeline"></canvas>
-  </div>
+  </details>
 </footer>
+
+<aside id="drawer" aria-hidden="true">
+  <div class="dh"><b id="dtitle">Details</b><button id="dclose" title="Close (Esc)">✕</button></div>
+  <div id="dbody"></div>
+</aside>
 
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
 const C = {
-  teal: "#5eead4", teal2: "#2dd4bf", cyan: "#67e8f9", amber: "#fbbf24", rose: "#fb7185",
-  green: "#86efac", violet: "#c4b5fd", text: "#d8f3ee", dim: "#7fa6a0", faint: "#4b6b67",
-  pink: "#f0abfc", orange: "#fdba74", blue: "#93c5fd", other: "#a7c4bf",
+  teal: "#5eead4", cyan: "#67e8f9", amber: "#fbbf24", rose: "#fb7185", green: "#86efac", violet: "#c4b5fd",
+  text: "#d8f3ee", dim: "#7fa6a0", faint: "#4b6b67", pink: "#f0abfc", orange: "#fdba74", blue: "#93c5fd", other: "#a7c4bf",
 };
 const MONO = 'ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace';
-const SANS = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 const PART_COLORS = { system: C.violet, conversation: C.teal, tools: C.amber };
 const KIND_COLOR = { file: C.teal, search: C.teal, cmd: C.amber, web: C.blue, mcp: C.pink, skill: C.violet,
   agent: C.violet, todo: C.other, other: C.other };
-const KIND_ICON = { file: "doc", search: "search", cmd: "term", web: "globe", mcp: "plug", skill: "sparkle",
-  agent: "robot", todo: "check", other: "cog" };
 const MAX_GAP = 2.5;   // replay: idle gaps longer than this (seconds) are shortened
 const fmtNum = (n) => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e4 ? Math.round(n / 1e3) + "k"
   : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n);
@@ -267,6 +252,8 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const oneLine = (s) => String(s || "").replace(/\s+/g, " ").trim();
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const since = (t) => fmtDur(Math.max(0, clock() - t));
+const tail = (s, n) => { s = String(s || ""); return s.length > n ? "…" + s.slice(-n) : s; };
+const head = (s, n) => { s = String(s || ""); return s.length > n ? s.slice(0, n) + "…" : s; };
 
 // ------------------------------------------------------------------ what a tool is (from its real name/args)
 
@@ -289,6 +276,12 @@ function toolKind(name) {
 }
 function baseName(p) { const parts = String(p || "").split(/[\\/]/).filter(Boolean); return parts.length ? parts[parts.length - 1] : ""; }
 function shortUrl(u) { const m = /^[a-z]+:\/\/([^/?#]+)([^?#]*)/i.exec(String(u || "")); return m ? m[1] + (m[2] && m[2] !== "/" ? m[2] : "") : String(u || ""); }
+function normPath(p) {
+  let s = String(p || "").replace(/\\/g, "/");
+  const cwd = String(S.cwd || "").replace(/\\/g, "/").replace(/\/$/, "");
+  if (cwd && s.toLowerCase().startsWith(cwd.toLowerCase() + "/")) s = s.slice(cwd.length + 1);
+  return s.replace(/^\.\//, "");
+}
 function cmdLabel(t) {
   const a = t.args || {};
   if (t.name === "Bash") return "$ " + oneLine(a.command || t.title);
@@ -309,72 +302,78 @@ function toolLabel(t) {
     default: return oneLine(t.title || t.name);
   }
 }
-function toolVerb(t) {
-  return t.kind === "mcp" ? "MCP" : t.kind === "agent" ? "sub-agent" : t.name;
-}
+function toolVerb(t) { return t.kind === "mcp" ? "MCP" : t.kind === "agent" ? "sub-agent" : t.name; }
 function statKey(t) { return t.kind === "mcp" ? t.mcp.server + " · " + t.mcp.tool : t.name; }
+function toolPanel(t) {   // which panel on the canvas shows this tool call
+  const a = t.args || {};
+  if (t.kind === "file" && (a.file_path || a.path || a.notebook_path)) return "file:" + normPath(a.file_path || a.path || a.notebook_path);
+  if (t.kind === "cmd") return "terminal";
+  if (t.kind === "mcp") return "mcp:" + t.mcp.server;
+  if (t.kind === "skill") return "skills";
+  if (t.kind === "agent") return "model";   // the sub-agent gets its own panel when it really starts
+  return "tools";
+}
 
 // ------------------------------------------------------------------ state (pure: rebuilt on seek)
 
 function freshState() {
   return {
-    model: "", provider: "", mode: "", window: 0, sessionSeen: false,
+    model: "", provider: "", mode: "", window: 0, cwd: "", sessionSeen: false, lessonsPath: "", memoryFiles: [],
     inv: { tools: [], skills: [], agents: [], mcp: [], hooks: [] },
-    ctx: { used: 0, usable: 0, window: 0, parts: {} }, ctxUsed: {},
+    ctx: { used: 0, usable: 0, window: 0, parts: {} }, ctxUsed: {}, compactions: [],
     turns: 0, calls: 0, toolCalls: 0, toolErrors: 0, tokIn: 0, tokOut: 0,
-    turn: null,                 // {start, prompt} while a turn runs
-    llm: new Map(),             // agent -> model call in flight {state: preparing|sent|streaming}
-    llmFailed: null,            // the last model call failed: {agent, t, error}
-    tools: new Map(),           // `${agent}:${id}` -> tool call in flight (requested ... running)
-    toolStats: new Map(), commands: [], subagents: new Map(),
-    skillUse: new Map(), agentUse: new Map(), mcpUse: new Map(), hookUse: new Map(), hookRuns: 0, lessonsSeen: false,
-    todos: [], lessons: [], log: [], spans: [], caption: "Waiting for the agent…", now: 0,
-    stream: null, answer: null,
-    ver: 0, cmdVer: 0, statVer: 0, extVer: 0,
+    turn: null, prompts: [], userMsgs: [], queue: [],
+    llm: new Map(), lastCall: new Map(), llmFailed: null,
+    tools: new Map(), all: [], toolStats: new Map(), commands: [], other: [],
+    files: new Map(), mcpCalls: new Map(), skill: null, skillRuns: [], skillText: {},
+    subRuns: new Map(), subCur: {}, subCount: {},
+    subagents: new Map(),   // for the timeline: agent -> {start, active}
+    skillUse: new Map(), agentUse: new Map(), hookLog: [], hookRuns: 0, lessonsSeen: false,
+    todos: [], lessons: [], log: [], spans: [], caption: "Waiting for the agent…", now: 0, ver: 0,
   };
 }
 let S = freshState();
 
 function log(ev, kind, text) {
   S.log.push({ t: ev.t || 0, kind, text });
-  if (S.log.length > 400) S.log.splice(0, S.log.length - 400);
+  if (S.log.length > 600) S.log.splice(0, S.log.length - 600);
 }
 function pushSpan(sp) { S.spans.push(sp); if (S.spans.length > 3000) S.spans.splice(0, S.spans.length - 3000); }
+function subRun(agent) { return S.subRuns.get(S.subCur[agent]) || null; }
 
 function newTool(ev, key) {
   const t = { key, agent: ev.agent || "main", id: ev.id, name: ev.name || "?", title: ev.title || ev.name || "",
     args: ev.args || {}, kind: toolKind(ev.name), mcp: mcpParts(ev.name), state: "requested", reqAt: ev.t || 0,
-    askAt: null, askEnd: null, startAt: null, endAt: null, ok: null, ran: false, cmd: null };
-  if (t.kind === "cmd") {
-    t.cmd = { key: key + "@" + t.reqAt, agent: t.agent, label: cmdLabel(t), state: "requested", t: t.reqAt,
-      startAt: null, dur: null, exit: null, output: "", summary: "" };
-    S.commands.push(t.cmd);
-    if (S.commands.length > 200) S.commands.splice(0, S.commands.length - 200);
-    S.cmdVer++;
+    askAt: null, askEnd: null, startAt: null, endAt: null, ok: null, ran: false, file: null, output: "", diff: "", summary: "" };
+  t.panel = toolPanel(t);
+  S.all.push(t); if (S.all.length > 2000) S.all.splice(0, S.all.length - 2000);
+  if (t.kind === "cmd") { S.commands.push(t); if (S.commands.length > 300) S.commands.splice(0, S.commands.length - 300); }
+  else if (t.panel === "tools") { S.other.push(t); if (S.other.length > 300) S.other.splice(0, S.other.length - 300); }
+  if (t.panel.startsWith("file:")) {
+    const path = t.panel.slice(5);
+    const f = S.files.get(path) || { path, full: (t.args || {}).file_path || path, ops: [], first: ev.t || 0 };
+    f.ops.push(t); S.files.set(path, f);
   }
+  if (t.kind === "mcp") { const l = S.mcpCalls.get(t.mcp.server) || []; l.push(t); S.mcpCalls.set(t.mcp.server, l); }
+  const run = t.agent !== "main" ? subRun(t.agent) : null;
+  if (run) run.steps.push({ kind: "tool", t });
   return t;
-}
-function syncCmd(t) {
-  if (!t.cmd) return;
-  Object.assign(t.cmd, { state: t.state === "done" ? (t.ok ? "ok" : t.ran ? "fail" : "denied") : t.state,
-    startAt: t.startAt, label: cmdLabel(t) });
-  S.cmdVer++;
 }
 
 function endLlm(agent, t, error) {
   const c = S.llm.get(agent);
   if (!c) return;
+  c.end = t; c.error = error || "";
   pushSpan({ lane: 0, agent, start: c.start, sent: c.sentAt, first: c.firstAt, end: t, ok: !error });
+  S.lastCall.set(agent, c);
   S.llm.delete(agent);
 }
 
-function closeTool(key, t, why) {   // a tool still in flight when its turn ended (interrupted)
+function closeTool(key, t, why) {   // still in flight when its turn ended (interrupted)
   const x = S.tools.get(key);
   if (!x) return;
-  x.state = "done"; x.ok = false; x.endAt = t; x.summary = why;
-  if (x.ran) pushSpan({ lane: 1, agent: x.agent, kind: x.kind, label: toolLabel(x), req: x.reqAt, ask: x.askAt,
-    askEnd: x.askEnd, start: x.startAt, end: t, ok: false });
-  syncCmd(x);
+  Object.assign(x, { state: "done", ok: false, endAt: t, summary: why });
+  if (x.ran) pushSpan({ lane: 1, agent: x.agent, kind: x.kind, label: toolLabel(x), ask: x.askAt, askEnd: x.askEnd, start: x.startAt, end: t, ok: false });
   S.tools.delete(key);
 }
 
@@ -385,45 +384,64 @@ function apply(ev, fx) {
   const key = agent + ":" + ev.id;
   switch (ev.type) {
     case "session":
-      Object.assign(S, { model: ev.model || "", provider: ev.provider || "", mode: ev.mode || "", window: ev.window || 0 });
+      Object.assign(S, { model: ev.model || "", provider: ev.provider || "", mode: ev.mode || "", window: ev.window || 0, cwd: ev.cwd || "" });
       S.inv = { tools: ev.tools || [], skills: ev.skills || [], agents: ev.agents || [], mcp: ev.mcp || [], hooks: ev.hooks || [] };
-      S.sessionSeen = true; S.extVer++;
+      if (ev.lessons_path) S.lessonsPath = ev.lessons_path;
+      if (ev.memory_files) S.memoryFiles = ev.memory_files;
+      S.sessionSeen = true;
       if (S.turns === 0) S.caption = "Ready. Send a prompt in the terminal.";
       log(ev, "k-dim", `session · ${ev.model || "?"} · ${fmtNum(ev.window || 0)} window · mode ${ev.mode || "?"}`);
       break;
     case "turn_start":
-      S.turns++; S.lessons = []; S.answer = null; S.llmFailed = null;
-      S.turn = { start: ev.t || 0, prompt: oneLine(ev.prompt) };
+      S.turns++; S.lessons = []; S.llmFailed = null; S.userMsgs = []; S.skill = null;
+      S.turn = { start: ev.t || 0, prompt: String(ev.prompt || "") };
+      S.prompts.push({ t: ev.t || 0, text: String(ev.prompt || "") });
       S.caption = "You: " + oneLine(ev.prompt);
       log(ev, "k-turn", "❯ " + oneLine(ev.prompt));
-      fx && fx.turn(ev);
+      fx && fx.hot("you>context", C.text);
+      break;
+    case "user_message":
+      S.userMsgs.push({ t: ev.t || 0, text: String(ev.text || ""), queued: !!ev.queued });
+      { const i = S.queue.findIndex((q) => q === ev.text); if (i >= 0) S.queue.splice(i, 1); }
+      log(ev, "k-turn", (ev.queued ? "↳ queued message delivered: " : "❯ ") + oneLine(ev.text));
+      S.caption = "Your queued message reached the model's context";
+      fx && fx.hot("you>context", C.text);
+      break;
+    case "queue":
+      S.queue = (ev.items || []).map((x) => typeof x === "string" ? x : String(x.text ?? x.content ?? JSON.stringify(x)));
       break;
     case "turn_end":
       endLlm("main", ev.t, false);
-      [...S.tools.keys()].forEach((k) => { const x = S.tools.get(k); closeTool(k, ev.t, "stopped: turn " + ev.status); fx && fx.toolGone(x); });
+      [...S.tools.keys()].forEach((k) => closeTool(k, ev.t, "stopped: turn " + ev.status));
+      S.subRuns.forEach((r) => { if (r.active) { r.active = false; r.status = r.status || ev.status; r.end = ev.t; } });
       S.subagents.forEach((s) => { if (s.active) { s.active = false; s.end = ev.t; } });
       S.turn = null;
-      if (S.answer) S.answer.done = true;
       S.caption = `Turn ${ev.status} in ${fmtDur(ev.duration || 0)} · ${ev.tool_calls || 0} tool calls`;
       log(ev, ev.status === "ok" ? "k-ok" : "k-err", `turn ${ev.status} · ${fmtDur(ev.duration || 0)} · ${ev.tool_calls || 0} tool calls`);
-      fx && fx.answer(ev);
       break;
-    case "llm_start":
+    case "llm_start": {
       endLlm(agent, ev.t, false);
-      S.llm.set(agent, { agent, start: ev.t || 0, state: "preparing", sentAt: null, firstAt: null, chars: 0, model: ev.model || "" });
+      const c = { agent, start: ev.t || 0, state: "preparing", sentAt: null, firstAt: null, chars: 0, model: ev.model || "",
+        text: "", thinking: "", calls: [], tokIn: 0, tokOut: 0, end: null, error: "" };
+      S.llm.set(agent, c);
       if (S.llmFailed && S.llmFailed.agent === agent) S.llmFailed = null;
       S.calls++;
-      S.stream = { agent, text: "", thinking: "" };
-      if (!sub) S.answer = { text: "", done: false };
+      const run = sub ? subRun(agent) : null;
+      if (run) run.steps.push({ kind: "llm", c });
       S.caption = who + "Preparing a request for the model…";
       break;
+    }
     case "llm_status": {
       const c = S.llm.get(agent);
       if (!c) break;
       if (ev.state === "sent") {
         c.state = "sent"; c.sentAt = ev.t;
         S.caption = who + `Request sent (~${fmtNum(S.ctxUsed[agent] || 0)} tokens) · waiting for the model…`;
-        fx && fx.request(ev, S.ctxUsed[agent] || 0);
+        if (fx) {
+          const from = sub ? `sub:${S.subCur[agent]}` : "context", tok = S.ctxUsed[agent] || 0;
+          fx.hot(from + ">model", C.cyan);
+          fx.chip(from, "model", { label: "request" + (tok ? " · ~" + fmtNum(tok) + " tokens" : ""), color: C.cyan });
+        }
       } else if (ev.state === "first_token" && c.state !== "streaming") {
         c.state = "streaming"; c.firstAt = ev.t;
         S.caption = who + "The model is replying…";
@@ -435,30 +453,27 @@ function apply(ev, fx) {
       if (c) {
         c.chars += ev.chars || 0;
         if (c.state !== "streaming") { c.state = "streaming"; c.firstAt = ev.t; }   // older recordings have no llm_status
+        c.text = (c.text + (ev.text || "")).slice(-20000);
+        c.thinking = (c.thinking + (ev.thinking || "")).slice(-8000);
       }
-      if (S.stream && S.stream.agent === agent) {
-        S.stream.text = (S.stream.text + (ev.text || "")).slice(-4000);
-        S.stream.thinking = (S.stream.thinking + (ev.thinking || "")).slice(-1500);
-      }
-      if (!sub && S.answer && ev.text) S.answer.text = (S.answer.text + ev.text).slice(-2000);
       break;
     }
-    case "llm_end":
+    case "llm_end": {
       S.tokIn += ev.prompt_tokens || 0; S.tokOut += ev.completion_tokens || 0;
-      endLlm(agent, ev.t, !!ev.error);
+      const c = S.llm.get(agent);
+      if (c) { c.tokIn = ev.prompt_tokens || 0; c.tokOut = ev.completion_tokens || 0; c.calls = ev.calls || []; }
+      endLlm(agent, ev.t, ev.error || "");
       if (ev.error) {
         S.llmFailed = { agent, t: ev.t, error: ev.error };
-        if (!sub) S.answer = null;
         log(ev, "k-err", `${who}model request failed · ${ev.error}`);
         S.caption = who + "Model request failed: " + ev.error;
-        fx && fx.modelError(ev);
         break;
       }
-      if (!sub && S.answer) { if ((ev.calls || []).length) S.answer = null; else S.answer.done = true; }
       log(ev, "k-llm", `${who}model · ${fmtNum(ev.prompt_tokens || 0)} in → ${fmtNum(ev.completion_tokens || 0)} out · `
         + fmtDur(ev.duration || 0) + ((ev.calls || []).length ? " · asks for " + ev.calls.join(", ") : ""));
-      if (!sub) S.caption = (ev.calls || []).length ? "The model asked for " + ev.calls.join(", ") : "The model answered";
+      S.caption = who + ((ev.calls || []).length ? "The model asked for " + ev.calls.join(", ") : "The model answered");
       break;
+    }
     case "tool_request": {
       const t = newTool(ev, key);
       S.tools.set(key, t);
@@ -479,45 +494,57 @@ function apply(ev, fx) {
         t.state = "denied"; if (t.askAt != null) t.askEnd = ev.t;
         log(ev, "k-err", `${who}denied · ${t.title || t.name}${ev.reason ? " · " + ev.reason : ""}`);
       }
-      syncCmd(t);
       break;
     }
     case "tool_start": {
       let t = S.tools.get(key);
       if (!t) { t = newTool(ev, key); S.tools.set(key, t); }
       Object.assign(t, { state: "running", startAt: ev.t || 0, ran: true, title: ev.title || t.title, args: ev.args || t.args });
+      if (ev.file) t.file = ev.file;
       if (t.askAt != null && t.askEnd == null) t.askEnd = t.startAt;
       S.toolCalls++;
-      if (t.kind === "skill") { const n = (t.args || {}).skill || "?"; S.skillUse.set(n, (S.skillUse.get(n) || 0) + 1); S.extVer++; }
+      if (t.kind === "skill") {
+        const n = (t.args || {}).skill || "?";
+        S.skillUse.set(n, (S.skillUse.get(n) || 0) + 1); S.skill = { name: n, t: ev.t, tool: t }; S.skillRuns.push(S.skill);
+      }
       S.caption = who + "Running " + toolVerb(t) + ": " + toolLabel(t);
-      syncCmd(t);
+      if (fx) {
+        const from = sub ? "sub:" + S.subCur[agent] : "model";
+        fx.hot(`${from}>${t.panel}`, KIND_COLOR[t.kind]);
+        if (t.kind === "file" && t.name !== "Read") fx.chip(from, t.panel, { file: true, label: baseName(t.panel.slice(5)), color: C.teal });
+        else if (t.name === "Bash") fx.chip(from, t.panel, { label: "$ " + progName((t.args || {}).command), color: C.amber });
+        else if (t.kind === "skill") fx.chip(from, t.panel, { label: (t.args || {}).skill || "skill", color: C.violet });
+        else if (t.kind === "mcp") fx.chip(from, t.panel, { label: t.mcp.server + " · " + (t.mcp.tool || "?"), color: C.pink });
+      }
       break;
     }
     case "tool_end": {
       let t = S.tools.get(key);
       if (!t) t = newTool(ev, key);
       Object.assign(t, { state: "done", ok: !!ev.ok, endAt: ev.t || 0, summary: ev.summary || "", dur: ev.duration || 0,
-        exit: ev.exit_code ?? null, added: ev.added ?? null, removed: ev.removed ?? null, output: ev.output || "" });
+        exit: ev.exit_code ?? null, added: ev.added ?? null, removed: ev.removed ?? null, output: ev.output || "", diff: ev.diff || "" });
       S.tools.delete(key);
       if (!ev.ok) S.toolErrors++;
       const sk = statKey(t);
-      const st = S.toolStats.get(sk) || { name: sk, kind: t.kind, count: 0, errors: 0, time: 0, denied: 0 };
-      st.count++; if (!ev.ok) st.errors++; if (t.ran) st.time += ev.duration || 0; else if (!ev.ok) st.denied++;
-      S.toolStats.set(sk, st); S.statVer++;
-      if (t.mcp) {
-        const u = S.mcpUse.get(t.mcp.server) || { calls: 0, errors: 0, tools: new Map() };
-        u.calls++; if (!ev.ok) u.errors++;
-        const tu = u.tools.get(t.mcp.tool) || { calls: 0, errors: 0 }; tu.calls++; if (!ev.ok) tu.errors++;
-        u.tools.set(t.mcp.tool, tu); S.mcpUse.set(t.mcp.server, u); S.extVer++;
+      const st = S.toolStats.get(sk) || { name: sk, kind: t.kind, count: 0, errors: 0, time: 0 };
+      st.count++; if (!ev.ok) st.errors++; if (t.ran) st.time += ev.duration || 0;
+      S.toolStats.set(sk, st);
+      if (t.kind === "skill" && t.ok) S.skillText[(t.args || {}).skill || "?"] = t.output;
+      if (t.kind === "agent") {   // the sub-agent's report
+        const runs = [...S.subRuns.values()].filter((r) => r.agent === ((t.args || {}).subagent_type || ""));
+        if (runs.length) runs[runs.length - 1].report = t.output;
       }
-      if (t.ran || t.askAt != null) pushSpan({ lane: 1, agent: t.agent, kind: t.kind, label: toolLabel(t), req: t.reqAt, ask: t.askAt,
+      if (t.ran || t.askAt != null) pushSpan({ lane: 1, agent: t.agent, kind: t.kind, label: toolLabel(t), ask: t.askAt,
         askEnd: t.askEnd ?? (t.askAt != null ? t.endAt : null), start: t.ran ? t.startAt : null, end: t.endAt, ok: t.ok });
-      if (t.cmd) { t.cmd.dur = t.ran ? t.dur : null; t.cmd.exit = t.exit; t.cmd.output = t.output; t.cmd.summary = t.summary; }
-      syncCmd(t);
       log(ev, !ev.ok ? "k-err" : t.mcp ? "k-mcp" : "k-tool", `${who}${ev.ok ? "●" : "✗"} ${t.title || t.name}`
         + (ev.summary ? " — " + ev.summary : "") + (t.ran ? ` · ${fmtDur(ev.duration || 0)}` : " · never ran"));
       S.caption = who + (ev.ok ? "Done: " : t.ran ? "Failed: " : "Not run: ") + toolLabel(t) + (ev.summary ? " — " + ev.summary : "");
-      fx && fx.toolEnd(t);
+      if (t.ran && fx) {
+        const to = sub ? "sub:" + S.subCur[agent] : "context";
+        fx.hot(`${t.panel}>${to}`, t.ok ? C.green : C.rose);
+        if (t.name === "Read") fx.chip(t.panel, to, { file: true, label: baseName(t.panel.slice(5)), color: t.ok ? C.teal : C.rose });
+        else if (t.name === "Bash") fx.chip(t.panel, to, { label: t.exit != null ? "exit " + t.exit : t.ok ? "ok" : "failed", color: t.ok ? C.green : C.rose });
+      }
       break;
     }
     case "context":
@@ -525,803 +552,797 @@ function apply(ev, fx) {
       if (!sub) S.ctx = { used: ev.used || 0, usable: ev.usable || 0, window: ev.window || 0, parts: ev.parts || {} };
       break;
     case "compact":
+      S.compactions.push({ t: ev.t || 0, description: ev.description || "", emergency: !!ev.emergency });
       log(ev, "k-sub", `${ev.emergency ? "emergency " : ""}compaction · ${ev.description || ""}`);
       S.caption = "Context compacted: " + (ev.description || "");
-      fx && fx.compact(ev);
       break;
     case "lessons":
       S.lessons = ev.items || []; S.lessonsSeen = true;
       log(ev, "k-sub", `recalled ${S.lessons.length} lesson${S.lessons.length === 1 ? "" : "s"}`);
-      fx && fx.lessons(ev);
+      fx && fx.hot("lessons>context", C.violet);
       break;
-    case "subagent_start":
-      S.subagents.set(agent, { start: ev.t || 0, active: true, prompt: oneLine(ev.prompt), status: "", end: null });
-      S.agentUse.set(agent, (S.agentUse.get(agent) || 0) + 1); S.extVer++;
+    case "subagent_start": {
+      S.subCount[agent] = (S.subCount[agent] || 0) + 1;
+      const rk = agent + "#" + S.subCount[agent];
+      S.subRuns.set(rk, { key: rk, agent, n: S.subCount[agent], start: ev.t || 0, active: true, prompt: String(ev.prompt || ""),
+        status: "", end: null, steps: [], report: "", toolCalls: 0 });
+      S.subCur[agent] = rk;
+      S.subagents.set(agent, { start: ev.t || 0, active: true });
+      S.agentUse.set(agent, (S.agentUse.get(agent) || 0) + 1);
       log(ev, "k-sub", `sub-agent ${agent} started · ${oneLine(ev.prompt).slice(0, 200)}`);
+      if (fx) { fx.hot(`model>sub:${rk}`, C.violet); fx.chip("model", "sub:" + rk, { label: agent, color: C.violet }); }
       break;
+    }
     case "subagent_end": {
-      const s = S.subagents.get(agent);
+      const run = subRun(agent), s = S.subagents.get(agent);
       endLlm(agent, ev.t, false);
-      if (s) { s.active = false; s.status = ev.status || ""; s.end = ev.t;
-        pushSpan({ lane: 2, agent, start: s.start, end: ev.t, label: agent, ok: ev.status === "ok" }); }
+      if (run) Object.assign(run, { active: false, status: ev.status || "", end: ev.t, toolCalls: ev.tool_calls || 0 });
+      if (s) { s.active = false; pushSpan({ lane: 2, agent, start: s.start, end: ev.t, label: agent, ok: ev.status === "ok" }); }
       log(ev, ev.status === "ok" ? "k-sub" : "k-err", `sub-agent ${agent} ${ev.status} · ${fmtDur(ev.duration || 0)} · ${ev.tool_calls || 0} tool calls`);
+      if (run && fx) fx.hot(`sub:${run.key}>model`, ev.status === "ok" ? C.green : C.rose);
       break;
     }
     case "todos":
       S.todos = ev.items || [];
       break;
-    case "hook": {
+    case "hook":
       S.hookRuns++;
-      const hk = (ev.event || "") + "|" + (ev.command || "");
-      const u = S.hookUse.get(hk) || { runs: 0, last: "" }; u.runs++; u.last = ev.outcome || ""; S.hookUse.set(hk, u); S.extVer++;
+      S.hookLog.push({ t: ev.t || 0, event: ev.event || "", tool: ev.tool || "", command: ev.command || "", outcome: ev.outcome || "", duration: ev.duration || 0 });
+      if (S.hookLog.length > 200) S.hookLog.splice(0, S.hookLog.length - 200);
       log(ev, ev.outcome === "blocked" ? "k-err" : "k-hook",
         `hook ${ev.event}${ev.tool ? " (" + ev.tool + ")" : ""} · ${ev.outcome} · ${fmtDur(ev.duration || 0)} · ${ev.command || ""}`);
       if (ev.outcome === "blocked") S.caption = `A ${ev.event} hook blocked this step`;
-      fx && fx.hook(ev);
+      fx && fx.hot("hooks>context", ev.outcome === "blocked" ? C.rose : C.orange);
       break;
-    }
   }
 }
 
-// ------------------------------------------------------------------ scene (canvas): nodes + cards for real objects
+// ------------------------------------------------------------------ what each panel shows (HTML from real state only)
 
-const scene = $("scene"), g = scene.getContext("2d");
-let W = 0, H = 0, DPR = 1, NARROW = false, CW = 168, CH = 40;
-const N = {};
-let cards = new Map();   // key -> card on screen (one per real object)
-let pulses = [];
-let snap = true;         // next sync places cards where they are without animating (after seek / catch-up)
-let seq = 0;
-
-const NODE_DEF = {
-  you: ["You", C.text, .8], context: ["Context", C.teal, 1], model: ["Model", C.cyan, 1.2], tools: ["Tools", C.amber, .85],
-  lessons: ["Lessons", C.violet, .58], hooks: ["Hooks", C.orange, .58], skills: ["Skills", C.violet, .6],
-  agents: ["Sub-agents", C.violet, .64], mcp: ["MCP", C.pink, .64],
-};
-function layout() {
-  const r = scene.getBoundingClientRect();
-  DPR = window.devicePixelRatio || 1;
-  W = r.width; H = r.height;
-  scene.width = Math.round(W * DPR); scene.height = Math.round(H * DPR);
-  NARROW = W < 560;
-  CW = NARROW ? clamp(W * .31, 100, 128) : clamp(W * .17, 142, 184);
-  CH = NARROW ? 34 : 40;
-  const R = clamp(Math.min(W, H) * .07, 20, 40);
-  const P = NARROW
-    ? { you: [.12, .38], context: [.37, .38], model: [.63, .38], tools: [.88, .38],
-        lessons: [.1, .79], hooks: [.3, .79], agents: [.5, .79], skills: [.7, .79], mcp: [.9, .79] }
-    : { you: [.08, .46], context: [.28, .46], model: [.5, .46], tools: [.8, .3],
-        lessons: [.28, .13], hooks: [.08, .13], skills: [.64, .12], agents: [.5, .84], mcp: [.8, .8] };
-  for (const [k, [label, color, size]] of Object.entries(NODE_DEF)) {
-    const small = NARROW && P[k][1] > .5;
-    N[k] = { key: k, x: W * P[k][0], y: H * P[k][1], r: R * size * (small ? .8 : 1), label, color };
-  }
-}
-
-function visible() {
-  const mcpBusy = [...S.tools.values()].some((t) => t.kind === "mcp");
-  return {
-    you: true, context: true, model: true, tools: true,
-    lessons: S.lessonsSeen, hooks: S.inv.hooks.length > 0 || S.hookRuns > 0,
-    mcp: S.inv.mcp.length > 0 || S.mcpUse.size > 0 || mcpBusy,
-    skills: S.skillUse.size > 0 || [...S.tools.values()].some((t) => t.kind === "skill"),
-    agents: S.subagents.size > 0 || [...S.tools.values()].some((t) => t.kind === "agent"),
-  };
-}
-function subNode(name) {
-  const names = [...S.subagents.keys()], i = names.indexOf(name);
-  if (i < 0) return null;
-  const hub = N.agents;
-  if (NARROW) return { x: clamp(hub.x + (i - (names.length - 1) / 2) * 64, 24, W - 24), y: hub.y + hub.r + 38, r: 9 };
-  return { x: Math.min(hub.x + hub.r + 44 + i * 86, W - 30), y: hub.y, r: 10 };
-}
-function anchor(name) {
-  if (name.startsWith("sub:")) return subNode(name.slice(4)) || N.agents;
-  return N[name] || N.model;
-}
-
-// docks: where cards wait at a node. [node, direction]
-function dockGeom(name) {
-  if (name.startsWith("sub:")) return { a: anchor(name), dir: "up" };
-  const d = {
-    model: ["model", "up"], tools: ["tools", "down"], mcp: ["mcp", NARROW ? "up" : "left"],
-    skills: ["skills", NARROW ? "up" : "down"], agents: ["agents", NARROW ? "up" : "left"],
-  }[name];
-  return d ? { a: N[d[0]], dir: d[1] } : null;
-}
-function slot(geom, i, h) {
-  const { a, dir } = geom, gap = 6;
-  let x = a.x, y;
-  if (dir === "down") y = a.y + a.r + 28 + h / 2 + i * (h + gap);
-  else if (dir === "up") y = a.y - a.r - 10 - h / 2 - i * (h + gap);
-  else { x = a.x - a.r - 14 - CW / 2; y = a.y - i * (h + gap); }
-  return { x: clamp(x, CW / 2 + 6, W - CW / 2 - 6), y: clamp(y, h / 2 + 4, H - h / 2 - 28) };
-}
-function destDock(t) {
-  return t.kind === "mcp" ? "mcp" : t.kind === "skill" ? "skills" : t.kind === "agent" ? "agents" : "tools";
-}
-function originDock(t) { return t.agent === "main" ? "model" : "sub:" + t.agent; }
-
-const ease = (u) => u < .5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
-function newCard(key, x, y, now, instant) {
-  return { key, fx: x, fy: y, tx: x, ty: y, t0: now, dur: 1, bend: 0, born: instant ? now - 1e4 : now,
-    transient: false, fadeAt: Infinity, removeAt: Infinity, spec: null, tool: null };
-}
-function posAt(c, now) {
-  if (now <= c.t0) return { x: c.fx, y: c.fy };
-  const u = (now - c.t0) / c.dur;
-  if (u >= 1) return { x: c.tx, y: c.ty };
-  const e = ease(u), dx = c.tx - c.fx, dy = c.ty - c.fy, len = Math.hypot(dx, dy) || 1;
-  const cx = (c.fx + c.tx) / 2 - dy / len * c.bend, cy = (c.fy + c.ty) / 2 + dx / len * c.bend, v = 1 - e;
-  return { x: v * v * c.fx + 2 * v * e * cx + e * e * c.tx, y: v * v * c.fy + 2 * v * e * cy + e * e * c.ty };
-}
-function moveTo(c, x, y, now, delay) {
-  if (Math.abs(x - c.tx) < .5 && Math.abs(y - c.ty) < .5) return;
-  const p = posAt(c, now), d = Math.hypot(x - p.x, y - p.y);
-  Object.assign(c, { fx: p.x, fy: p.y, tx: x, ty: y, t0: now + (delay || 0),
-    dur: d < 70 ? 450 : clamp(600 + d * .45, 600, 900), bend: d < 70 ? 0 : d * .1 });
-}
-function arrival(c) { return c.t0 + c.dur; }
-function retire(c, now) {   // the object is gone from the live state: the card leaves the stage
-  cards.delete(c.key); c.key = c.key + "#" + (++seq); cards.set(c.key, c);
-  c.transient = true;
-  if (c.fadeAt === Infinity) { c.fadeAt = now; c.removeAt = now + 450; }
-}
-function landing(node) {   // results pile briefly just above the node they return to, in the lowest free slot
-  const taken = new Set([...cards.values()].filter((c) => c.transient && c.landOn === node).map((c) => c.landSlot));
-  let k = 0;
-  while (taken.has(k) && k < 3) k++;
-  const n = anchor(node);
-  return { slot: k % 3, x: clamp(n.x, CW / 2 + 6, W - CW / 2 - 6), y: Math.max(CH / 2 + 4, n.y - n.r - 8 - CH / 2 - (k % 3) * (CH + 4)) };
-}
-function land(c, node, now, delay) {
-  const p = landing(node);
-  c.landOn = node; c.landSlot = p.slot;
-  moveTo(c, p.x, p.y, now, delay);
-}
-
-const fx = {
-  turn(ev) {
-    const now = performance.now(), c = newCard("msg" + (++seq), N.you.x, N.you.y, now);
-    c.spec = { icon: "msg", label: oneLine(ev.prompt) || "(empty prompt)", sub: "your prompt", color: C.text, kcolor: C.text };
-    land(c, "context", now); c.transient = true; c.fadeAt = arrival(c) + 900; c.removeAt = c.fadeAt + 500;
-    cards.set(c.key, c); pulse(N.you, C.text);
-  },
-  request(ev, tokens) {
-    const now = performance.now(), sub = ev.agent && ev.agent !== "main";
-    const from = sub ? (subNode(ev.agent) || N.agents) : N.context;
-    const c = newCard("req" + (++seq), from.x, from.y, now);
-    c.spec = { icon: "layers", label: tokens ? `~${fmtNum(tokens)} tokens` : "request",
-      sub: (sub ? ev.agent + " · " : "") + "request sent", color: C.cyan, kcolor: C.cyan };
-    moveTo(c, N.model.x, N.model.y, now); c.transient = true;
-    c.fadeAt = arrival(c) - 180; c.removeAt = arrival(c) + 220;
-    cards.set(c.key, c);
-  },
-  toolEnd(t) {
-    const now = performance.now(), key = "tool:" + t.key;
-    let c = cards.get(key);
-    if (!c || c.transient) {   // it happened between two frames: start where it really was last
-      const p = anchor(t.ran ? destDock(t) : originDock(t));
-      c = newCard(key, p.x, p.y, now); cards.set(key, c);
-    }
-    c.tool = t;
-    const home = t.agent === "main" ? "context" : "sub:" + t.agent;
-    retire(c, now); c.fadeAt = Infinity;
-    land(c, home, now, 380);
-    c.fadeAt = arrival(c) + 1000; c.removeAt = c.fadeAt + 500;
-    if (!t.ok) pulse(anchor(t.ran ? destDock(t) : originDock(t)), C.rose);
-  },
-  toolGone(t) { const c = cards.get("tool:" + t.key); if (c) retire(c, performance.now()); },
-  answer() { pulse(N.you, C.green); },
-  compact() { pulse(N.context, C.violet); },
-  modelError() { pulse(N.model, C.rose); },
-  lessons(ev) {
-    const n = (ev.items || []).length, now = performance.now(), c = newCard("les" + (++seq), N.lessons.x, N.lessons.y, now);
-    c.spec = { icon: "bulb", label: `${n} lesson${n === 1 ? "" : "s"}`, sub: "recalled into context", color: C.violet, kcolor: C.violet };
-    land(c, "context", now); c.transient = true; c.fadeAt = arrival(c) + 700; c.removeAt = c.fadeAt + 500;
-    cards.set(c.key, c);
-  },
-  hook(ev) {
-    const now = performance.now(), a = N.hooks;
-    const p = { x: clamp(a.x, CW / 2 + 6, W - CW / 2 - 6),
-      y: NARROW ? a.y - a.r - 10 - CH / 2 : a.y + a.r + 28 + CH / 2 };
-    const c = newCard("hook" + (++seq), p.x, p.y, now);
-    const col = ev.outcome === "blocked" ? C.rose : ev.outcome === "warning" ? C.amber : C.orange;
-    c.spec = { icon: "hook", label: (ev.event || "hook") + (ev.tool ? " · " + ev.tool : ""),
-      sub: `${ev.outcome || "?"} · ${fmtDur(ev.duration || 0)}`, color: col, kcolor: C.orange,
-      badge: ev.outcome === "blocked" ? "cross" : ev.outcome === "ok" ? "check" : "" };
-    c.transient = true; c.fadeAt = now + 1800; c.removeAt = c.fadeAt + 500;
-    cards.set(c.key, c); pulse(a, col);
-  },
-};
-function pulse(node, color) { if (node) pulses.push({ node, color, t: 0 }); }
-
-function relax(targets) {   // push cards of different docks apart so they never sit on top of each other
-  for (let pass = 0; pass < 3; pass++) {
-    for (let i = 0; i < targets.length; i++) for (let j = i + 1; j < targets.length; j++) {
-      const a = targets[i], b = targets[j];
-      if (a.dock === b.dock) continue;
-      const ox = (a.w + b.w) / 2 + 4 - Math.abs(a.x - b.x), oy = (a.h + b.h) / 2 + 4 - Math.abs(a.y - b.y);
-      if (ox <= 0 || oy <= 0) continue;
-      const m = b.dir === "down" ? oy : -oy;
-      b.y = clamp(b.y + m, b.h / 2 + 4, H - b.h / 2 - 28);
-    }
-  }
-}
-
-function answerSize() { return { w: NARROW ? clamp(W * .44, 140, 180) : clamp(W * .21, 170, 240), h: NARROW ? 58 : 70 }; }
-
-function syncCards(now) {
-  const docks = new Map();
-  const add = (dock, item) => { if (!docks.has(dock)) docks.set(dock, []); docks.get(dock).push(item); };
-  [...S.tools.values()].sort((a, b) => a.reqAt - b.reqAt || a.id - b.id).forEach((t) => {
-    const origin = originDock(t);
-    add(t.state === "running" ? destDock(t) : origin, { key: "tool:" + t.key, tool: t, spawn: origin });
-  });
-  const max = NARROW ? 2 : 3, targets = [];
-  for (const [dock, items] of docks) {
-    const geom = dockGeom(dock);
-    if (!geom) continue;
-    let shown = items;
-    if (items.length > max) {
-      shown = items.slice(0, max - 1);
-      shown.push({ key: "more:" + dock, spec: { more: true, label: `+${items.length - max + 1} more` }, spawn: dock });
-    }
-    shown.forEach((it, i) => { const p = slot(geom, i, CH); targets.push({ ...it, dock, dir: geom.dir, x: p.x, y: p.y, w: it.spec ? CW * .6 : CW, h: CH }); });
-  }
-  if (S.answer && S.answer.text.trim()) {
-    const { w, h } = answerSize(), a = N.you;
-    targets.push({ key: "answer", spec: { answer: true }, spawn: "you", dock: "answer", dir: "down",
-      x: clamp(a.x, w / 2 + 6, W - w / 2 - 6), y: clamp(a.y + a.r + 30 + h / 2, h / 2 + 4, H - h / 2 - 28), w, h });
-  }
-  relax(targets);
-  const seen = new Set();
-  for (const tg of targets) {
-    let c = cards.get(tg.key);
-    if (!c) {
-      const sp = anchor(tg.spawn);
-      c = snap ? newCard(tg.key, tg.x, tg.y, now, true) : newCard(tg.key, sp.x, sp.y, now);
-      cards.set(tg.key, c);
-    }
-    c.tool = tg.tool || null; c.spec = tg.spec || null;
-    moveTo(c, tg.x, tg.y, now);
-    seen.add(tg.key);
-  }
-  for (const c of [...cards.values()]) {
-    if (!c.transient && !seen.has(c.key)) retire(c, now);
-    if (c.transient && now >= c.removeAt) cards.delete(c.key);
-  }
-  snap = false;
-}
-
-// ---- drawing
-
-function rr(x, y, w, h, r) {
-  g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
-  g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
-}
-function drawIcon(name, x, y, s, color) {
-  g.save(); g.translate(x, y); g.scale(s, s);
-  g.lineWidth = 1.5 / s; g.strokeStyle = color; g.fillStyle = color; g.lineCap = "round"; g.lineJoin = "round";
-  const line = (...p) => { g.beginPath(); g.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) g.lineTo(p[i], p[i + 1]); g.stroke(); };
-  const circle = (cx, cy, r, fill) => { g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); fill ? g.fill() : g.stroke(); };
-  const box = (bx, by, bw, bh, br, fill) => { g.beginPath(); g.moveTo(bx + br, by); g.arcTo(bx + bw, by, bx + bw, by + bh, br);
-    g.arcTo(bx + bw, by + bh, bx, by + bh, br); g.arcTo(bx, by + bh, bx, by, br); g.arcTo(bx, by, bx + bw, by, br); g.closePath(); fill ? g.fill() : g.stroke(); };
-  switch (name) {
-    case "doc": line(.22, .06, .62, .06, .82, .26, .82, .94, .22, .94, .22, .06); line(.62, .06, .62, .26, .82, .26);
-      line(.34, .48, .7, .48); line(.34, .63, .7, .63); line(.34, .78, .56, .78); break;
-    case "term": box(.04, .14, .92, .72, .12); line(.2, .36, .38, .5, .2, .64); line(.46, .66, .72, .66); break;
-    case "globe": circle(.5, .5, .42); g.beginPath(); g.ellipse(.5, .5, .18, .42, 0, 0, Math.PI * 2); g.stroke(); line(.08, .5, .92, .5); break;
-    case "plug": line(.37, .06, .37, .3); line(.63, .06, .63, .3); box(.2, .3, .6, .32, .1);
-      g.beginPath(); g.moveTo(.5, .62); g.lineTo(.5, .76); g.quadraticCurveTo(.5, .94, .72, .94); g.stroke(); break;
-    case "sparkle": g.beginPath(); g.moveTo(.5, .04); g.quadraticCurveTo(.56, .44, .96, .5); g.quadraticCurveTo(.56, .56, .5, .96);
-      g.quadraticCurveTo(.44, .56, .04, .5); g.quadraticCurveTo(.44, .44, .5, .04); g.fill(); break;
-    case "robot": box(.16, .3, .68, .52, .12); circle(.36, .54, .07, true); circle(.64, .54, .07, true); line(.5, .3, .5, .14);
-      circle(.5, .1, .05, true); line(.38, .7, .62, .7); break;
-    case "check": box(.08, .14, .26, .26, .05); line(.13, .27, .2, .34, .3, .2); line(.44, .27, .92, .27);
-      box(.08, .6, .26, .26, .05); line(.44, .73, .92, .73); break;
-    case "cog": circle(.5, .5, .2);
-      for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; line(.5 + Math.cos(a) * .3, .5 + Math.sin(a) * .3, .5 + Math.cos(a) * .42, .5 + Math.sin(a) * .42); } break;
-    case "msg": box(.06, .12, .88, .58, .14); line(.28, .7, .22, .9, .46, .7); line(.22, .34, .78, .34); line(.22, .5, .6, .5); break;
-    case "layers": line(.1, .3, .5, .12, .9, .3, .5, .48, .1, .3); line(.1, .5, .5, .68, .9, .5); line(.1, .7, .5, .88, .9, .7); break;
-    case "search": circle(.42, .42, .28); line(.63, .63, .9, .9); break;
-    case "hook": g.beginPath(); g.moveTo(.62, .06); g.lineTo(.62, .6); g.arc(.44, .6, .18, 0, Math.PI); g.lineTo(.26, .46); g.stroke(); break;
-    case "bulb": circle(.5, .4, .28); line(.4, .76, .6, .76); line(.43, .9, .57, .9); break;
-    case "lock": g.beginPath(); g.moveTo(.3, .48); g.lineTo(.3, .34); g.arc(.5, .34, .2, Math.PI, 0); g.lineTo(.7, .48); g.stroke();
-      box(.16, .46, .68, .48, .08, true); break;
-    case "ok": line(.15, .52, .4, .76, .86, .24); break;
-    case "cross": line(.22, .22, .78, .78); line(.78, .22, .22, .78); break;
-  }
-  g.restore();
-}
-
-const fitCache = new Map();
-function fit(text, maxW, font) {
-  const k = font + "|" + maxW + "|" + text;
-  let v = fitCache.get(k);
-  if (v !== undefined) return v;
-  g.font = font; v = text;
-  if (g.measureText(text).width > maxW) {
-    let lo = 0, hi = text.length;
-    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (g.measureText(text.slice(0, mid) + "…").width <= maxW) lo = mid; else hi = mid - 1; }
-    v = text.slice(0, lo) + "…";
-  }
-  if (fitCache.size > 4000) fitCache.clear();
-  fitCache.set(k, v);
-  return v;
-}
-
-function toolStateText(t) {
+const DOT = { requested: "d-wait", asking: "d-ask", approved: "d-ask", denied: "d-fail", running: "d-run" };
+function toolDot(t) { return t.state === "done" ? (t.ok ? "d-ok" : "d-fail") : DOT[t.state] || "d-idle"; }
+function toolState(t) {
   switch (t.state) {
-    case "requested": return "requested · not started";
-    case "asking": return "awaiting approval " + since(t.askAt);
-    case "approved": return "approved · starting";
+    case "requested": return "requested";
+    case "asking": return "awaiting approval";
+    case "approved": return "approved";
     case "denied": return "denied";
-    case "running": return "running " + since(t.startAt);
+    case "running": return "running";
     default:
-      if (!t.ran) return t.summary ? "not run · " + oneLine(t.summary) : "not run";
+      if (!t.ran) return "not run";
       if (t.kind === "cmd" && t.exit != null) return `exit ${t.exit} · ${fmtDur(t.dur || 0)}`;
       if (t.added != null || t.removed != null) return `+${t.added || 0} −${t.removed || 0}` + (t.ok ? "" : " · failed");
-      return oneLine(t.summary) || (t.ok ? "done" : "failed");
+      return (t.ok ? "done" : "failed") + " · " + fmtDur(t.dur || 0);
   }
 }
-function toolSpec(t) {
-  const kc = KIND_COLOR[t.kind];
-  const color = t.state === "done" ? (t.ok ? C.green : C.rose) : t.state === "asking" || t.state === "approved" ? C.amber
-    : t.state === "denied" ? C.rose : t.state === "running" ? kc : C.dim;
-  const badge = t.state === "running" ? "spin" : t.state === "asking" ? "lock" : t.state === "done" ? (t.ok ? "ok" : "cross")
-    : t.state === "denied" ? "cross" : "queued";
-  return { icon: KIND_ICON[t.kind], label: toolLabel(t), sub: toolVerb(t) + (t.agent !== "main" ? " (" + t.agent + ")" : "") + " · " + toolStateText(t),
-    color, kcolor: t.state === "requested" ? C.dim : kc, badge, dim: t.state === "requested" };
-}
+function toolSince(t) { return t.state === "running" ? t.startAt : t.state === "asking" ? t.askAt : t.state === "requested" ? t.reqAt : null; }
+function timer(t) { return t == null ? "" : `<span data-since="${t}"></span>`; }
+function panelState(cls, text, sinceT) { return { dot: cls, text, since: sinceT }; }
+const agentTag = (a) => a && a !== "main" ? `<span class="tag">${esc(a)}</span>` : "";
 
-function drawCard(c, now) {
-  const p = posAt(c, now);
-  let a = Math.min(1, (now - c.born) / 260);
-  if (now > c.fadeAt) a = Math.min(a, 1 - (now - c.fadeAt) / Math.max(1, c.removeAt - c.fadeAt));
-  if (a <= 0) return;
-  g.globalAlpha = a;
-  if (c.spec && c.spec.answer) { drawAnswer(p); g.globalAlpha = 1; return; }
-  if (c.spec && c.spec.more) {
-    const w = CW * .6, h = 24; rr(p.x - w / 2, p.y - h / 2, w, h, 12);
-    g.fillStyle = "rgba(9,24,27,.94)"; g.fill(); g.strokeStyle = C.faint; g.lineWidth = 1; g.stroke();
-    g.fillStyle = C.dim; g.font = `11px ${MONO}`; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(c.spec.label, p.x, p.y);
-    g.globalAlpha = 1; return;
+function diffHTML(text) {
+  return '<pre class="diff">' + String(text || "").replace(/\r/g, "").split("\n").map((l) => {
+    const cls = l.startsWith("+++") || l.startsWith("---") ? "hunk" : l.startsWith("@@") ? "hunk" : l.startsWith("+") ? "add" : l.startsWith("-") ? "del" : "ctx";
+    return `<span class="${cls}">${esc(l) || " "}</span>`;
+  }).join("") + "</pre>";
+}
+function editsHTML(edits) {
+  return '<pre class="diff">' + (edits || []).map((e) =>
+    String(e.old || "").split("\n").map((l) => `<span class="del">-${esc(l)}</span>`).join("")
+    + String(e.new || "").split("\n").map((l) => `<span class="add">+${esc(l)}</span>`).join("")).join('<span class="ctx">⋯</span>') + "</pre>";
+}
+function fileOpBody(t, full) {
+  const n = full ? 1e9 : 5000;
+  const verb = t.name === "Read" ? "read" : t.name === "Write" ? "write" : "edit";
+  if (t.state === "requested" || t.state === "asking" || t.state === "approved" || t.state === "denied") {
+    return `<div class="sub">${esc(verb)} ${t.state === "denied" ? "denied · the file was not changed" : t.state === "asking" ? "is waiting for your approval" : "was requested · not started"}</div>`;
   }
-  const s = c.tool ? toolSpec(c.tool) : c.spec;
-  const w = CW, h = CH, x = p.x - w / 2, y = p.y - h / 2;
-  rr(x, y, w, h, 8); g.fillStyle = s.dim ? "rgba(9,24,27,.82)" : "rgba(9,24,27,.95)"; g.fill();
-  if (s.badge === "lock") { g.shadowColor = C.amber; g.shadowBlur = 10 + Math.sin(now / 260) * 5; }
-  g.lineWidth = s.badge === "spin" || s.badge === "lock" ? 1.8 : 1.2; g.strokeStyle = s.color;
-  if (s.dim) g.setLineDash([4, 3]);
-  g.stroke(); g.setLineDash([]); g.shadowBlur = 0;
-  const is = h - (NARROW ? 18 : 20);
-  drawIcon(s.icon, x + 8, y + (h - is) / 2, is, s.kcolor || s.color);
-  const tx = x + 14 + is, badgeW = s.badge ? 18 : 4, tw = w - (tx - x) - badgeW - 4;
-  const f1 = `600 ${NARROW ? 11 : 12}px ${MONO}`, f2 = `${NARROW ? 9.5 : 10.5}px ${SANS}`;
-  g.textAlign = "left"; g.textBaseline = "middle";
-  g.font = f1; g.fillStyle = s.dim ? C.dim : C.text; g.fillText(fit(s.label, tw, f1), tx, y + h * .35);
-  g.font = f2; g.fillStyle = s.badge === "lock" ? C.amber : s.badge === "cross" ? C.rose : C.dim;
-  g.fillText(fit(s.sub, tw, f2), tx, y + h * .72);
-  const bx = x + w - 13, by = y + h / 2;
-  if (s.badge === "spin") {
-    const r = 6, a0 = now / 180;
-    g.beginPath(); g.arc(bx, by, r, 0, Math.PI * 2); g.strokeStyle = s.color + "33"; g.lineWidth = 2; g.stroke();
-    g.beginPath(); g.arc(bx, by, r, a0, a0 + Math.PI * .8); g.strokeStyle = s.color; g.lineCap = "round"; g.stroke(); g.lineCap = "butt";
-  } else if (s.badge === "lock") drawIcon("lock", bx - 6, by - 7, 13, C.amber);
-  else if (s.badge === "ok") drawIcon("ok", bx - 6, by - 6, 12, C.green);
-  else if (s.badge === "cross") drawIcon("cross", bx - 5, by - 5, 10, C.rose);
-  else if (s.badge === "check") drawIcon("ok", bx - 6, by - 6, 12, s.color);
-  else if (s.badge === "queued") { g.beginPath(); g.arc(bx, by, 4, 0, Math.PI * 2); g.strokeStyle = C.dim; g.lineWidth = 1.4; g.stroke(); }
-  g.globalAlpha = 1;
-}
-
-function wrapTail(text, maxW, lines, font) {   // the last `lines` lines of text that fit maxW
-  g.font = font;
-  const words = oneLine(text.slice(-600)).split(" ");
-  const out = [];
-  let cur = "";
-  for (let i = words.length - 1; i >= 0 && out.length < lines; i--) {
-    const tryS = cur ? words[i] + " " + cur : words[i];
-    if (g.measureText(tryS).width <= maxW || !cur) cur = tryS;
-    else { out.unshift(cur); cur = words[i]; }
+  if (verb === "write") {
+    const c = t.file && t.file.content != null ? t.file.content : "";
+    return (c ? `<pre>${esc(head(c, n))}</pre>` : '<div class="empty">(content not in this recording)</div>');
   }
-  if (cur && out.length < lines) out.unshift(cur);
-  return out.map((l) => fit(l, maxW, font));
-}
-function drawAnswer(p) {
-  const { w, h } = answerSize(), x = p.x - w / 2, y = p.y - h / 2;
-  const live = S.answer && !S.answer.done;
-  rr(x, y, w, h, 9); g.fillStyle = "rgba(9,24,27,.95)"; g.fill();
-  g.strokeStyle = live ? C.cyan : C.green; g.lineWidth = 1.3; g.stroke();
-  drawIcon("msg", x + 8, y + 6, 13, live ? C.cyan : C.green);
-  g.font = `600 10.5px ${SANS}`; g.fillStyle = C.dim; g.textAlign = "left"; g.textBaseline = "middle";
-  g.fillText(live ? "answer · streaming" : "answer", x + 27, y + 13);
-  const font = `${NARROW ? 10.5 : 11.5}px ${MONO}`, lh = NARROW ? 13 : 15, n = NARROW ? 2 : 3;
-  const lines = wrapTail(S.answer ? S.answer.text : "", w - 18, n, font);
-  g.font = font; g.fillStyle = C.text;
-  lines.forEach((l, i) => g.fillText(l, x + 9, y + 28 + i * lh + (n - lines.length) * 0));
-  if (live && lines.length) {
-    const last = lines[lines.length - 1], lx = x + 9 + g.measureText(last).width + 2, ly = y + 28 + (lines.length - 1) * lh;
-    if (lx < x + w - 8 && Math.floor(performance.now() / 500) % 2) { g.fillStyle = C.cyan; g.fillRect(lx, ly - 6, 6, 12); }
+  if (verb === "edit") {
+    if (t.diff) return diffHTML(full ? t.diff : head(t.diff, n));
+    if (t.file && t.file.edits) return editsHTML(t.file.edits);
+    return '<div class="empty">(no diff in this recording)</div>';
   }
+  if (t.state === "running") return '<div class="sub">reading…</div>';
+  return t.output ? `<pre>${esc(head(t.output.replace(/\r/g, ""), n))}</pre>` : `<div class="empty">${esc(t.summary || "no excerpt in this recording")}</div>`;
 }
 
-function curve(a, b, bend) {
-  const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
-  return { a, b, c: { x: mx - dy / len * bend, y: my + dx / len * bend } };
-}
-function drawEdge(cv, active, color) {
-  g.beginPath(); g.moveTo(cv.a.x, cv.a.y); g.quadraticCurveTo(cv.c.x, cv.c.y, cv.b.x, cv.b.y);
-  g.strokeStyle = active ? color + "88" : "rgba(94,234,212,.12)"; g.lineWidth = active ? 1.8 : 1.1;
-  g.setLineDash(active ? [] : [4, 6]); g.stroke(); g.setLineDash([]);
-}
-
-function drawNode(n, glow, sub, subColor) {
-  const gr = g.createRadialGradient(n.x, n.y, n.r * .2, n.x, n.y, n.r * (2 + glow));
-  gr.addColorStop(0, n.color + (glow > .05 ? "44" : "1a")); gr.addColorStop(1, n.color + "00");
-  g.fillStyle = gr; g.beginPath(); g.arc(n.x, n.y, n.r * (2 + glow), 0, Math.PI * 2); g.fill();
-  g.beginPath(); g.arc(n.x, n.y, n.r, 0, Math.PI * 2); g.fillStyle = "#0b1d20"; g.fill();
-  g.lineWidth = 1.6 + glow * 1.2; g.strokeStyle = n.color; g.globalAlpha = .55 + glow * .45; g.stroke(); g.globalAlpha = 1;
-  g.fillStyle = C.text; g.font = `600 ${clamp(n.r * .36, 9.5, 14)}px ${SANS}`;
-  g.textAlign = "center"; g.textBaseline = "middle";
-  g.fillText(n.label, n.x, n.y);
-  if (sub) {
-    const f = `${NARROW ? 10 : 11}px ${MONO}`, maxW = NARROW ? (n.y > H * .5 ? 76 : 96) : 210;
-    g.fillStyle = subColor || C.dim; g.font = f; g.fillText(fit(sub, maxW, f), clamp(n.x, maxW / 2, W - maxW / 2), n.y + n.r + 13);
-  }
-}
-
-function llmNow() {
-  const rank = { streaming: 3, sent: 2, preparing: 1 };
-  let best = null;
-  S.llm.forEach((c) => { if (!best || rank[c.state] > rank[best.state] || (rank[c.state] === rank[best.state] && c.start > best.start)) best = c; });
-  return best;
-}
-function llmText(c, short) {
-  if (c.state === "preparing") return "preparing request";
-  if (c.state === "sent") return (short ? "sent · waiting " : "sent · waiting for reply ") + since(c.sentAt);
+function llmState(c) {
+  if (!c) return panelState("d-idle", "idle", null);
+  if (c.state === "preparing") return panelState("d-wait", "preparing request", c.start);
+  if (c.state === "sent") return panelState("d-sent", "sent · waiting for reply", c.sentAt);
   const el = clock() - c.firstAt;
-  if (c.chars < 12 || el < .3) return "streaming";
-  return `streaming ~${Math.round(c.chars / 4 / el)} tok/s`;
+  return panelState("d-stream", c.chars >= 12 && el > .3 ? `streaming ~${Math.round(c.chars / 4 / el)} tok/s` : "streaming", c.firstAt);
 }
 
-let lastFrame = performance.now(), spin = 0;
-function frame(now) {
-  const dt = Math.min(.05, (now - lastFrame) / 1000); lastFrame = now;
-  tick(dt);
-  g.setTransform(DPR, 0, 0, DPR, 0, 0);
-  g.clearRect(0, 0, W, H);
-  const v = visible(), n = N, bend = Math.min(W, H) * .16;
-  const tools = [...S.tools.values()];
-  const running = (k) => tools.filter((t) => t.state === "running" && destDock(t) === k).length;
-  const mainLlm = S.llm.get("main"), anyLlm = llmNow();
-  const anySub = [...S.subagents.values()].some((s) => s.active);
-
-  drawEdge(curve(n.you, n.context, 0), !!S.turn, C.text);
-  drawEdge(curve(n.context, n.model, 0), !!mainLlm && mainLlm.state !== "preparing", C.teal);
-  drawEdge(curve(n.model, n.tools, 0), running("tools") > 0, C.amber);
-  drawEdge(curve(n.tools, n.context, -bend * (NARROW ? .5 : 1.1)), false, C.green);
-  drawEdge(curve(n.model, n.you, bend * (NARROW ? .6 : 1.2)), !!(mainLlm && mainLlm.state === "streaming" && S.answer && S.answer.text), C.cyan);
-  if (v.lessons) drawEdge(curve(n.lessons, n.context, 0), S.lessons.length > 0, C.violet);
-  if (v.hooks) drawEdge(curve(n.hooks, n.context, 0), false, C.orange);
-  if (v.mcp) drawEdge(curve(n.model, n.mcp, bend * .25), running("mcp") > 0, C.pink);
-  if (v.skills) drawEdge(curve(n.model, n.skills, 0), running("skills") > 0, C.violet);
-  if (v.agents) drawEdge(curve(n.model, n.agents, 0), anySub || running("agents") > 0, C.violet);
-  S.subagents.forEach((s, name) => { const p = subNode(name); if (p) drawEdge(curve(n.agents, p, 0), s.active, C.violet); });
-
-  // nodes, each labelled with its real current state
-  drawNode(n.you, S.turn ? .35 : 0, S.turn ? "turn · " + since(S.turn.start) : S.sessionSeen ? "idle" : "", S.turn ? C.teal : C.dim);
-  const frac = S.ctx.usable ? S.ctx.used / S.ctx.usable : 0;
-  drawNode(n.context, 0, S.ctx.usable ? `${fmtNum(S.ctx.used)} / ${fmtNum(S.ctx.usable)} · ${Math.round(frac * 100)}%` : "");
-  let a0 = 0;
-  for (const k of ["system", "conversation", "tools"]) {
-    const f = (S.ctx.parts[k] || 0) / (S.ctx.usable || 1);
-    if (f > 0) { g.beginPath(); g.arc(n.context.x, n.context.y, n.context.r + 5, -Math.PI / 2 + a0 * Math.PI * 2,
-      -Math.PI / 2 + (a0 + Math.max(f, .004)) * Math.PI * 2); g.strokeStyle = PART_COLORS[k]; g.lineWidth = 3.5; g.stroke(); }
-    a0 += f;
-  }
-
-  let modelSub = "idle", modelColor = C.dim, glow = 0;
-  if (anyLlm) {
-    modelSub = (anyLlm.agent !== "main" ? anyLlm.agent + ": " : "") + llmText(anyLlm, NARROW);
-    modelColor = anyLlm.state === "streaming" ? C.cyan : anyLlm.state === "sent" ? C.text : C.dim;
-    glow = anyLlm.state === "streaming" ? .6 + Math.sin(now / 200) * .2 : anyLlm.state === "sent" ? .25 : .1;
-  } else if (S.llmFailed) { modelSub = "failed"; modelColor = C.rose; }
-  drawNode(n.model, glow, modelSub, modelColor);
-  const M = n.model;
-  if (anyLlm && anyLlm.state === "streaming") {
-    spin += dt * 3.2;
-    g.beginPath(); g.arc(M.x, M.y, M.r + 7, spin, spin + Math.PI * .7); g.strokeStyle = C.cyan; g.lineWidth = 2.5; g.lineCap = "round"; g.stroke();
-    g.beginPath(); g.arc(M.x, M.y, M.r + 12, -spin * .7, -spin * .7 + Math.PI * .4); g.strokeStyle = C.teal + "99"; g.lineWidth = 1.5; g.stroke(); g.lineCap = "butt";
-  } else if (anyLlm) {   // preparing: still dashes; sent: dashes turning slowly while it waits
-    if (anyLlm.state === "sent") spin += dt * .6;
-    g.save(); g.translate(M.x, M.y); g.rotate(anyLlm.state === "sent" ? spin : 0);
-    g.beginPath(); g.arc(0, 0, M.r + 7, 0, Math.PI * 2); g.setLineDash([3, 7]);
-    g.strokeStyle = anyLlm.state === "sent" ? C.cyan + "aa" : C.faint; g.lineWidth = 2; g.stroke(); g.setLineDash([]); g.restore();
-  } else if (S.llmFailed) { g.beginPath(); g.arc(M.x, M.y, M.r + 6, 0, Math.PI * 2); g.strokeStyle = C.rose; g.lineWidth = 2; g.stroke(); }
-
-  const nRun = running("tools"), nAsk = tools.filter((t) => t.state === "asking").length;
-  const toolSub = nRun || nAsk ? [nRun ? nRun + " running" : "", nAsk ? nAsk + " awaiting approval" : ""].filter(Boolean).join(" · ")
-    : S.toolCalls ? `idle · ${S.toolCalls} calls` : "idle";
-  drawNode(n.tools, nRun ? .5 : 0, toolSub, nRun ? C.amber : nAsk ? C.amber : C.dim);
-  if (v.lessons) drawNode(n.lessons, S.lessons.length ? .3 : 0, S.lessons.length ? `${S.lessons.length} recalled` : "none this turn");
-  if (v.hooks) drawNode(n.hooks, 0, S.hookRuns ? `${S.hookRuns} run${S.hookRuns === 1 ? "" : "s"}` : `${S.inv.hooks.length} configured`);
-  if (v.mcp) {
-    const r = running("mcp"), bad = S.inv.mcp.filter((m) => !/^connected/i.test(m.status || "")).length;
-    drawNode(n.mcp, r ? .5 : 0, r ? `${r} running` : `${S.inv.mcp.length} server${S.inv.mcp.length === 1 ? "" : "s"}` + (bad ? ` · ${bad} down` : ""),
-      r ? C.pink : bad ? C.rose : C.dim);
-  }
-  if (v.skills) { const r = running("skills"); let used = 0; S.skillUse.forEach((x) => { used += x; });
-    drawNode(n.skills, r ? .5 : 0, r ? "loading" : `${used} used`, r ? C.violet : C.dim); }
-  if (v.agents) {
-    const act = [...S.subagents.entries()].filter(([, s]) => s.active);
-    drawNode(n.agents, act.length ? .5 : 0, act.length ? `${act.length} running` : `${S.subagents.size} ran`, act.length ? C.violet : C.dim);
-  }
-  S.subagents.forEach((s, name) => {
-    const p = subNode(name); if (!p) return;
-    g.globalAlpha = s.active ? 1 : .5;
-    g.beginPath(); g.arc(p.x, p.y, p.r, 0, Math.PI * 2); g.fillStyle = "#0b1d20"; g.fill();
-    g.strokeStyle = s.active ? C.violet : s.status && s.status !== "ok" ? C.rose : C.violet; g.lineWidth = s.active ? 2 : 1.2; g.stroke();
-    drawIcon("robot", p.x - 6, p.y - 6, 12, C.violet);
-    const f = `10.5px ${MONO}`; g.font = f; g.fillStyle = s.active ? C.text : C.dim; g.textAlign = "center"; g.textBaseline = "middle";
-    const txt = name + " · " + (s.active ? since(s.start) : s.status || "done");
-    if (NARROW) { g.textAlign = "left"; g.fillText(fit(txt, 90, f), p.x + p.r + 4, p.y); }
-    else g.fillText(fit(txt, 110, f), p.x, p.y + p.r + 12);
-    g.globalAlpha = 1;
-  });
-
-  for (let i = pulses.length - 1; i >= 0; i--) {
-    const q = pulses[i]; q.t += dt * 1.2;
-    if (q.t >= 1) { pulses.splice(i, 1); continue; }
-    g.beginPath(); g.arc(q.node.x, q.node.y, q.node.r * (1 + q.t * .9), 0, Math.PI * 2);
-    g.strokeStyle = q.color; g.globalAlpha = (1 - q.t) * .8; g.lineWidth = 2; g.stroke(); g.globalAlpha = 1;
-  }
-
-  syncCards(now);
-  const order = [...cards.values()].sort((a, b) => (a.transient ? 1 : 0) - (b.transient ? 1 : 0));
-  for (const c of order) drawCard(c, now);
-
-  drawTimeline();
-  requestAnimationFrame(frame);
-}
-
-// ------------------------------------------------------------------ side panels
-
-const ring = $("ring"), rctx = ring.getContext("2d");
-function drawRing() {
-  const w = ring.width, cx = w / 2, r = w * .4;
-  rctx.clearRect(0, 0, w, w);
-  rctx.beginPath(); rctx.arc(cx, cx, r, 0, Math.PI * 2); rctx.strokeStyle = "rgba(94,234,212,.12)"; rctx.lineWidth = 18; rctx.stroke();
-  const usable = S.ctx.usable || 1; let a = -Math.PI / 2;
-  for (const k of ["system", "conversation", "tools"]) {
-    const v = (S.ctx.parts[k] || 0) / usable; if (v <= 0) continue;
-    const b = a + Math.PI * 2 * Math.min(v, 1);
-    rctx.beginPath(); rctx.arc(cx, cx, r, a, b); rctx.strokeStyle = PART_COLORS[k]; rctx.lineWidth = 18; rctx.stroke(); a = b;
-  }
-  const pct = S.ctx.usable ? Math.round(100 * S.ctx.used / S.ctx.usable) : 0;
-  rctx.fillStyle = C.text; rctx.font = `600 36px ${MONO}`; rctx.textAlign = "center";
-  rctx.textBaseline = "middle"; rctx.fillText(pct + "%", cx, cx - 6);
-  rctx.fillStyle = C.dim; rctx.font = `19px ${MONO}`; rctx.fillText("used", cx, cx + 25);
-}
-
-function renderCommands() {
-  const box = $("cmds");
-  const n = S.commands.length;
-  $("cmd-count").textContent = n ? String(n) : "";
-  if (!n) { box.innerHTML = '<div class="empty">No commands run yet</div>'; return; }
-  const html = [];
-  for (let i = n - 1; i >= 0 && i >= n - 60; i--) {
-    const c = S.commands[i];
-    const cls = "c-" + c.state;
-    let meta;
-    if (c.state === "running") meta = `<span class="cm" data-since="${c.startAt}" data-pre="running "></span>`;
-    else if (c.state === "asking") meta = '<span class="cm c-asking">awaiting approval</span>';
-    else if (c.state === "requested") meta = '<span class="cm">requested</span>';
-    else if (c.state === "approved") meta = '<span class="cm c-approved">approved</span>';
-    else if (c.state === "denied") meta = '<span class="cm c-denied">not run</span>';
-    else meta = `<span class="cm ${cls}">${c.exit != null ? "exit " + esc(c.exit) : c.state === "ok" ? "ok" : "failed"}${c.dur != null ? " · " + fmtDur(c.dur) : ""}</span>`;
-    const dot = `<span class="dot ${c.state === "requested" ? "hollow" : c.state === "running" ? "spin" : ""} ${cls}"></span>`;
-    const tag = c.agent !== "main" ? `<span class="tag">${esc(c.agent)}</span>` : "";
-    const head = `${dot}<code title="${esc(c.label)}">${esc(c.label)}</code>${tag}${meta}`;
-    const out = (c.output || (c.state === "denied" ? c.summary : "") || "").replace(/\r/g, "");
-    if (out) html.push(`<details class="cmd" data-key="${esc(c.key)}"${openCmds.has(c.key) ? " open" : ""}><summary>${head}</summary><pre>${esc(out)}</pre></details>`);
-    else html.push(`<div class="cmd"><div class="row">${head}</div></div>`);
-  }
-  box.innerHTML = html.join("");
-  updateTimers(box);
-}
-const openCmds = new Set();
-$("cmds").addEventListener("toggle", (e) => {
-  const d = e.target; if (!d.dataset || !d.dataset.key) return;
-  if (d.open) openCmds.add(d.dataset.key); else openCmds.delete(d.dataset.key);
-}, true);
-
-function renderToolStats() {
-  const box = $("toolstats");
-  const rows = [...S.toolStats.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
-  let total = 0; rows.forEach((r) => { total += r.count; });
-  $("tool-count").textContent = total ? `${total} requested` : "";
-  const html = [];
-  if (!rows.length) html.push('<div class="empty">No tools used yet</div>');
-  const max = rows.length ? rows[0].count : 1;
-  for (const r of rows) {
-    const col = KIND_COLOR[r.kind] || C.other, okW = (r.count - r.errors) / max * 100, errW = r.errors / max * 100;
-    html.push(`<div class="tstat"><span class="tn" style="color:${col}" title="${esc(r.name)}">${esc(r.name)}</span>`
-      + `<span class="bar"><i style="width:${okW}%;background:${col}"></i><i style="width:${errW}%;background:${C.rose}"></i></span>`
-      + `<span class="tv">${r.count}×${r.errors ? ` · <span class="c-fail">${r.errors} ✗</span>` : ""} · ${fmtDur(r.time)}</span></div>`);
-  }
-  const used = new Set(); S.toolStats.forEach((r) => used.add(r.name));
-  S.toolStats.forEach((r) => { if (r.kind === "mcp") used.add("mcp__" + r.name.replace(" · ", "__")); });
-  S.tools.forEach((t) => used.add(t.name));
-  const avail = S.inv.tools.filter((t) => !used.has(t));
-  if (avail.length) html.push(`<div class="avail">Available, not used yet: ${esc(avail.map((t) => { const m = mcpParts(t); return m ? m.server + "·" + m.tool : t; }).join(", "))}</div>`);
-  box.innerHTML = html.join("");
-}
-
-function renderExt() {
-  const box = $("ext"), inv = S.inv, html = [];
-  if (!S.sessionSeen) { box.innerHTML = '<div class="empty">Waiting for the session inventory</div>'; return; }
-  // skills
-  const skills = inv.skills.map((s) => s.name), extraSkills = [...S.skillUse.keys()].filter((n) => !skills.includes(n));
-  const skillUsed = [...S.skillUse.values()].reduce((a, b) => a + b, 0);
-  html.push(`<h4>Skills <small>${inv.skills.length} available${skillUsed ? " · " + skillUsed + " used" : ""}</small></h4><div class="chips">`);
-  if (!inv.skills.length && !extraSkills.length) html.push('<span class="empty">none</span>');
-  for (const s of [...inv.skills, ...extraSkills.map((name) => ({ name, description: "" }))]) {
-    const u = S.skillUse.get(s.name) || 0;
-    html.push(`<span class="chip${u ? " used" : ""}" style="${u ? "color:" + C.violet : ""}" title="${esc(s.description || s.name)}${s.source ? " (" + esc(s.source) + ")" : ""}">${esc(s.name)}${u ? `<b>${u}×</b>` : ""}</span>`);
-  }
-  html.push("</div>");
-  // sub-agent types
-  const agents = inv.agents.map((a) => a.name), extraAgents = [...S.agentUse.keys()].filter((n) => !agents.includes(n));
-  html.push(`<h4>Sub-agents <small>${inv.agents.length} types</small></h4><div class="chips">`);
-  if (!inv.agents.length && !extraAgents.length) html.push('<span class="empty">none</span>');
-  for (const a of [...inv.agents, ...extraAgents.map((name) => ({ name, description: "" }))]) {
-    const u = S.agentUse.get(a.name) || 0, act = S.subagents.get(a.name);
-    html.push(`<span class="chip${u ? " used" : ""}" style="${u ? "color:" + C.violet : ""}" title="${esc(a.description || a.name)}">${act && act.active ? "● " : ""}${esc(a.name)}${u ? `<b>${u}×</b>` : ""}</span>`);
-  }
-  html.push("</div>");
-  // MCP servers with their tools
-  const servers = inv.mcp.map((m) => m.name), extraSrv = [...S.mcpUse.keys()].filter((n) => !servers.includes(n));
-  html.push(`<h4>MCP servers <small>${inv.mcp.length} configured</small></h4>`);
-  if (!inv.mcp.length && !extraSrv.length) html.push('<div class="empty">none configured</div>');
-  for (const m of [...inv.mcp, ...extraSrv.map((name) => ({ name, status: "", tools: [] }))]) {
-    const u = S.mcpUse.get(m.name), st = m.status || "";
-    const col = /^connected/i.test(st) ? C.green : /fail|error|disconn/i.test(st) ? C.rose : C.dim;
-    html.push(`<div class="srv"><div class="sh"><span class="dot" style="color:${col}"></span><span style="color:${u ? C.pink : C.text}">${esc(m.name)}</span>`
-      + `<span>${esc(st || "status unknown")}${u ? ` · ${u.calls} call${u.calls === 1 ? "" : "s"}` : ""}</span></div><div class="chips">`);
-    const tools = [...(m.tools || [])]; if (u) u.tools.forEach((_, k) => { if (!tools.includes(k)) tools.push(k); });
-    if (!tools.length) html.push('<span class="empty">no tools listed</span>');
-    for (const t of tools) {
-      const tu = u && u.tools.get(t);
-      html.push(`<span class="chip${tu ? " used" : ""}${tu && tu.errors ? " err" : ""}" style="${tu ? "color:" + C.pink : ""}">${esc(t)}${tu ? `<b>${tu.calls}×${tu.errors ? " " + tu.errors + "✗" : ""}</b>` : ""}</span>`);
+const PANELS = {
+  you() {
+    const st = S.turn ? panelState("d-run", "turn running", S.turn.start) : panelState("d-idle", S.sessionSeen ? "idle" : "waiting for a session", null);
+    let b = "";
+    const p = S.turn ? S.turn.prompt : S.prompts.length ? S.prompts[S.prompts.length - 1].text : "";
+    b += p ? `<div class="answer">${esc(head(p, 1200))}</div>` : '<div class="empty">No prompt yet</div>';
+    if (S.userMsgs.length) {
+      b += '<div class="sec">Delivered while it worked</div>';
+      for (const m of S.userMsgs) b += `<div class="row item" data-detail="queue"><span class="c-dim">↳</span><span class="grow">${esc(oneLine(m.text))}</span><span class="sub">${fmtTime(m.t)}</span></div>`;
     }
-    html.push("</div></div>");
-  }
-  // hooks
-  html.push(`<h4>Hooks <small>${inv.hooks.length} configured${S.hookRuns ? " · " + S.hookRuns + " runs" : ""}</small></h4>`);
-  if (!inv.hooks.length && !S.hookUse.size) html.push('<div class="empty">none configured</div>');
-  const seenHooks = new Set();
-  for (const h of inv.hooks) {
-    const k = h.event + "|" + h.command, u = S.hookUse.get(k); seenHooks.add(k);
-    html.push(`<div class="hk${u ? " used" : ""}"><span class="he">${esc(h.event)}·${esc(h.matcher || "*")}</span><span class="hc" title="${esc(h.command)}">${esc(h.command)}</span>`
-      + `<span class="${u && u.last === "blocked" ? "c-fail" : u && u.last === "warning" ? "c-asking" : ""}">${u ? `${u.runs}× ${esc(u.last)}` : "not run"}</span></div>`);
-  }
-  S.hookUse.forEach((u, k) => {
-    if (seenHooks.has(k)) return;
-    const [ev, cmd] = k.split("|");
-    html.push(`<div class="hk used"><span class="he">${esc(ev)}</span><span class="hc" title="${esc(cmd)}">${esc(cmd)}</span><span>${u.runs}× ${esc(u.last)}</span></div>`);
-  });
-  box.innerHTML = html.join("");
+    if (S.queue.length) {
+      b += '<div class="sec">Waiting in the queue</div>';
+      for (const q of S.queue) b += `<div class="row item" data-detail="queue"><span class="dot d-wait"></span><span class="grow">${esc(oneLine(q))}</span></div>`;
+    }
+    return { title: "You", st, body: b };
+  },
+  context() {
+    const u = S.ctx.usable || 0, pct = u ? Math.round(100 * S.ctx.used / u) : 0;
+    const st = panelState(pct > 85 ? "d-ask" : "d-idle", u ? `${fmtNum(S.ctx.used)} / ${fmtNum(u)} · ${pct}%` : "–", null);
+    let b = '<div class="stack">';
+    for (const k of ["system", "conversation", "tools"]) b += `<i style="width:${u ? 100 * (S.ctx.parts[k] || 0) / u : 0}%;background:${PART_COLORS[k]}"></i>`;
+    b += '</div><div class="legend">';
+    for (const k of ["system", "conversation", "tools"]) b += `<span><i style="background:${PART_COLORS[k]}"></i>${k}</span><span>${fmtNum(S.ctx.parts[k] || 0)}</span>`;
+    b += `<span class="c-dim">free</span><span class="c-dim">${fmtNum(Math.max(0, u - (S.ctx.used || 0)))}</span></div>`;
+    if (S.compactions.length) {
+      b += '<div class="sec">Compactions</div>';
+      for (const c of S.compactions.slice(-4)) b += `<div class="row"><span class="c-violet">↺</span><span class="grow">${esc(c.description)}</span><span class="sub">${fmtTime(c.t)}</span></div>`;
+    }
+    return { title: "Context", st, body: b };
+  },
+  model() {
+    const c = S.llm.get("main"), last = c || S.lastCall.get("main");
+    let st = llmState(c);
+    if (!c && S.llmFailed && S.llmFailed.agent === "main") st = panelState("d-fail", "failed", null);
+    const subLive = [...S.llm.values()].filter((x) => x.agent !== "main");
+    if (!c && subLive.length) st = panelState(llmState(subLive[0]).dot, `${subLive[0].agent}: ${llmState(subLive[0]).text}`, llmState(subLive[0]).since);
+    let b = `<div class="row sub"><span class="grow">${esc(S.model || "model")}</span><span>${S.calls} calls · ${fmtNum(S.tokIn)} in · ${fmtNum(S.tokOut)} out</span></div>`;
+    if (!last) return { title: "Model", st, body: b + '<div class="empty">No model call yet</div>', stick: true };
+    if (S.llmFailed && !c && S.llmFailed.agent === "main") b += `<div class="c-fail">Request failed: ${esc(S.llmFailed.error)}</div>`;
+    if (last.thinking) b += `<div class="think">${esc(tail(last.thinking, 1500))}</div>`;
+    if (last.text) b += `<div class="answer">${esc(tail(last.text, 3000))}${c && c.state === "streaming" ? '<span class="cursor"></span>' : ""}</div>`;
+    else if (c && c.state !== "streaming") b += `<div class="empty">${c.state === "sent" ? "Waiting for the first token…" : "Building the request…"}</div>`;
+    if (!c && last.calls && last.calls.length) b += `<div class="sub">asked for: ${esc(last.calls.join(", "))}</div>`;
+    if (!c && last.tokIn) b += `<div class="sub">${fmtNum(last.tokIn)} in → ${fmtNum(last.tokOut)} out</div>`;
+    return { title: "Model", st, body: b, stick: true };
+  },
+  now() {
+    const rows = [];
+    S.llm.forEach((c) => { const s = llmState(c); rows.push(`<div class="row"><span class="dot ${s.dot}"></span><span class="grow">${c.agent === "main" ? "Model" : esc(c.agent) + " model"} · ${esc(s.text)}</span>${timer(s.since)}</div>`); });
+    [...S.tools.values()].sort((a, b) => a.reqAt - b.reqAt).forEach((t) => rows.push(
+      `<div class="row item" data-detail="tool:${esc(t.key)}"><span class="dot ${toolDot(t)}"></span>${agentTag(t.agent)}<span class="grow">${esc(toolVerb(t))} · ${esc(toolLabel(t))}</span><span class="sub ${t.state === "asking" ? "c-ask" : ""}">${esc(toolState(t))}</span>${timer(toolSince(t))}</div>`));
+    S.subRuns.forEach((r) => { if (r.active) rows.push(`<div class="row item" data-detail="sub:${esc(r.key)}"><span class="dot d-run"></span><span class="grow">sub-agent ${esc(r.agent)}</span>${timer(r.start)}</div>`); });
+    const asking = [...S.tools.values()].some((t) => t.state === "asking");
+    const st = rows.length ? panelState(asking ? "d-ask" : "d-run", asking ? "needs your approval" : `${rows.length} in flight`, null) : panelState("d-idle", "nothing in flight", null);
+    return { title: "Right now", st, body: rows.join("") || `<div class="empty">${S.llmFailed ? "Idle · the last model request failed" : "Idle"}</div>` };
+  },
+  terminal() {
+    const run = S.commands.filter((t) => t.state !== "done");
+    const last = S.commands[S.commands.length - 1];
+    const st = run.length ? panelState(run.some((t) => t.state === "asking") ? "d-ask" : run.some((t) => t.state === "running") ? "d-run" : "d-wait",
+      run.length === 1 ? toolState(run[0]) : `${run.length} commands`, toolSince(run[0])) : last ? panelState(last.ok ? "d-ok" : "d-fail", toolState(last), null) : panelState("d-idle", "no commands yet", null);
+    let b = "";
+    for (const t of S.commands.slice(-25)) {
+      const out = t.output ? t.output.replace(/\r/g, "").replace(/\n?\[exit code -?\d+\]\s*$/, "").split("\n").slice(-8).join("\n") : "";
+      b += `<div class="cmd item" data-detail="tool:${esc(t.key)}"><div class="row"><span class="dot ${toolDot(t)}"></span>${agentTag(t.agent)}<span class="grow mono">${esc(cmdLabel(t))}</span><span class="sub ${t.state === "asking" ? "c-ask" : ""}">${esc(toolState(t))}</span>${timer(toolSince(t))}</div>${out ? `<pre>${esc(out)}</pre>` : ""}</div>`;
+    }
+    return { title: "Terminal", st, body: b || '<div class="empty">No commands run yet</div>', stick: true };
+  },
+  tools() {
+    const run = S.other.filter((t) => t.state !== "done");
+    const st = run.length ? panelState(run.some((t) => t.state === "asking") ? "d-ask" : "d-run", `${run.length} in flight`, null) : panelState("d-idle", `${S.toolCalls} calls this session`, null);
+    const rows = [...S.toolStats.values()].sort((a, b) => b.count - a.count).slice(0, 8);
+    const max = rows.length ? rows[0].count : 1;
+    let b = rows.length ? "" : '<div class="empty">No tools used yet</div>';
+    for (const r of rows) {
+      const col = KIND_COLOR[r.kind] || C.other;
+      b += `<div class="tstat"><span class="tn" style="color:${col}">${esc(r.name)}</span><span class="bar"><i style="width:${(r.count - r.errors) / max * 100}%;background:${col}"></i><i style="width:${r.errors / max * 100}%;background:${C.rose}"></i></span><span class="tv">${r.count}×${r.errors ? ` · <span class="c-fail">${r.errors}✗</span>` : ""}</span></div>`;
+    }
+    const recent = S.other.slice(-6).reverse();
+    if (recent.length) {
+      b += '<div class="sec">Recent (search, web, plan…)</div>';
+      for (const t of recent) b += `<div class="row item" data-detail="tool:${esc(t.key)}"><span class="dot ${toolDot(t)}"></span>${agentTag(t.agent)}<span class="grow">${esc(t.name)} · ${esc(toolLabel(t))}</span><span class="sub">${esc(toolState(t))}</span></div>`;
+    }
+    return { title: "Tools", st, body: b };
+  },
+  skills() {
+    const s = S.skill;
+    if (s) {
+      const t = s.tool, text = S.skillText[s.name];
+      const st = t.state === "done" ? panelState(t.ok ? "d-ok" : "d-fail", t.ok ? "in use this turn" : "failed to load", null) : panelState(toolDot(t), toolState(t), toolSince(t));
+      return { title: "Skill · " + s.name, st, body: text ? `<div class="answer">${esc(head(text, 3000))}</div>` : `<div class="empty">${t.state === "done" ? "(no text in this recording)" : "loading…"}</div>` };
+    }
+    let b = "";
+    for (const k of S.inv.skills) { const u = S.skillUse.get(k.name) || 0; b += `<div class="row"><span class="grow" style="color:${u ? C.violet : ""}" title="${esc(k.description)}">${esc(k.name)}</span>${u ? `<span class="sub">${u}×</span>` : ""}</div>`; }
+    return { title: "Skills", st: panelState("d-idle", `${S.inv.skills.length} available`, null), body: b || '<div class="empty">No skills installed</div>' };
+  },
+  todos() {
+    const done = S.todos.filter((t) => t.status === "completed").length;
+    const st = S.todos.length ? panelState(done === S.todos.length ? "d-ok" : "d-run", `${done}/${S.todos.length} done`, null) : panelState("d-idle", "no plan", null);
+    let b = "";
+    for (const t of S.todos) b += `<div class="row"><span class="mono" style="width:12px">${t.status === "completed" ? "✓" : t.status === "in_progress" ? "▸" : "○"}</span><span class="grow ${t.status === "completed" ? "todo-done" : t.status === "in_progress" ? "todo-active" : ""}" style="white-space:normal">${esc(t.content)}</span></div>`;
+    return { title: "Plan", st, body: b || '<div class="empty">No plan yet</div>' };
+  },
+  lessons() {
+    const st = S.lessons.length ? panelState("d-ok", `${S.lessons.length} recalled this turn`, null) : panelState("d-idle", "none this turn", null);
+    let b = "";
+    S.lessons.forEach((l, i) => { b += `<div class="row item" data-detail="lesson:${i}"><span class="c-violet">✦</span><span class="grow">${esc(l)}</span></div>`; });
+    return { title: "Lessons", st, body: b || '<div class="empty">No lessons recalled this turn</div>' };
+  },
+  hooks() {
+    const last = S.hookLog[S.hookLog.length - 1];
+    const st = last ? panelState(last.outcome === "blocked" ? "d-fail" : last.outcome === "warning" ? "d-ask" : "d-ok", `${S.hookRuns} runs · last ${last.outcome}`, null) : panelState("d-idle", `${S.inv.hooks.length} configured`, null);
+    let b = "";
+    for (const h of S.hookLog.slice(-5).reverse()) b += `<div class="row item" data-detail="hooks"><span class="dot ${h.outcome === "blocked" ? "d-fail" : h.outcome === "warning" ? "d-ask" : "d-ok"}"></span><span class="grow">${esc(h.event)}${h.tool ? " · " + esc(h.tool) : ""}</span><span class="sub">${esc(h.outcome)} · ${fmtDur(h.duration)}</span></div>`;
+    if (!b) for (const h of S.inv.hooks) b += `<div class="row"><span class="c-faint">${esc(h.event)}·${esc(h.matcher || "*")}</span><span class="grow sub">${esc(h.command)}</span></div>`;
+    return { title: "Hooks", st, body: b || '<div class="empty">No hooks configured</div>' };
+  },
+  activity() {
+    let b = '<div class="log">';
+    for (const r of S.log.slice(-80)) b += `<div><time>${fmtTime(r.t)}</time><span class="${r.kind}" title="${esc(r.text)}">${esc(r.text)}</span></div>`;
+    return { title: "Activity", st: panelState("d-idle", `${S.log.length} events`, null), body: b + "</div>", stick: true };
+  },
+  file(path) {
+    const f = S.files.get(path);
+    if (!f) return null;
+    const t = f.ops[f.ops.length - 1];
+    const verb = t.name === "Read" ? "read" : t.name === "Write" ? "write" : "edit";
+    const st = t.state === "done" ? panelState(t.ok ? "d-ok" : "d-fail", `${verb} · ${toolState(t)}`, null) : panelState(toolDot(t), `${verb} · ${toolState(t)}`, toolSince(t));
+    const hist = f.ops.length > 1 ? `<div class="sub" style="margin-bottom:4px">${f.ops.length} operations: ${esc(f.ops.map((o) => o.name.toLowerCase()).join(" → "))}</div>` : "";
+    return { title: baseName(path) || path, tip: f.full, st, body: hist + fileOpBody(t, false) };
+  },
+  mcp(server) {
+    const calls = S.mcpCalls.get(server) || [], inv = S.inv.mcp.find((m) => m.name === server) || { status: "", tools: [] };
+    const live = calls.filter((t) => t.state !== "done");
+    const st = live.length ? panelState(toolDot(live[0]), `${live[0].mcp.tool} · ${toolState(live[0])}`, toolSince(live[0]))
+      : panelState(/^connected/i.test(inv.status || "") ? "d-ok" : inv.status ? "d-fail" : "d-idle", inv.status || "status unknown", null);
+    let b = `<div class="chips" style="margin-bottom:6px">${(inv.tools || []).map((x) => { const n = calls.filter((c) => c.mcp.tool === x).length; return `<span class="chip${n ? " used" : ""}" style="${n ? "color:" + C.pink : ""}">${esc(x)}${n ? " " + n + "×" : ""}</span>`; }).join("")}</div>`;
+    for (const t of calls.slice(-6).reverse()) {
+      b += `<div class="cmd item" data-detail="tool:${esc(t.key)}"><div class="row"><span class="dot ${toolDot(t)}"></span>${agentTag(t.agent)}<span class="grow mono">${esc(t.mcp.tool)}(${esc(head(JSON.stringify(t.args || {}), 80))})</span><span class="sub">${esc(toolState(t))}</span>${timer(toolSince(t))}</div>${t.output ? `<pre>${esc(head(t.output, 400))}</pre>` : ""}</div>`;
+    }
+    if (!calls.length) b += '<div class="empty">No calls yet</div>';
+    return { title: "MCP · " + server, st, body: b };
+  },
+  sub(rk) {
+    const r = S.subRuns.get(rk);
+    if (!r) return null;
+    const c = S.llm.get(r.agent);
+    const st = r.active ? (c && S.subCur[r.agent] === rk ? llmState(c) : panelState("d-run", "running", r.start))
+      : panelState(r.status === "ok" ? "d-ok" : "d-fail", `${r.status || "done"} · ${fmtDur((r.end || 0) - r.start)} · ${r.toolCalls} tools`, null);
+    if (r.active) st.since = r.start;
+    let b = `<div class="sub" style="margin-bottom:4px">${esc(head(oneLine(r.prompt), 220))}</div>`;
+    for (const s of r.steps.slice(-12)) {
+      if (s.kind === "tool") { const t = s.t; b += `<div class="row item" data-detail="tool:${esc(t.key)}"><span class="dot ${toolDot(t)}"></span><span class="grow">${esc(t.name)} · ${esc(toolLabel(t))}</span><span class="sub">${esc(toolState(t))}</span></div>`; }
+      else { const x = s.c, ls = x.end == null ? llmState(x) : null;
+        b += `<div class="row"><span class="dot ${ls ? ls.dot : x.error ? "d-fail" : "d-ok"}"></span><span class="grow c-cyan">${ls ? "model · " + esc(ls.text) : x.text ? "“" + esc(oneLine(tail(x.text, 140))) + "”" : "model · asked for " + esc((x.calls || []).join(", ") || "nothing")}</span></div>`; }
+    }
+    if (r.report) b += `<div class="sec">Report</div><div class="answer">${esc(head(r.report, 1200))}</div>`;
+    return { title: "Sub-agent · " + r.agent + (r.n > 1 ? " #" + r.n : ""), st, body: b, stick: true };
+  },
+};
+function panelContent(key) {
+  const i = key.indexOf(":");
+  if (i < 0) return PANELS[key] ? PANELS[key]() : null;
+  const kind = key.slice(0, i), arg = key.slice(i + 1);
+  return PANELS[kind] ? PANELS[kind](arg) : null;
 }
 
-const last = { panel: -1, cmd: -1, stat: -1, ext: -1 };
+// ------------------------------------------------------------------ layout: tidy columns, fixed panel heights
+
+const PW = 320, GAP_X = 64, GAP_Y = 22;
+const HEIGHTS = { you: 190, context: 160, lessons: 150, todos: 180, activity: 260, model: 300, now: 170, sub: 240,
+  terminal: 320, tools: 230, skills: 210, mcp: 200, hooks: 160, file: 280 };
+function heightOf(key) { return HEIGHTS[key.split(":")[0]] || 200; }
+
+function wantedPanels() {
+  const cols = [[], [], [], []];
+  cols[0].push("you", "context", "todos");
+  if (S.lessonsSeen) cols[0].push("lessons");
+  cols[0].push("activity");
+  cols[1].push("model");
+  S.subRuns.forEach((r) => cols[1].push("sub:" + r.key));
+  cols[1].push("now");
+  cols[2].push("terminal", "tools");
+  if (S.inv.skills.length || S.skillRuns.length) cols[2].push("skills");
+  const servers = new Set(S.inv.mcp.map((m) => m.name)); S.mcpCalls.forEach((_, k) => servers.add(k));
+  servers.forEach((s) => cols[2].push("mcp:" + s));
+  if (S.inv.hooks.length || S.hookRuns) cols[2].push("hooks");
+  const files = [...S.files.values()].sort((a, b) => a.first - b.first).map((f) => "file:" + f.path);
+  return { cols, files };
+}
+let layoutPos = new Map();   // key -> {x, y, w, h}
+
+// the viewer's own arrangement: panels they moved or collapsed, remembered in this browser only
+const STORE = "muyah-viz:";
+function storeGet(k) { try { return window.localStorage.getItem(STORE + k); } catch { return null; } }
+function storeSet(k, v) {
+  try { if (v == null) window.localStorage.removeItem(STORE + k); else window.localStorage.setItem(STORE + k, v); }
+  catch { /* storage blocked (private window, policy): the arrangement just is not remembered */ }
+}
+function storeKeys() {
+  try { return Object.keys(window.localStorage).filter((k) => k.startsWith(STORE)).map((k) => k.slice(STORE.length)); }
+  catch { return []; }
+}
+const userPos = new Map(), collapsed = new Set();
+let layoutVer = 0;
+for (const k of storeKeys()) {
+  if (k.startsWith("pos:")) {
+    try { const v = JSON.parse(storeGet(k)); if (Number.isFinite(v.x) && Number.isFinite(v.y)) userPos.set(k.slice(4), { x: v.x, y: v.y }); }
+    catch { storeSet(k, null); }
+  } else if (k.startsWith("collapsed:") && storeGet(k) === "1") collapsed.add(k.slice(10));
+}
+const HEAD_H = 33;
+function effHeight(key) { return collapsed.has(key) ? HEAD_H : heightOf(key); }
+function toggleCollapsed(key) {
+  if (collapsed.has(key)) { collapsed.delete(key); storeSet("collapsed:" + key, null); }
+  else { collapsed.add(key); storeSet("collapsed:" + key, "1"); }
+  layoutVer++; renderPanels(true);
+}
+function resetLayout() {
+  for (const k of storeKeys()) if (k.startsWith("pos:") || k.startsWith("collapsed:")) storeSet(k, null);
+  userPos.clear(); collapsed.clear(); layoutVer++; renderPanels(true);
+}
+
+function computeLayout() {
+  const { cols, files } = wantedPanels(), pos = new Map();
+  let order = 0;
+  const orderOf = new Map();
+  // panels the viewer placed stay where they put them; everything else flows around them
+  const fixed = [];
+  const all = [...cols.flat(), ...files];
+  for (const k of all) {
+    const u = userPos.get(k);
+    if (u) { const r = { x: u.x, y: u.y, w: PW, h: effHeight(k) }; pos.set(k, r); fixed.push(r); }
+  }
+  const hits = (x, y, w, h) => fixed.find((r) => x < r.x + r.w + 12 && r.x < x + w + 12 && y < r.y + r.h + GAP_Y && r.y < y + h + GAP_Y);
+  const place = (x, y, h) => { let r; while ((r = hits(x, y, PW, h))) y = r.y + r.h + GAP_Y; return y; };
+  cols.forEach((col, ci) => {
+    let y = 0;
+    for (const k of col) {
+      if (pos.has(k)) continue;
+      const h = effHeight(k), x = ci * (PW + GAP_X);
+      y = place(x, y, h);
+      pos.set(k, { x, y, w: PW, h }); y += h + GAP_Y;
+    }
+  });
+  const auto = files.filter((k) => !pos.has(k));
+  const fileCols = auto.length > 8 ? 3 : 2, colY = new Array(fileCols).fill(0);
+  auto.forEach((k, i) => {   // a grid that fills column by column height, skipping anything the viewer put there
+    const c = i % fileCols, x = (3 + c) * (PW + GAP_X), h = effHeight(k);
+    const y = place(x, colY[c], h);
+    pos.set(k, { x, y, w: PW, h }); colY[c] = y + h + GAP_Y;
+  });
+  // one-column order for phones: what matters most first
+  for (const k of ["you", "now", "model", "context", "terminal", ...files, ...cols[1].filter((k) => k.startsWith("sub:")), "skills", ...cols[2].filter((k) => k.startsWith("mcp:")), "tools", "todos", "lessons", "hooks", "activity"]) {
+    if (pos.has(k) && !orderOf.has(k)) orderOf.set(k, order++);
+  }
+  pos.forEach((p, k) => { p.order = orderOf.has(k) ? orderOf.get(k) : order++; });
+  return pos;
+}
+
+// ------------------------------------------------------------------ panels in the DOM
+
+const world = $("world"), viewport = $("viewport"), wiresSvg = $("wires");
+const panelEls = new Map();   // key -> {el, head, body, lastHead, lastBody}
+function ensurePanel(key) {
+  let p = panelEls.get(key);
+  if (p) return p;
+  const el = document.createElement("div");
+  el.className = "pnl new"; el.dataset.detail = "panel:" + key;
+  el.innerHTML = '<div class="ph"><span class="dot"></span><b class="pt"></b><span class="ps"></span><span class="pm"></span>'
+    + '<button class="tog" title="Collapse / expand">▾</button></div><div class="pb"></div>';
+  el.dataset.key = key;
+  world.append(el);
+  p = { el, dot: el.querySelector(".dot"), pt: el.querySelector(".pt"), ps: el.querySelector(".ps"), pm: el.querySelector(".pm"),
+    tog: el.querySelector(".tog"), body: el.querySelector(".pb"), last: "", lastHead: "", cls: "" };
+  panelEls.set(key, p);
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove("new")));
+  return p;
+}
+
+let lastVer = -1, lastRender = 0, layoutSig = "";
 function renderPanels(force) {
-  if (force || last.cmd !== S.cmdVer) { last.cmd = S.cmdVer; renderCommands(); }
-  if (force || last.stat !== S.statVer || last.ext !== S.extVer) { renderToolStats(); }
-  if (force || last.ext !== S.extVer) { last.ext = S.extVer; renderExt(); }
-  last.stat = S.statVer;
-  if (!force && last.panel === S.ver) return;
-  last.panel = S.ver;
+  const nowMs = performance.now();
+  if (!force && S.ver === lastVer && nowMs - lastRender < 500) return;   // re-render on new events, and twice a second for live labels
+  if (!force && nowMs - lastRender < 100) return;
+  lastVer = S.ver; lastRender = nowMs;
   $("m-model").textContent = "model " + (S.model || "–");
   $("m-provider").textContent = S.provider || "provider –";
   $("m-mode").textContent = "mode " + (S.mode || "–");
   $("m-window").textContent = "window " + (S.window ? fmtNum(S.window) : "–");
-  $("s-turns").textContent = S.turns; $("s-calls").textContent = S.calls; $("s-tools").textContent = S.toolCalls;
-  $("s-in").textContent = fmtNum(S.tokIn); $("s-out").textContent = fmtNum(S.tokOut); $("s-err").textContent = S.toolErrors;
   $("caption").textContent = S.caption;
-  const legend = $("legend"); legend.replaceChildren();
-  for (const k of ["system", "conversation", "tools"]) {
-    const row = document.createElement("div"); const i = document.createElement("i"); i.style.background = PART_COLORS[k];
-    row.append(i, `${k} ${fmtNum(S.ctx.parts[k] || 0)}`); legend.append(row);
-  }
-  const free = document.createElement("div"); free.style.color = C.dim;
-  free.textContent = `free ${fmtNum(Math.max(0, (S.ctx.usable || 0) - (S.ctx.used || 0)))} of ${fmtNum(S.ctx.usable || 0)}`;
-  legend.append(free);
-  drawRing();
-  const todos = $("todos"); todos.replaceChildren();
-  if (!S.todos.length) todos.innerHTML = '<li class="empty">No plan yet</li>';
-  for (const t of S.todos) {
-    const li = document.createElement("li"); const m = document.createElement("span"); m.className = "mark";
-    m.textContent = t.status === "completed" ? "✓" : t.status === "in_progress" ? "▸" : "○";
-    const s = document.createElement("span"); s.textContent = t.content;
-    s.className = t.status === "completed" ? "todo-done" : t.status === "in_progress" ? "todo-active" : "";
-    li.append(m, s); todos.append(li);
-  }
-  const lessons = $("lessons"); lessons.replaceChildren();
-  if (!S.lessons.length) lessons.innerHTML = '<li class="empty">None this turn</li>';
-  for (const l of S.lessons) {
-    const li = document.createElement("li"); const m = document.createElement("span"); m.className = "mark"; m.textContent = "✦";
-    m.style.color = C.violet; const s = document.createElement("span"); s.textContent = l; li.append(m, s); lessons.append(li);
-  }
-  const box = $("log"); const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 30;
-  box.replaceChildren();
-  for (const row of S.log.slice(-200)) {
-    const d = document.createElement("div"); const tm = document.createElement("time"); tm.textContent = fmtTime(row.t);
-    const sp = document.createElement("span"); sp.className = row.kind; sp.textContent = row.text; sp.title = row.text;
-    d.append(tm, sp); box.append(d);
-  }
-  if (stick) box.scrollTop = box.scrollHeight;
-  renderNow();
+  const pos = computeLayout(), sig = layoutVer + "|" + [...pos.keys()].join("|");
+  if (sig !== layoutSig) { layoutSig = sig; layoutPos = pos; wiresDirty = true; }
+  panelEls.forEach((p, k) => { if (!pos.has(k)) { p.el.remove(); panelEls.delete(k); } });
+  pos.forEach((q, k) => {
+    const c = panelContent(k);
+    if (!c) return;
+    const p = ensurePanel(k);
+    Object.assign(p.el.style, { left: q.x + "px", top: q.y + "px", width: q.w + "px", height: q.h + "px", order: String(q.order) });
+    const headSig = c.title + "|" + c.st.dot + "|" + c.st.text + "|" + c.st.since;
+    if (headSig !== p.lastHead) {
+      p.lastHead = headSig;
+      p.dot.className = "dot " + c.st.dot; p.pt.textContent = c.title; p.pt.title = c.tip || c.title;
+      p.ps.textContent = c.st.text; p.ps.title = c.st.text;
+      p.pm.dataset.since = c.st.since == null ? "" : String(c.st.since); p.pm.textContent = "";
+      p.cls = c.st.dot === "d-ask" ? "s-ask" : c.st.dot === "d-run" ? "s-run" : c.st.dot === "d-stream" ? "s-stream" : c.st.dot === "d-fail" ? "s-fail" : "";
+    }
+    const isCol = collapsed.has(k), isDrag = panelDrag && panelDrag.key === k;
+    const want = "pnl " + p.cls + (isCol ? " collapsed" : "") + (isDrag ? " dragging" : "") + (p.el.classList.contains("new") ? " new" : "");
+    if (p.el.className !== want) p.el.className = want;
+    const tg = isCol ? "▸" : "▾";
+    if (p.tog.textContent !== tg) { p.tog.textContent = tg; p.tog.title = isCol ? "Expand" : "Collapse"; }
+    if (c.body !== p.last) {
+      const b = p.body, stick = c.stick && b.scrollHeight - b.scrollTop - b.clientHeight < 24, top = b.scrollTop;
+      b.innerHTML = c.body; p.last = c.body;
+      b.scrollTop = stick ? b.scrollHeight : top;
+    }
+  });
+  updateTimers(world);
+  if (drawerKey) renderDrawer();
 }
 
 function updateTimers(root) {
   for (const el of (root || document).querySelectorAll("[data-since]")) {
-    const t = Number(el.dataset.since);
-    if (Number.isFinite(t)) el.textContent = (el.dataset.pre || "") + since(t);
+    const v = el.dataset.since;
+    el.textContent = v === "" ? "" : since(Number(v));
   }
 }
 
-function renderNow() {
-  const rows = [];
-  if (S.turn) rows.push({ dot: "", color: C.teal, what: "Turn · " + S.turn.prompt, st: "running", since: S.turn.start });
-  S.llm.forEach((c) => {
-    const who = c.agent === "main" ? "Model" : `[${c.agent}] model`;
-    const st = c.state === "preparing" ? "preparing request" : c.state === "sent" ? "sent · waiting for reply" : "streaming";
-    rows.push({ dot: c.state === "streaming" ? "spin" : "hollow", color: c.state === "preparing" ? C.dim : C.cyan,
-      what: who + (c.state === "streaming" && c.chars ? ` · ${fmtNum(c.chars)} chars` : c.state === "sent" ? ` · ~${fmtNum(S.ctxUsed[c.agent] || 0)} tokens` : ""),
-      st, since: c.state === "sent" ? c.sentAt : c.state === "streaming" ? c.firstAt : c.start });
-  });
-  [...S.tools.values()].sort((a, b) => a.reqAt - b.reqAt).forEach((t) => {
-    const st = { requested: "requested", asking: "awaiting approval", approved: "approved", denied: "denied", running: "running" }[t.state] || t.state;
-    const color = t.state === "asking" || t.state === "approved" ? C.amber : t.state === "denied" ? C.rose : t.state === "running" ? KIND_COLOR[t.kind] : C.dim;
-    rows.push({ dot: t.state === "running" ? "spin" : t.state === "requested" ? "hollow" : "", color,
-      what: (t.agent !== "main" ? `[${t.agent}] ` : "") + toolVerb(t) + " · " + toolLabel(t), st,
-      since: t.state === "running" ? t.startAt : t.state === "asking" ? t.askAt : t.reqAt });
-  });
-  S.subagents.forEach((s, name) => { if (s.active) rows.push({ dot: "spin", color: C.violet, what: "Sub-agent " + name + " · " + s.prompt, st: "running", since: s.start }); });
-  const box = $("now"); box.replaceChildren();
-  if (!rows.length) {
-    const li = document.createElement("li"); li.className = "empty";
-    li.textContent = S.llmFailed ? "Idle · the last model request failed" : S.sessionSeen ? "Idle · waiting for your next prompt" : "Waiting for a session";
-    box.append(li);
-  }
-  for (const r of rows) {
-    const li = document.createElement("li");
-    const d = document.createElement("span"); d.className = "dot " + r.dot; d.style.color = r.color;
-    const w = document.createElement("span"); w.className = "what"; w.textContent = r.what; w.title = r.what;
-    const st = document.createElement("span"); st.className = "st"; st.textContent = r.st; st.style.color = r.color;
-    const t = document.createElement("span"); t.className = "secs"; t.dataset.since = String(r.since);
-    li.append(d, w, st, t); box.append(li);
-  }
-  updateTimers(box);
-  const st = $("stream"); st.replaceChildren();
-  if (S.stream && (S.stream.text || S.stream.thinking)) {
-    const inner = document.createElement("div");
-    if (S.stream.thinking && !S.stream.text) {
-      const th = document.createElement("span"); th.className = "thinking"; th.textContent = S.stream.thinking.slice(-600);
-      inner.append(th);
-    }
-    if (S.stream.text) inner.append(document.createTextNode(S.stream.text.slice(-900)));
-    if (S.llm.get(S.stream.agent)) { const c = document.createElement("span"); c.className = "cursor"; inner.append(c); }
-    st.append(inner);
-  }
+// ------------------------------------------------------------------ connectors (SVG), lit when something really happens
+
+let wiresDirty = true;
+const hot = new Map();   // "a>b" -> {until, color}
+const fx = {
+  hot(k, color) { hot.set(k, { until: performance.now() + 1300 * slow(), color }); },
+  chip(from, to, spec) { launchChip(from, to, spec); },
+};
+const wireEls = new Map();
+function anchor(k) { const p = layoutPos.get(k); return p ? p : null; }
+function wirePath(a, b) {
+  const A = anchor(a), B = anchor(b);
+  if (!A || !B) return null;
+  let x1, y1, x2, y2, horiz = true;
+  const yAt = (P, Q) => clamp(Q.y + 22, P.y + 16, P.y + P.h - 16);   // leave at the height of the other end: no fan of lines
+  if (B.x >= A.x + A.w) { x1 = A.x + A.w; y1 = yAt(A, B); x2 = B.x; y2 = yAt(B, A); }
+  else if (B.x + B.w <= A.x) { x1 = A.x; y1 = yAt(A, B); x2 = B.x + B.w; y2 = yAt(B, A); }
+  else { horiz = false; x1 = A.x + A.w / 2; x2 = B.x + B.w / 2; if (B.y > A.y) { y1 = A.y + A.h; y2 = B.y; } else { y1 = A.y; y2 = B.y + B.h; } }
+  if (horiz) { const dx = Math.max(30, Math.abs(x2 - x1) / 2) * Math.sign(x2 - x1 || 1); return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`; }
+  const dy = Math.max(20, Math.abs(y2 - y1) / 2) * Math.sign(y2 - y1 || 1);
+  return `M${x1},${y1} C${x1},${y1 + dy} ${x2},${y2 - dy} ${x2},${y2}`;
 }
+function wireList() {
+  const keys = [...layoutPos.keys()], base = [["you", "context"], ["context", "model"]];
+  for (const k of keys) {
+    if (k === "terminal" || k === "tools" || k === "skills" || k.startsWith("mcp:") || k.startsWith("file:")) base.push(["model", k]);
+    if (k.startsWith("sub:")) base.push(["model", k]);
+  }
+  const active = new Map();   // key -> color: a tool running there right now
+  S.tools.forEach((t) => {
+    if (t.state !== "running" || !layoutPos.has(t.panel)) return;
+    const from = t.agent === "main" ? "model" : "sub:" + S.subCur[t.agent];
+    active.set(from + ">" + t.panel, KIND_COLOR[t.kind]);
+  });
+  const mc = S.llm.get("main");
+  if (mc && mc.state !== "preparing") active.set("context>model", C.cyan);
+  S.subRuns.forEach((r) => { if (r.active) active.set("model>sub:" + r.key, C.violet); });
+  return { base, active };
+}
+function drawWires(now) {
+  const { base, active } = wireList(), want = new Map();
+  for (const [a, b] of base) want.set(a + ">" + b, { a, b });
+  active.forEach((_, k) => { const [a, b] = k.split(">"); want.set(k, { a, b }); });
+  hot.forEach((h, k) => { if (h.until < now) { hot.delete(k); return; } const [a, b] = k.split(">"); if (layoutPos.has(a) && layoutPos.has(b)) want.set(k, { a, b }); });
+  const reverse = (k) => { const [a, b] = k.split(">"); return b + ">" + a; };
+  wireEls.forEach((el, k) => { if (!want.has(k)) { el.remove(); wireEls.delete(k); } });
+  let maxX = 10, maxY = 10;
+  layoutPos.forEach((p) => { maxX = Math.max(maxX, p.x + p.w); maxY = Math.max(maxY, p.y + p.h); });
+  wiresSvg.setAttribute("width", String(maxX)); wiresSvg.setAttribute("height", String(maxY));
+  want.forEach(({ a, b }, k) => {
+    let el = wireEls.get(k);
+    if (!el) { el = document.createElementNS("http://www.w3.org/2000/svg", "path"); el.setAttribute("class", "wire"); wiresSvg.append(el); wireEls.set(k, el); el._d = ""; }
+    // a result travelling back uses the same line drawn the other way, so the dashes flow toward the receiver
+    if (wiresDirty || !el._d) { const d = wirePath(a, b); if (d) { el.setAttribute("d", d); el._d = d; } }
+    const h = hot.get(k), act = active.get(k) || active.get(reverse(k));
+    const cls = "wire" + (h ? " hot" : act ? " active" : "");
+    if (el._cls !== cls) { el.setAttribute("class", cls); el._cls = cls; }
+    const col = h ? h.color : act || "";
+    if (el._col !== col) { el.style.setProperty("--c", col); el._col = col; }
+    const isBase = base.some(([x, y]) => x + ">" + y === k);
+    el.style.display = isBase || h || act ? "" : "none";
+  });
+  wiresDirty = false;
+}
+
+// ------------------------------------------------------------------ chips: a real object travelling along a connector
+
+const MAX_CHIPS = 6;
+let chips = [];
+const measure = document.createElementNS("http://www.w3.org/2000/svg", "path");
+measure.setAttribute("visibility", "hidden"); measure.setAttribute("fill", "none");
+wiresSvg.append(measure);
+const PAGE_ICON = '<svg viewBox="0 0 11 13" aria-hidden="true"><path d="M1.5 .75h5.2l3 3v8.5h-8.2z M6.7 .75v3h3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M3.3 6.5h4.4M3.3 8.6h4.4" stroke="currentColor" stroke-width="1.1"/></svg>';
+function progName(cmd) {   // "cd web && python -m pytest -q" -> "pytest"
+  const segs = String(cmd || "").split(/&&|\|\||;|\|/).map((s) => s.trim()).filter(Boolean);
+  const seg = segs.find((s) => !/^(cd|pushd|set|export)\b/i.test(s)) || segs[0] || "";
+  const words = seg.split(/\s+/).filter((w) => w && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(w) && !/^(sudo|env|time|nohup)$/.test(w));
+  if (!words.length) return "bash";
+  const clean = (w) => baseName(w.replace(/^["']|["']$/g, "")).replace(/\.(exe|cmd|bat|ps1)$/i, "").toLowerCase();
+  let name = clean(words[0]);
+  if (/^(python[0-9.]*|py)$/.test(name) && words[1] === "-m" && words[2]) name = clean(words[2]);
+  else if (/^(npx|uv|uvx|pnpm|poetry)$/.test(name) && words[1]) name = words[1] === "run" && words[2] ? clean(words[2]) : clean(words[1]);
+  return name || "bash";
+}
+function launchChip(from, to, spec) {
+  if (flat()) return;
+  const el = document.createElement("div");
+  el.className = "flychip";
+  el.style.setProperty("--c", spec.color || C.teal);
+  el.innerHTML = (spec.file ? `<span style="color:${spec.color || C.teal};display:flex">${PAGE_ICON}</span>` : "") + esc(spec.label);
+  world.append(el);
+  el.style.opacity = "0";
+  chips.push({ el, from, to, t0: performance.now(), dur: 0, born: performance.now() });
+  while (chips.length > MAX_CHIPS) chips.shift().el.remove();   // calm: drop the oldest
+}
+const easeInOut = (u) => u < .5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+function drawChips(now) {
+  chips = chips.filter((c) => {
+    const d = wirePath(c.from, c.to);   // the connector as it is now (panels can move while a chip travels)
+    if (!d) {   // a panel that is being created this instant (a sub-agent spawning): wait for it briefly
+      if (now - c.born > 1000) { c.el.remove(); return false; }
+      c.t0 = now; return true;
+    }
+    measure.setAttribute("d", d);
+    const len = measure.getTotalLength();
+    if (!c.dur) c.dur = clamp(500 + len * 1.1, 700, 1500) * slow();
+    const u = (now - c.t0) / c.dur;
+    if (u >= 1) { c.el.remove(); return false; }   // arrived
+    const pt = measure.getPointAtLength(len * easeInOut(Math.max(0, u)));
+    c.el.style.transform = `translate(${pt.x}px, ${pt.y}px) translate(-50%, -50%)`;
+    c.el.style.opacity = String(Math.min(1, u * 8, (1 - u) * 8));
+    return true;
+  });
+}
+function clearChips() { chips.forEach((c) => c.el.remove()); chips = []; }
+
+// ------------------------------------------------------------------ camera: pan, zoom around the cursor, fit, follow
+
+const cam = { x: 20, y: 20, s: 1 };
+let follow = true, fitted = false;
+const flat = () => window.matchMedia("(max-width: 900px)").matches;
+function applyCam() {
+  world.style.transform = flat() ? "" : `translate(${cam.x}px, ${cam.y}px) scale(${cam.s})`;
+  $("zoom").textContent = Math.round(cam.s * 100) + "%";
+}
+function bounds() {
+  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+  layoutPos.forEach((p) => { x1 = Math.min(x1, p.x); y1 = Math.min(y1, p.y); x2 = Math.max(x2, p.x + p.w); y2 = Math.max(y2, p.y + p.h); });
+  return x1 === Infinity ? null : { x1, y1, x2, y2 };
+}
+function fitAll(minScale) {
+  const b = bounds(); if (!b) return;
+  const vw = viewport.clientWidth, vh = viewport.clientHeight, pad = 30;
+  const s = clamp(Math.min((vw - pad * 2) / (b.x2 - b.x1), (vh - pad * 2 - 30) / (b.y2 - b.y1)), minScale || .15, 1.2);
+  cam.s = s; cam.x = (vw - (b.x2 - b.x1) * s) / 2 - b.x1 * s; cam.y = Math.max(pad, (vh - (b.y2 - b.y1) * s) / 2) - b.y1 * s;
+  if (s === minScale) { cam.x = pad - b.x1 * s; cam.y = pad + 20 - b.y1 * s; }
+  applyCam();
+}
+function zoomAt(px, py, s) {
+  s = clamp(s, .15, 2.5);
+  const wx = (px - cam.x) / cam.s, wy = (py - cam.y) / cam.s;
+  cam.s = s; cam.x = px - wx * s; cam.y = py - wy * s; applyCam();
+}
+function setFollow(on) { follow = on; $("follow").classList.toggle("on", on); }
+function focusKey() {
+  const run = [...S.tools.values()].filter((t) => t.state === "running" || t.state === "asking").sort((a, b) => (b.startAt ?? b.askAt) - (a.startAt ?? a.askAt));
+  for (const t of run) { const k = t.state === "asking" ? "now" : t.panel; if (layoutPos.has(k)) return k; }
+  const subs = [...S.subRuns.values()].filter((r) => r.active);
+  if (subs.length) return "sub:" + subs[subs.length - 1].key;
+  if (S.llm.get("main")) return "model";
+  if (S.turn) return "you";
+  return null;
+}
+function followStep(dt) {
+  if (!follow || flat() || drag || panelDrag) return;
+  const k = focusKey(), p = k && layoutPos.get(k);
+  if (!p) return;
+  const vw = viewport.clientWidth, vh = viewport.clientHeight, m = 40;
+  const sx = p.x * cam.s + cam.x, sy = p.y * cam.s + cam.y, sw = p.w * cam.s, sh = p.h * cam.s;
+  if (sx >= m && sy >= m && sx + sw <= vw - m && sy + sh <= vh - m) return;   // already in view: stay calm
+  const tx = vw / 2 - (p.x + p.w / 2) * cam.s, ty = vh / 2 - (p.y + p.h / 2) * cam.s, f = Math.min(1, dt * 5 / slow());
+  cam.x += (tx - cam.x) * f; cam.y += (ty - cam.y) * f; applyCam();
+}
+
+let drag = null, dragged = false, panelDrag = null;
+viewport.addEventListener("pointerdown", (e) => {
+  if (flat() || e.button !== 0 || e.target.closest(".tog")) return;
+  const body = e.target.closest(".pb");
+  if (body && body.scrollHeight > body.clientHeight && e.clientX > body.getBoundingClientRect().right - 12) return;   // its scrollbar
+  const header = e.target.closest(".ph");
+  if (header) {   // dragging a header moves that panel; it never pans the canvas
+    const key = header.parentElement.dataset.key, p = layoutPos.get(key);
+    if (key && p) { panelDrag = { key, x: e.clientX, y: e.clientY, px: p.x, py: p.y, id: e.pointerId, moved: false }; dragged = false; }
+    return;
+  }
+  drag = { x: e.clientX, y: e.clientY, cx: cam.x, cy: cam.y, id: e.pointerId }; dragged = false;
+});
+window.addEventListener("pointermove", (e) => {
+  if (panelDrag) {
+    const dx = (e.clientX - panelDrag.x) / cam.s, dy = (e.clientY - panelDrag.y) / cam.s;
+    if (!panelDrag.moved && Math.hypot(dx * cam.s, dy * cam.s) < 5) return;
+    const q = layoutPos.get(panelDrag.key), el = panelEls.get(panelDrag.key);
+    if (!q || !el) return;
+    if (!panelDrag.moved) { panelDrag.moved = true; dragged = true; el.el.classList.add("dragging"); try { viewport.setPointerCapture(panelDrag.id); } catch { /* pointer already gone */ } }
+    q.x = Math.round(panelDrag.px + dx); q.y = Math.round(panelDrag.py + dy);
+    userPos.set(panelDrag.key, { x: q.x, y: q.y });
+    el.el.style.left = q.x + "px"; el.el.style.top = q.y + "px";
+    wiresDirty = true;
+    return;
+  }
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (!dragged && Math.hypot(dx, dy) < 5) return;
+  if (!dragged) { dragged = true; viewport.classList.add("panning"); setFollow(false); try { viewport.setPointerCapture(drag.id); } catch { /* pointer already gone */ } }
+  cam.x = drag.cx + dx; cam.y = drag.cy + dy; applyCam();
+});
+window.addEventListener("pointerup", () => {
+  if (panelDrag && panelDrag.moved) {
+    const u = userPos.get(panelDrag.key), el = panelEls.get(panelDrag.key);
+    if (u) storeSet("pos:" + panelDrag.key, JSON.stringify(u));
+    if (el) el.el.classList.remove("dragging");
+    layoutVer++; renderPanels(true);   // other auto-placed panels make room
+  }
+  panelDrag = null; drag = null; viewport.classList.remove("panning"); setTimeout(() => { dragged = false; }, 0);
+});
+viewport.addEventListener("wheel", (e) => {
+  if (flat()) return;
+  const body = e.target.closest(".pb");
+  if (body && !e.ctrlKey) {   // let a panel scroll its own content while it can
+    const canScroll = e.deltaY < 0 ? body.scrollTop > 0 : body.scrollTop + body.clientHeight < body.scrollHeight - 1;
+    if (canScroll) return;
+  }
+  e.preventDefault();
+  const r = viewport.getBoundingClientRect();
+  zoomAt(e.clientX - r.left, e.clientY - r.top, cam.s * Math.exp(-e.deltaY * (e.ctrlKey ? .01 : .0015)));
+}, { passive: false });
+$("fit").onclick = () => { setFollow(false); fitAll(); };
+$("follow").onclick = () => setFollow(!follow);
+$("reset").onclick = () => resetLayout();
+$("zoom").onclick = () => zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, 1);
+
+// ------------------------------------------------------------------ detail drawer: the full content of anything you click
+
+let drawerKey = "", drawerLast = "";
+function openDrawer(key) { drawerKey = key; drawerLast = ""; renderDrawer(); $("drawer").classList.add("open"); $("drawer").setAttribute("aria-hidden", "false"); }
+function closeDrawer() { drawerKey = ""; $("drawer").classList.remove("open"); $("drawer").setAttribute("aria-hidden", "true"); }
+function kv(pairs) { return '<div class="kv">' + pairs.filter((p) => p[1] !== "" && p[1] != null).map(([k, v]) => `<span>${esc(k)}</span><span>${esc(v)}</span>`).join("") + "</div>"; }
+function toolDetail(t) {
+  let b = kv([["tool", t.name], ["agent", t.agent], ["state", toolState(t)], ["requested", fmtTime(t.reqAt)],
+    ["started", t.startAt != null ? fmtTime(t.startAt) : "never"], ["duration", t.ran && t.state === "done" ? fmtDur(t.dur || 0) : ""],
+    ["exit code", t.exit ?? ""], ["summary", t.summary]]);
+  b += `<div class="sec">Arguments</div><pre>${esc(JSON.stringify(t.args || {}, null, 2))}</pre>`;
+  if (t.kind === "file") b += `<div class="sec">Content</div>${fileOpBody(t, true)}`;
+  else if (t.output) b += `<div class="sec">Output</div><pre>${esc(t.output.replace(/\r/g, ""))}</pre>`;
+  if (t.diff && t.kind !== "file") b += `<div class="sec">Diff</div>${diffHTML(t.diff)}`;
+  return { title: toolVerb(t) + " · " + toolLabel(t), body: b };
+}
+function detailContent(key) {
+  const i = key.indexOf(":"), kind = i < 0 ? key : key.slice(0, i), arg = i < 0 ? "" : key.slice(i + 1);
+  if (kind === "panel") {
+    const j = arg.indexOf(":"), pk = j < 0 ? arg : arg.slice(0, j), pa = j < 0 ? "" : arg.slice(j + 1);
+    switch (pk) {
+      case "file": {
+        const f = S.files.get(pa); if (!f) return null;
+        let b = kv([["path", f.full], ["operations", f.ops.length]]);
+        for (const t of [...f.ops].reverse()) b += `<div class="blk"><div class="row"><span class="dot ${toolDot(t)}"></span><b>${esc(t.name)}</b>${agentTag(t.agent)}<span class="grow sub">${esc(toolState(t))}</span><span class="sub">${fmtTime(t.reqAt)}</span></div>${fileOpBody(t, true)}</div>`;
+        return { title: f.full, body: b };
+      }
+      case "terminal": {
+        let b = "";
+        for (const t of [...S.commands].reverse()) b += `<div class="blk"><div class="row"><span class="dot ${toolDot(t)}"></span>${agentTag(t.agent)}<span class="grow mono" style="white-space:normal">${esc(cmdLabel(t))}</span><span class="sub">${esc(toolState(t))}</span></div>${t.output ? `<pre>${esc(t.output.replace(/\r/g, ""))}</pre>` : ""}</div>`;
+        return { title: "Terminal · every command", body: b || '<div class="empty">No commands yet</div>' };
+      }
+      case "sub": {
+        const r = S.subRuns.get(pa); if (!r) return null;
+        let b = kv([["agent", r.agent], ["state", r.active ? "running" : r.status], ["started", fmtTime(r.start)], ["tool calls", r.toolCalls || ""]]);
+        b += `<div class="sec">Task</div><pre>${esc(r.prompt)}</pre><div class="sec">Steps</div>`;
+        for (const s of r.steps) {
+          if (s.kind === "tool") b += `<div class="row item" data-detail="tool:${esc(s.t.key)}"><span class="dot ${toolDot(s.t)}"></span><span class="grow">${esc(s.t.name)} · ${esc(toolLabel(s.t))}</span><span class="sub">${esc(toolState(s.t))}</span></div>`;
+          else b += `<div class="blk"><div class="sub">model call · ${s.c.end == null ? esc(llmState(s.c).text) : (s.c.calls || []).length ? "asked for " + esc(s.c.calls.join(", ")) : "answered"}</div>${s.c.thinking ? `<div class="think">${esc(s.c.thinking)}</div>` : ""}${s.c.text ? `<div class="answer">${esc(s.c.text)}</div>` : ""}</div>`;
+        }
+        if (r.report) b += `<div class="sec">Report returned to the main agent</div><pre>${esc(r.report)}</pre>`;
+        return { title: "Sub-agent · " + r.agent, body: b };
+      }
+      case "mcp": {
+        const calls = S.mcpCalls.get(pa) || [], inv = S.inv.mcp.find((m) => m.name === pa) || {};
+        let b = kv([["server", pa], ["status", inv.status || "unknown"], ["tools", (inv.tools || []).join(", ")], ["calls", calls.length]]);
+        for (const t of [...calls].reverse()) b += `<div class="blk"><div class="row"><span class="dot ${toolDot(t)}"></span><b>${esc(t.mcp.tool)}</b>${agentTag(t.agent)}<span class="grow sub">${esc(toolState(t))}</span></div><pre>${esc(JSON.stringify(t.args || {}, null, 2))}</pre>${t.output ? `<pre>${esc(t.output)}</pre>` : ""}</div>`;
+        return { title: "MCP · " + pa, body: b };
+      }
+      case "skills": {
+        let b = "";
+        if (S.skill) b += `<div class="sec">In use: ${esc(S.skill.name)}</div><pre>${esc(S.skillText[S.skill.name] || "(no text in this recording)")}</pre>`;
+        b += '<div class="sec">Installed skills</div>';
+        for (const s of S.inv.skills) b += `<div class="blk"><div class="row"><b>${esc(s.name)}</b><span class="grow sub">${esc(s.source || "")}</span>${S.skillUse.get(s.name) ? `<span class="c-violet">${S.skillUse.get(s.name)}× used</span>` : ""}</div><div class="sub">${esc(s.description)}</div></div>`;
+        return { title: "Skills", body: b };
+      }
+      case "model": {
+        const c = S.llm.get("main") || S.lastCall.get("main");
+        if (!c) return { title: "Model", body: '<div class="empty">No model call yet</div>' };
+        let b = kv([["model", S.model], ["state", S.llm.get("main") ? llmState(c).text : c.error ? "failed: " + c.error : "done"], ["started", fmtTime(c.start)],
+          ["sent", c.sentAt != null ? fmtTime(c.sentAt) : ""], ["first token", c.firstAt != null ? fmtTime(c.firstAt) : ""],
+          ["tokens", c.tokIn ? `${fmtNum(c.tokIn)} in → ${fmtNum(c.tokOut)} out` : ""], ["asked for", (c.calls || []).join(", ")]]);
+        if (c.thinking) b += `<div class="sec">Thinking</div><div class="think">${esc(c.thinking)}</div>`;
+        b += `<div class="sec">Text</div><div class="answer">${esc(c.text) || '<span class="empty">(none)</span>'}</div>`;
+        return { title: "Model · latest call", body: b };
+      }
+      case "you": case "queue": return detailContent("queue");
+      case "context": {
+        let b = kv([["used", fmtNum(S.ctx.used)], ["usable", fmtNum(S.ctx.usable)], ["window", fmtNum(S.ctx.window)],
+          ["system", fmtNum(S.ctx.parts.system || 0)], ["conversation", fmtNum(S.ctx.parts.conversation || 0)], ["tool results", fmtNum(S.ctx.parts.tools || 0)]]);
+        b += '<div class="sec">Compactions</div>' + (S.compactions.map((c) => `<div class="blk"><div class="sub">${fmtTime(c.t)}${c.emergency ? " · emergency" : ""}</div>${esc(c.description)}</div>`).join("") || '<div class="empty">None</div>');
+        return { title: "Context window", body: b };
+      }
+      case "lessons": case "hooks": case "activity": case "todos": case "now": case "tools": return detailContent(pk);
+    }
+    return null;
+  }
+  if (kind === "tool") { const t = S.all.find((x) => x.key === arg && (S.tools.get(arg) === x || x.state === "done")) || [...S.all].reverse().find((x) => x.key === arg); return t ? toolDetail(t) : null; }
+  if (kind === "lesson") {
+    const l = S.lessons[Number(arg)];
+    if (l == null) return null;
+    let b = `<div class="answer" style="margin-bottom:10px">${esc(l)}</div>`;
+    b += kv([["stored in", S.lessonsPath || "not reported by this session (the session event has no lessons_path)"]]);
+    if (S.memoryFiles.length) b += `<div class="sec">Memory files</div><pre>${esc(S.memoryFiles.map((m) => typeof m === "string" ? m : JSON.stringify(m)).join("\n"))}</pre>`;
+    return { title: "Lesson", body: b };
+  }
+  switch (kind) {
+    case "queue": {
+      let b = '<div class="sec">Prompts this session</div>' + (S.prompts.map((p) => `<div class="blk"><div class="sub">${fmtTime(p.t)}</div><div class="answer">${esc(p.text)}</div></div>`).join("") || '<div class="empty">None yet</div>');
+      b += '<div class="sec">Delivered while it worked (this turn)</div>' + (S.userMsgs.map((m) => `<div class="blk"><div class="sub">${fmtTime(m.t)}</div><div class="answer">${esc(m.text)}</div></div>`).join("") || '<div class="empty">None</div>');
+      b += '<div class="sec">Waiting in the queue</div>' + (S.queue.map((q) => `<div class="blk answer">${esc(q)}</div>`).join("") || '<div class="empty">Nothing waiting</div>');
+      return { title: "You · prompts and queue", body: b };
+    }
+    case "lessons": {
+      let b = S.lessons.map((l, i) => `<div class="blk item" data-detail="lesson:${i}">${esc(l)}</div>`).join("") || '<div class="empty">No lessons recalled this turn</div>';
+      b += kv([["stored in", S.lessonsPath || "not reported by this session"]]);
+      return { title: "Lessons recalled", body: b };
+    }
+    case "hooks": {
+      let b = '<div class="sec">Configured</div>' + (S.inv.hooks.map((h) => `<div class="blk"><b>${esc(h.event)}</b> <span class="sub">matcher ${esc(h.matcher || "*")}</span><pre>${esc(h.command)}</pre></div>`).join("") || '<div class="empty">None</div>');
+      b += '<div class="sec">Runs</div>' + (S.hookLog.slice().reverse().map((h) => `<div class="row"><span class="dot ${h.outcome === "blocked" ? "d-fail" : h.outcome === "warning" ? "d-ask" : "d-ok"}"></span><span class="grow">${esc(h.event)}${h.tool ? " · " + esc(h.tool) : ""} · ${esc(h.outcome)}</span><span class="sub">${fmtTime(h.t)} · ${fmtDur(h.duration)}</span></div>`).join("") || '<div class="empty">None yet</div>');
+      return { title: "Hooks", body: b };
+    }
+    case "activity": return { title: "Activity", body: '<div class="log">' + S.log.map((r) => `<div><time>${fmtTime(r.t)}</time><span class="${r.kind}" style="white-space:normal">${esc(r.text)}</span></div>`).join("") + "</div>" };
+    case "todos": return { title: "Plan", body: PANELS.todos().body };
+    case "now": return { title: "Right now", body: PANELS.now().body };
+    case "tools": {
+      let b = PANELS.tools().body.split('<div class="sec">')[0] + '<div class="sec">Every call</div>';
+      for (const t of [...S.other].reverse()) b += `<div class="row item" data-detail="tool:${esc(t.key)}"><span class="dot ${toolDot(t)}"></span>${agentTag(t.agent)}<span class="grow">${esc(t.name)} · ${esc(toolLabel(t))}</span><span class="sub">${esc(toolState(t))}</span></div>`;
+      return { title: "Tools", body: b };
+    }
+  }
+  return null;
+}
+function renderDrawer() {
+  const c = detailContent(drawerKey) || { title: "Details", body: '<div class="empty">This item is not in the current state (seeked away or cleared).</div>' };
+  $("dtitle").textContent = c.title;
+  const html = c.body;
+  if (html !== drawerLast) { const b = $("dbody"), top = b.scrollTop; b.innerHTML = html; b.scrollTop = top; drawerLast = html; }
+}
+document.addEventListener("click", (e) => {
+  if (dragged) { e.stopPropagation(); e.preventDefault(); return; }
+  if (e.target.closest("#dclose")) { closeDrawer(); return; }
+  const tog = e.target.closest(".tog");
+  if (tog) { e.stopPropagation(); toggleCollapsed(tog.closest(".pnl").dataset.key); return; }
+  const d = e.target.closest("[data-detail]");
+  if (!d) return;
+  if (window.getSelection && String(window.getSelection()).length > 2) return;   // selecting text, not clicking
+  openDrawer(d.dataset.detail);
+}, true);
 
 // ------------------------------------------------------------------ timeline
 
 const tl = $("timeline"), tctx = tl.getContext("2d");
-let hatch = null;
+let hatch = null, DPR = window.devicePixelRatio || 1;
 function hatchPattern() {
   if (hatch) return hatch;
   const p = document.createElement("canvas"); p.width = 8; p.height = 8;
@@ -1332,7 +1353,9 @@ function hatchPattern() {
   return hatch;
 }
 function drawTimeline() {
+  if (!tl.offsetParent) return;   // collapsed
   const r = tl.getBoundingClientRect(); const w = r.width, h = r.height;
+  DPR = window.devicePixelRatio || 1;
   if (tl.width !== Math.round(w * DPR) || tl.height !== Math.round(h * DPR)) { tl.width = Math.round(w * DPR); tl.height = Math.round(h * DPR); }
   tctx.setTransform(DPR, 0, 0, DPR, 0, 0); tctx.clearRect(0, 0, w, h);
   const now = clock(); const span = Math.max(30, Math.min(now, 120)); const t0 = Math.max(0, now - span);
@@ -1346,14 +1369,13 @@ function drawTimeline() {
     const x1 = x(Math.max(s, t0)), x2 = Math.max(x1 + (minW || 2), x(e));
     tctx.fillStyle = fill; tctx.fillRect(x1, y, x2 - x1, hh); return [x1, x2];
   };
-  const label = (xs, y, hh, text, color) => {
+  const label = (xs, y, hh, text) => {
     if (!xs || xs[1] - xs[0] < 40 || !text) return;
     tctx.save(); tctx.beginPath(); tctx.rect(xs[0], y, xs[1] - xs[0], hh); tctx.clip();
-    tctx.fillStyle = color || "#06201e"; tctx.textAlign = "left"; tctx.font = `10.5px ${MONO}`; tctx.fillText(text, xs[0] + 4, y + hh / 2 + .5);
+    tctx.fillStyle = "#06201e"; tctx.textAlign = "left"; tctx.font = `10.5px ${MONO}`; tctx.fillText(text, xs[0] + 4, y + hh / 2 + .5);
     tctx.restore();
   };
-  // model: preparing / waiting drawn light, streaming solid
-  const model = (sp, end) => {
+  const model = (sp, end) => {   // preparing / waiting drawn light, streaming solid
     const L = lanes[0], y = L.y + 3, hh = L.h - 6, bad = sp.ok === false;
     const first = sp.first != null ? sp.first : end, sent = sp.sent != null ? sp.sent : first;
     box(sp.start, sent, y, hh, bad ? C.rose + "44" : "rgba(103,232,249,.12)");
@@ -1363,13 +1385,12 @@ function drawTimeline() {
   };
   for (const sp of S.spans) if (sp.lane === 0) model(sp, sp.end);
   S.llm.forEach((c) => model({ start: c.start, sent: c.sentAt, first: c.firstAt, ok: true }, now));
-  // tools: greedy rows so parallel calls do not hide each other
   const tools = S.spans.filter((sp) => sp.lane === 1 && sp.end >= t0);
   S.tools.forEach((t) => { if (t.state === "running" || t.askAt != null) tools.push({ lane: 1, agent: t.agent, kind: t.kind, label: toolLabel(t),
-    req: t.reqAt, ask: t.askAt, askEnd: t.askAt != null ? (t.askEnd ?? now) : null, start: t.startAt, end: now, ok: null, live: true }); });
+    ask: t.askAt, askEnd: t.askAt != null ? (t.askEnd ?? now) : null, start: t.startAt, end: now, ok: null, live: true }); });
   tools.sort((a, b) => (a.ask ?? a.start ?? a.end) - (b.ask ?? b.start ?? b.end));
   const L = lanes[1], rowsN = 3, rh = (L.h - 4) / rowsN, rowEnd = new Array(rowsN).fill(-1e9);
-  for (const sp of tools) {
+  for (const sp of tools) {   // greedy rows so parallel calls do not hide each other
     const s = sp.ask ?? sp.start ?? sp.end, x1 = x(Math.max(s, t0)), x2 = Math.max(x1 + 2, x(sp.end));
     let row = rowEnd.findIndex((e) => e <= x1);
     if (row < 0) row = rowEnd.indexOf(Math.min(...rowEnd));
@@ -1383,7 +1404,6 @@ function drawTimeline() {
     } else if (sp.ok === false) box(sp.end, sp.end, y, hh, C.rose, 3);   // never ran (denied / rejected)
     if (sp.agent !== "main" && sp.start != null) box(sp.start, sp.end, y, 1.5, C.violet);
   }
-  // sub-agents
   const SL = lanes[2];
   for (const sp of S.spans) if (sp.lane === 2) label(box(sp.start, sp.end, SL.y + 2, SL.h - 4, sp.ok ? C.violet + "cc" : C.rose), SL.y + 2, SL.h - 4, sp.label);
   S.subagents.forEach((s, n) => { if (s.active) label(box(s.start, now, SL.y + 2, SL.h - 4, C.violet), SL.y + 2, SL.h - 4, n); });
@@ -1402,19 +1422,23 @@ function clock() {
   if (!liveBase) return S.now;
   return liveBase.t + (performance.now() - liveBase.at) / 1000;
 }
-let lastTimers = 0;
-function tick(dt) {
+let lastTimers = 0, lastFrame = performance.now();
+function frame(now) {
+  const dt = Math.min(.05, (now - lastFrame) / 1000); lastFrame = now;
   if (mode === "replay" && playing && adjusted.length) {
-    replayClock += dt * Number($("speed").value);
+    replayClock += dt * speed();
     while (replayPos < adjusted.length && adjusted[replayPos].t <= replayClock) apply(adjusted[replayPos++], fx);
     const end = adjusted[adjusted.length - 1].t;
     if (replayPos >= adjusted.length && replayClock >= end + 1.5) { playing = false; $("play").textContent = "▶"; }
     $("seek").value = String(Math.round(1000 * clamp(replayClock / Math.max(end, .001), 0, 1)));
-    $("clock").textContent = `${fmtTime(replayClock)} / ${fmtTime(end)}`;
+    $("clock").textContent = `${fmtTime(Math.min(replayClock, end))} / ${fmtTime(end)}`;
   }
   renderPanels(false);
-  const t = performance.now();
-  if (t - lastTimers > 200) { lastTimers = t; updateTimers(); }
+  if (!fitted && layoutPos.size && viewport.clientWidth) { fitted = true; fitAll(.6); }
+  if (!flat()) { drawWires(now); drawChips(now); followStep(dt); }
+  if (now - lastTimers > 200) { lastTimers = now; updateTimers(world); }
+  drawTimeline();
+  requestAnimationFrame(frame);
 }
 
 function compressGaps(events) {
@@ -1427,16 +1451,18 @@ function compressGaps(events) {
   });
 }
 
-function resetScene() {
-  S = freshState(); cards = new Map(); pulses = []; snap = true;
-}
+function resetScene() { S = freshState(); hot.clear(); clearChips(); lastVer = -1; }
 
 function seekTo(target) {
   resetScene();
   replayPos = 0; replayClock = target;
   while (replayPos < adjusted.length && adjusted[replayPos].t <= target) apply(adjusted[replayPos++], null);
-  snap = true; renderPanels(true);
-  if (adjusted.length) $("clock").textContent = `${fmtTime(target)} / ${fmtTime(adjusted[adjusted.length - 1].t)}`;
+  renderPanels(true);
+  if (adjusted.length) {
+    const end = adjusted[adjusted.length - 1].t;
+    $("clock").textContent = `${fmtTime(target)} / ${fmtTime(end)}`;
+    $("seek").value = String(Math.round(1000 * clamp(target / Math.max(end, .001), 0, 1)));
+  }
 }
 
 function setStatus(text, cls) { const s = $("status"); s.textContent = text; s.className = "badge " + (cls || ""); }
@@ -1446,7 +1472,7 @@ function connect() {
   let catching = true;
   es.addEventListener("hello", (m) => {
     const info = JSON.parse(m.data); mode = info.mode; following = info.following || "";
-    if (mode === "replay") { setStatus("replay", ""); $("controls").classList.add("on"); recorded = []; }
+    if (mode === "replay") { setStatus("replay", ""); $("controls").classList.add("on"); recorded = []; applySpeed(); }
     else {
       setStatus("live", "live"); resetScene(); catching = true;
       if (following) S.caption = "Waiting for MUYAH-CODE in " + following + " …";
@@ -1465,15 +1491,27 @@ function connect() {
     liveBase = { t: ev.t || 0, at: performance.now() };
     apply(ev, catching ? null : fx);
   };
-  es.addEventListener("caughtup", () => { catching = false; snap = true; renderPanels(true); });
+  es.addEventListener("caughtup", () => { catching = false; renderPanels(true); });
   es.addEventListener("end", () => {
     es.close();
     adjusted = compressGaps(recorded);
     if (!adjusted.length) { S.caption = "This session has no recorded events."; renderPanels(true); return; }
     seekTo(0); playing = true; $("play").textContent = "❚❚";
   });
-  es.onerror = () => { if (mode === "live") setStatus("disconnected", "off"); };
-  es.onopen = () => { if (mode === "live") setStatus("live", "live"); };
+  // The browser retries a dropped stream on its own (a restarted session reconnects). After a few failed
+  // tries the session is gone: stop retrying instead of filling the console, and say so.
+  let failures = 0;
+  es.onerror = () => {
+    if (mode !== "live") return;
+    failures += 1;
+    setStatus("disconnected", "off");
+    if (failures >= 5) {
+      es.close();
+      S.caption = "The session ended (or the viewer stopped). Reload this page to reconnect.";
+      renderPanels(true);
+    }
+  };
+  es.onopen = () => { failures = 0; if (mode === "live") setStatus("live", "live"); };
 }
 
 $("play").onclick = () => {
@@ -1487,12 +1525,31 @@ $("seek").oninput = (e) => {
   seekTo(adjusted[adjusted.length - 1].t * Number(e.target.value) / 1000);
 };
 document.addEventListener("keydown", (e) => {
-  if (e.code === "Space" && mode === "replay" && e.target.tagName !== "SELECT" && e.target.tagName !== "SUMMARY") { e.preventDefault(); $("play").click(); }
+  const tag = e.target.tagName;
+  if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+  if (e.key === "Escape" && drawerKey) { closeDrawer(); return; }
+  if (e.code === "Space" && mode === "replay" && tag !== "BUTTON" && tag !== "SUMMARY") { e.preventDefault(); $("play").click(); return; }
+  if (flat()) return;
+  if (e.key === "f" || e.key === "F") { setFollow(false); fitAll(); }
+  else if (e.key === "0") zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, 1);
 });
-if (params.get("speed")) $("speed").value = params.get("speed");
+function speed() { return clamp(Number($("speed").value) || 1, .1, 16); }
+// how much slower (>1) or faster (<1) animations run: they follow the replay speed, so 0.1x is ten times calmer
+function slow() { return mode === "replay" ? clamp(1 / speed(), .25, 10) : 1; }
+function applySpeed() { document.documentElement.style.setProperty("--k", String(slow())); }
+$("speed").addEventListener("change", applySpeed);
+if (params.get("speed")) {
+  const v = clamp(Number(params.get("speed")) || 1, .1, 16);
+  if (![...$("speed").options].some((o) => Number(o.value) === v)) {
+    const o = document.createElement("option"); o.value = String(v); o.textContent = v + "×";
+    const after = [...$("speed").options].find((x) => Number(x.value) > v);
+    $("speed").insertBefore(o, after || null);
+  }
+  $("speed").value = [...$("speed").options].find((o) => Number(o.value) === v).value;
+}
 
-window.addEventListener("resize", () => { layout(); fitCache.clear(); });
-layout(); renderPanels(true); connect(); requestAnimationFrame(frame);
+window.addEventListener("resize", () => { wiresDirty = true; applyCam(); });
+applyCam(); renderPanels(true); connect(); requestAnimationFrame(frame);
 </script>
 </body>
 </html>

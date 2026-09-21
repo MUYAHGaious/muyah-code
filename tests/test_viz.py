@@ -327,3 +327,16 @@ def test_mcp_servers_and_calls_show_up(project):
     assert any(s["name"] == "debugging" for s in session["skills"]) and any(a["name"] == "explore" for a in session["agents"])
     ends = {e["name"]: e["ok"] for e in events if e["type"] == "tool_end"}
     assert ends == {"mcp__tracker__lookup_issue": True, "mcp__tracker__fail": False}
+
+
+def test_viewer_prefers_a_stable_port_and_falls_back_when_busy():
+    from muyah_code.viz.server import PREFERRED_PORT
+
+    first = VizServer(events=[{"type": "session", "t": 0}])
+    second = VizServer(events=[{"type": "session", "t": 0}])   # the usual port is taken by the first
+    try:
+        assert second.port != first.port                  # never two viewers on one address
+        assert first.port == PREFERRED_PORT or second.port != PREFERRED_PORT
+    finally:
+        first.stop()
+        second.stop()

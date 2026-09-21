@@ -23,6 +23,7 @@ from urllib.parse import parse_qs, urlparse
 from muyah_code.events import EventBus
 
 PAGE = Path(__file__).with_name("page.html")
+PREFERRED_PORT = 47433  # the live view's usual address (http://127.0.0.1:47433), so saved layouts persist
 KEEPALIVE = 15.0  # seconds between SSE comments, so proxies and browsers keep the stream open
 
 
@@ -40,6 +41,16 @@ def find_events_file(directory: Path, session_id: str | None) -> Path | None:
 class _HTTPServer(ThreadingHTTPServer):
     daemon_threads = True
     last_error: BaseException | None = None
+    # On Windows, SO_REUSEADDR lets a second server bind a port that is already in use; the live view
+    # must notice a busy port (another viewer is open) and pick another one instead.
+    allow_reuse_address = sys.platform != "win32"
+
+    def server_bind(self):
+        if sys.platform == "win32":
+            import socket
+
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
     def handle_error(self, request, client_address):
         # The default prints a traceback to stderr, which would land on top of the terminal UI. A browser
@@ -60,9 +71,21 @@ class VizServer:
         self.following = following  # the folder a follower watches ("" for a session's own /viz)
         self.token = secrets.token_urlsafe(18)
         self._stopping = threading.Event()
-        self._httpd = _HTTPServer((host, port), self._handler())
+        self._httpd = self._bind(host, port)
         self.host, self.port = self._httpd.server_address[:2]
         self._thread: threading.Thread | None = None
+
+    def _bind(self, host: str, port: int) -> _HTTPServer:
+        """port 0 = the usual port if it is free, otherwise any free port. The page remembers your panel
+        layout per address, so a stable port keeps your layout from one session to the next."""
+        if port:
+            return _HTTPServer((host, port), self._handler())
+        for candidate in (PREFERRED_PORT, 0):
+            try:
+                return _HTTPServer((host, candidate), self._handler())
+            except OSError:  # in use (another viewer is open): take any free port
+                continue
+        raise OSError("no free port for the live view")
 
     @property
     def mode(self) -> str:

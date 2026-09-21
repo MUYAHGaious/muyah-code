@@ -18,6 +18,13 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
   - The new **auto** mode runs work on its own and asks only for risky actions: bulk or forced deletes, `git push`, `git reset --hard`, publishing, `sudo`, piping downloads into a shell, and edits outside the project.
   - `bypassPermissions` is only set with `--mode`, never by Shift+Tab.
 - **Honest waiting.** Until the provider sends its first byte, the spinner says "Waiting for <model> · sent Ns ago", so provider queueing is not mistaken for MUYAH-CODE being stuck. Free-tier rate limits (e.g. Gemini 429) are explained as rate limits, with the retry delay, instead of "no credits".
+- **The live view is a board of panels.** It works like a design canvas:
+  - Pan and zoom; **Fit all**; **Follow** keeps the active panel in view.
+  - Every panel shows real content: your prompt and queue, the model's true state and streaming text, the terminal with output, a panel per file (content, diffs, reads), one panel per sub-agent, skills, MCP servers, hooks, plan, lessons and context.
+  - Click anything for its full detail.
+  - Drag panels to arrange them and collapse them to a title line. Your layout is remembered: the view now uses a stable address, http://127.0.0.1:47433, when that port is free.
+  - Files, requests, commands and skills move along the connectors as chips, only on real events.
+  - No glows. Replay from 0.1× to 16×.
 - **Live view:**
   - Events now fire at the real moments: requested, awaiting approval, approved/denied, running, done; for the model: sent, first token.
   - Parallel reads used to report "started" after they had finished.
