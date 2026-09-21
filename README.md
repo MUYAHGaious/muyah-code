@@ -242,7 +242,7 @@ sub-agents, hooks, errors) and open any line to see the raw event. Every session
 next to its transcript, so `muyah viz --replay` can play any past session again.
 
 <p align="center">
-  <img src="docs/images/viz-demo.gif" alt="Live view: prompt to context to model, an MCP call, an explore sub-agent, a failing then passing test" width="800">
+  <img src="docs/images/viz-demo.gif" alt="Live view of a two-turn session: a skill, an MCP call, two sub-agents, approvals, tests written first, a message queued while it works, live charts" width="900">
 </p>
 
 There are two ways to open it:

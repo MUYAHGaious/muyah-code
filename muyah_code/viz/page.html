@@ -142,16 +142,44 @@ pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: #b9d8d2;
 #dbody .blk { border: 1px solid var(--line2); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
 
 /* ---------------------------------------------------------------- timeline strip */
-footer { border-top: 1px solid var(--line); padding: 4px 16px 8px; }
-footer summary { cursor: pointer; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim);
-  display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; list-style: none; padding: 4px 0; }
-footer summary::-webkit-details-marker { display: none; }
-footer summary::before { content: "▸"; color: var(--faint); }
-footer details[open] summary::before { content: "▾"; }
+footer { border-top: 1px solid var(--line); padding: 0 16px; min-width: 0; }
+.fbar { display: flex; align-items: center; gap: 10px; height: 34px; cursor: pointer; min-width: 0; user-select: none; }
+.fbar:focus-visible { outline: 1px solid var(--teal); outline-offset: -1px; }
+.fbar .chev { color: var(--faint); font-size: 11px; width: 10px; flex: none; }
+.fbar .fl { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); flex: none; }
+#mini { flex: 1 1 120px; min-width: 60px; height: 14px; border-radius: 3px; display: block; }
+.keys { display: flex; gap: 12px; font: 11.5px var(--mono); color: var(--dim); flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; }
+.keys b { color: var(--text); font-weight: 600; }
+.fbody { padding: 0 0 10px; }
+.fbody .lg { margin-bottom: 4px; }
+.charts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 8px; }
+.charts.big, .pnl .charts { grid-template-columns: minmax(0, 1fr); }
+.pnl .charts { margin-top: 0; gap: 8px; }
+.chart { border: 1px solid var(--line2); border-radius: 8px; padding: 6px 8px; background: var(--panel); min-width: 0; }
+.chart .ch { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--dim); margin-bottom: 3px; }
+.chart .ch b { color: var(--text); font-weight: 600; }
+.chart .ch span { font: 11.5px var(--mono); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chart canvas { display: block; width: 100%; }
+.chart .ch .bignum { font: 600 17px var(--mono); color: var(--cyan); line-height: 1; }
+.chart .cf { display: flex; justify-content: space-between; gap: 8px; font: 10.5px var(--mono); color: var(--faint); margin-top: 3px; flex-wrap: wrap; }
+.chart .cf i { display: inline-block; width: 7px; height: 7px; border-radius: 2px; margin: 0 3px 0 5px; }
+.gauge { margin: 4px 0 6px; }
+.gauge .gl { display: flex; justify-content: space-between; gap: 8px; font: 11px var(--mono); color: var(--dim); margin-bottom: 2px; }
+.gauge .gl span:last-child { color: var(--text); white-space: nowrap; }
 .lg { display: flex; flex-wrap: wrap; gap: 2px 10px; font: 10px var(--mono); letter-spacing: 0; text-transform: none; color: var(--faint); }
 .lg i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
 .lg .hatch { background: repeating-linear-gradient(135deg, var(--amber) 0 2px, transparent 2px 4px); }
 #timeline { width: 100%; height: 108px; display: block; }
+.badge.rec { color: var(--rose); border-color: rgba(251,113,133,.4); }
+.badge.rec::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--rose); margin-right: 5px; }
+a.btn { font: 11px var(--mono); color: var(--text); background: var(--bg2); border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px;
+  text-decoration: none; white-space: nowrap; }
+a.btn:hover { border-color: var(--teal); }
+#dcopy.done, .cpy.done { color: var(--green); border-color: var(--green); }
+#dbody pre { position: relative; }
+.cpy { position: absolute; top: 4px; right: 4px; padding: 0 6px; font: 12px var(--mono); line-height: 18px; color: var(--dim); background: var(--bg2);
+  border: 1px solid var(--line); border-radius: 5px; opacity: .75; }
+.cpy:hover { opacity: 1; color: var(--text); }
 
 /* ---------------------------------------------------------------- phones and narrow windows: one scrolling column */
 @media (max-width: 900px) {
@@ -164,6 +192,8 @@ footer details[open] summary::before { content: "▾"; }
   .pnl { position: static; width: auto !important; height: auto !important; }
   .pnl .pb { max-height: 300px; }
   .caption { position: fixed; left: 10px; right: 10px; bottom: 10px; max-width: none; }
+  .charts { grid-template-columns: minmax(0, 1fr); }
+  .keys span:nth-child(n+3) { display: none; }
   header, footer { padding-left: 14px; padding-right: 14px; }
   .meta { margin-left: 0; }
 }
@@ -183,6 +213,8 @@ footer details[open] summary::before { content: "▾"; }
     MUYAH-CODE <small>inside the agent</small>
   </div>
   <span id="status" class="badge">connecting…</span>
+  <span id="rec" class="badge rec" hidden>REC</span>
+  <a id="download" class="btn" download hidden title="Download this session's recorded events (JSONL)">Download</a>
   <div class="meta">
     <span class="badge" id="m-model">model –</span>
     <span class="badge" id="m-provider">provider –</span>
@@ -215,27 +247,31 @@ footer details[open] summary::before { content: "▾"; }
   <div class="caption" id="caption">Waiting for the agent…</div>
 </main>
 
-<footer>
-  <details open>
-    <summary>Timeline
-      <span class="lg">
-        <span><i style="background:#67e8f9;opacity:.3"></i>model waiting</span>
-        <span><i style="background:#67e8f9"></i>model streaming</span>
-        <span><i style="background:#5eead4"></i>files</span>
-        <span><i style="background:#fbbf24"></i>commands</span>
-        <span><i style="background:#93c5fd"></i>web</span>
-        <span><i style="background:#f0abfc"></i>MCP</span>
-        <span><i style="background:#c4b5fd"></i>skills · agents</span>
-        <span><i class="hatch"></i>awaiting approval</span>
-        <span><i style="background:#fb7185"></i>failed</span>
-      </span>
-    </summary>
+<footer id="foot">
+  <div class="fbar" id="fbar" role="button" tabindex="0" aria-expanded="false" title="Show the timeline and usage charts">
+    <span class="chev" id="fchev">▸</span><span class="fl">Timeline</span>
+    <canvas id="mini"></canvas>
+    <span class="keys" id="fkeys"></span>
+  </div>
+  <div class="fbody" id="fbody" hidden>
+    <div class="lg">
+      <span><i style="background:#67e8f9;opacity:.3"></i>model waiting</span>
+      <span><i style="background:#67e8f9"></i>model streaming</span>
+      <span><i style="background:#5eead4"></i>files</span>
+      <span><i style="background:#fbbf24"></i>commands</span>
+      <span><i style="background:#93c5fd"></i>web</span>
+      <span><i style="background:#f0abfc"></i>MCP</span>
+      <span><i style="background:#c4b5fd"></i>skills · agents</span>
+      <span><i class="hatch"></i>awaiting approval</span>
+      <span><i style="background:#fb7185"></i>failed</span>
+    </div>
     <canvas id="timeline"></canvas>
-  </details>
+    <div id="charts"></div>
+  </div>
 </footer>
 
 <aside id="drawer" aria-hidden="true">
-  <div class="dh"><b id="dtitle">Details</b><button id="dclose" title="Close (Esc)">✕</button></div>
+  <div class="dh"><b id="dtitle">Details</b><button id="dcopy" title="Copy everything in this drawer as text">Copy</button><button id="dclose" title="Close (Esc)">✕</button></div>
   <div id="dbody"></div>
 </aside>
 
@@ -336,6 +372,7 @@ function freshState() {
     subRuns: new Map(), subCur: {}, subCount: {},
     subagents: new Map(),   // for the timeline: agent -> {start, active}
     skillUse: new Map(), agentUse: new Map(), hookLog: [], hookRuns: 0, lessonsSeen: false,
+    tokEv: [], reqs: [], ctxSeries: [], limits: null,
     todos: [], lessons: [], log: [], spans: [], caption: "Waiting for the agent…", now: 0, ver: 0,
   };
 }
@@ -463,12 +500,17 @@ function apply(ev, fx) {
         c.text = (c.text + (ev.text || "")).slice(-20000);
         c.thinking = (c.thinking + (ev.thinking || "")).slice(-8000);
       }
+      if (ev.chars) { S.tokEv.push({ t: ev.t || 0, chars: ev.chars, agent }); if (S.tokEv.length > 6000) S.tokEv.splice(0, 1000); }
       break;
     }
     case "llm_end": {
       S.tokIn += ev.prompt_tokens || 0; S.tokOut += ev.completion_tokens || 0;
       const c = S.llm.get(agent);
       if (c) { c.tokIn = ev.prompt_tokens || 0; c.tokOut = ev.completion_tokens || 0; c.calls = ev.calls || []; }
+      if (!ev.error && (ev.prompt_tokens || ev.completion_tokens)) {
+        S.reqs.push({ t: ev.t || 0, agent, in: ev.prompt_tokens || 0, out: ev.completion_tokens || 0, dur: ev.duration || 0 });
+        if (S.reqs.length > 2000) S.reqs.splice(0, 500);
+      }
       endLlm(agent, ev.t, ev.error || "");
       if (ev.error) {
         S.llmFailed = { agent, t: ev.t, error: ev.error };
@@ -556,7 +598,13 @@ function apply(ev, fx) {
     }
     case "context":
       S.ctxUsed[agent] = ev.used || 0;
-      if (!sub) S.ctx = { used: ev.used || 0, usable: ev.usable || 0, window: ev.window || 0, parts: ev.parts || {} };
+      if (!sub) {
+        S.ctx = { used: ev.used || 0, usable: ev.usable || 0, window: ev.window || 0, parts: ev.parts || {} };
+        if (ev.usable) { S.ctxSeries.push({ t: ev.t || 0, pct: 100 * (ev.used || 0) / ev.usable }); if (S.ctxSeries.length > 3000) S.ctxSeries.splice(0, 500); }
+      }
+      break;
+    case "limits":   // the provider's rate limits after a reply (only providers that report them)
+      S.limits = { t: ev.t || 0, model: ev.model || "", rows: Array.isArray(ev.rows) ? ev.rows : [] };
       break;
     case "compact":
       S.compactions.push({ t: ev.t || 0, description: ev.description || "", emergency: !!ev.emergency });
@@ -782,6 +830,12 @@ const PANELS = {
     if (!b) for (const h of S.inv.hooks) b += `<div class="row"><span class="c-faint">${esc(h.event)}·${esc(h.matcher || "*")}</span><span class="grow sub">${esc(h.command)}</span></div>`;
     return { title: "Hooks", st, body: b || '<div class="empty">No hooks configured</div>' };
   },
+  usage() {
+    const cur = tpsNow(), low = limitRows().some((r) => r.frac != null && r.frac <= .05);
+    const st = cur ? panelState("d-stream", `~${Math.round(cur)} tok/s`, null)
+      : panelState(low ? "d-ask" : "d-idle", low ? "a provider limit is almost used up" : `${S.reqs.length} requests · ${fmtNum(S.tokIn)} in · ${fmtNum(S.tokOut)} out`, null);
+    return { title: "Usage", st, body: usageSkeleton("panel", false) };
+  },
   activity() {
     let b = '<div class="log">';
     for (const r of S.log.slice(-80)) b += `<div><time>${fmtTime(r.t)}</time><span class="${r.kind}" title="${esc(r.text)}">${esc(r.text)}</span></div>`;
@@ -835,13 +889,13 @@ function panelContent(key) {
 // ------------------------------------------------------------------ layout: tidy columns, fixed panel heights
 
 const PW = 320, GAP_X = 64, GAP_Y = 22;
-const HEIGHTS = { you: 190, context: 160, lessons: 150, todos: 180, activity: 260, model: 300, now: 170, sub: 240,
+const HEIGHTS = { you: 190, context: 160, usage: 330, lessons: 150, todos: 180, activity: 260, model: 300, now: 170, sub: 240,
   terminal: 320, tools: 230, skills: 210, mcp: 200, hooks: 160, file: 280 };
 function heightOf(key) { return HEIGHTS[key.split(":")[0]] || 200; }
 
 function wantedPanels() {
   const cols = [[], [], [], []];
-  cols[0].push("you", "context", "todos");
+  cols[0].push("you", "context", "usage", "todos");
   if (S.lessonsSeen) cols[0].push("lessons");
   cols[0].push("activity");
   cols[1].push("model");
@@ -918,7 +972,7 @@ function computeLayout() {
     pos.set(k, { x, y, w: PW, h }); colY[c] = y + h + GAP_Y;
   });
   // one-column order for phones: what matters most first
-  for (const k of ["you", "now", "model", "context", "terminal", ...files, ...cols[1].filter((k) => k.startsWith("sub:")), "skills", ...cols[2].filter((k) => k.startsWith("mcp:")), "tools", "todos", "lessons", "hooks", "activity"]) {
+  for (const k of ["you", "now", "model", "context", "usage", "terminal", ...files, ...cols[1].filter((k) => k.startsWith("sub:")), "skills", ...cols[2].filter((k) => k.startsWith("mcp:")), "tools", "todos", "lessons", "hooks", "activity"]) {
     if (pos.has(k) && !orderOf.has(k)) orderOf.set(k, order++);
   }
   pos.forEach((p, k) => { p.order = orderOf.has(k) ? orderOf.get(k) : order++; });
@@ -957,7 +1011,7 @@ function renderPanels(force) {
   $("m-window").textContent = "window " + (S.window ? fmtNum(S.window) : "–");
   $("caption").textContent = S.caption;
   const pos = computeLayout(), sig = layoutVer + "|" + [...pos.keys()].join("|");
-  if (sig !== layoutSig) { layoutSig = sig; layoutPos = pos; wiresDirty = true; }
+  if (sig !== layoutSig) { layoutSig = sig; layoutPos = pos; wiresDirty = true; usageIdleAt = 0; }
   panelEls.forEach((p, k) => { if (!pos.has(k)) { p.el.remove(); panelEls.delete(k); } });
   pos.forEach((q, k) => {
     const c = panelContent(k);
@@ -1241,7 +1295,7 @@ function activityBody() {
   return b;
 }
 
-function openDrawer(key) { drawerKey = key; drawerLast = ""; renderDrawer(); $("drawer").classList.add("open"); $("drawer").setAttribute("aria-hidden", "false"); }
+function openDrawer(key) { usageIdleAt = 0; drawerKey = key; drawerLast = ""; renderDrawer(); $("drawer").classList.add("open"); $("drawer").setAttribute("aria-hidden", "false"); }
 function closeDrawer() { drawerKey = ""; $("drawer").classList.remove("open"); $("drawer").setAttribute("aria-hidden", "true"); }
 function kv(pairs) { return '<div class="kv">' + pairs.filter((p) => p[1] !== "" && p[1] != null).map(([k, v]) => `<span>${esc(k)}</span><span>${esc(v)}</span>`).join("") + "</div>"; }
 function toolDetail(t) {
@@ -1305,6 +1359,12 @@ function detailContent(key) {
         return { title: "Model · latest call", body: b };
       }
       case "you": case "queue": return detailContent("queue");
+      case "usage": {
+        let b = usageSkeleton("drawer", true);
+        if (S.limits) b += '<div class="sec">Provider limits (raw)</div><pre>' + esc(JSON.stringify(S.limits.rows, null, 2)) + "</pre>";
+        b += '<div class="sec">Requests</div>' + (S.reqs.slice(-80).reverse().map((r) => `<div class="row"><span class="sub">${fmtTime(r.t)}</span>${agentTag(r.agent)}<span class="grow mono">${fmtNum(r.in)} in → ${fmtNum(r.out)} out</span><span class="sub">${fmtDur(r.dur)}</span></div>`).join("") || '<div class="empty">None yet</div>');
+        return { title: "Usage", body: b };
+      }
       case "context": {
         let b = kv([["used", fmtNum(S.ctx.used)], ["usable", fmtNum(S.ctx.usable)], ["window", fmtNum(S.ctx.window)],
           ["system", fmtNum(S.ctx.parts.system || 0)], ["conversation", fmtNum(S.ctx.parts.conversation || 0)], ["tool results", fmtNum(S.ctx.parts.tools || 0)]]);
@@ -1356,7 +1416,7 @@ function renderDrawer() {
   const c = detailContent(drawerKey) || { title: "Details", body: '<div class="empty">This item is not in the current state (seeked away or cleared).</div>' };
   $("dtitle").textContent = c.title;
   const html = c.body;
-  if (html !== drawerLast) { const b = $("dbody"), top = b.scrollTop; b.innerHTML = html; b.scrollTop = top; drawerLast = html; }
+  if (html !== drawerLast) { const b = $("dbody"), top = b.scrollTop; b.innerHTML = html; addPreCopy(b); b.scrollTop = top; drawerLast = html; }
 }
 document.addEventListener("click", (e) => {
   if (dragged) { e.stopPropagation(); e.preventDefault(); return; }
@@ -1367,6 +1427,261 @@ document.addEventListener("click", (e) => {
   if (!d) return;
   if (window.getSelection && String(window.getSelection()).length > 2) return;   // selecting text, not clicking
   openDrawer(d.dataset.detail);
+}, true);
+
+// ------------------------------------------------------------------ usage: live charts from real events (no libraries)
+// One canvas per chart, created once; every frame they are redrawn at the page clock (the replay clock in replay,
+// so 0.1x moves slowly and 16x fast). While nothing is active they redraw once a second (limit countdowns).
+
+const TPS_WINDOW = 60, TPS_BUCKET = .25, TPS_N = Math.round(TPS_WINDOW / TPS_BUCKET);
+const fmtInt = (n) => Math.round(n).toLocaleString("en-US");
+function fmtLeft(s) {
+  s = Math.max(0, Math.round(s));
+  if (s >= 3600) return Math.floor(s / 3600) + "h " + Math.floor(s % 3600 / 60) + "m";
+  if (s >= 60) return Math.floor(s / 60) + "m " + String(s % 60).padStart(2, "0") + "s";
+  return s + "s";
+}
+// tokens per second: every llm_tokens batch (~10/s) is a sample; 250 ms buckets, then an EMA so the line moves
+// smoothly but reacts within ~0.3 s, and falls to 0 when the streaming stops
+let tpsCache = { at: -1, n: 0, series: [], cur: 0, peak: 0 };
+function tpsSeries() {
+  const now = clock();
+  if (tpsCache.at === now && tpsCache.n === S.tokEv.length) return tpsCache;
+  const endB = Math.floor(now / TPS_BUCKET), startB = endB - TPS_N, raw = new Float64Array(TPS_N);
+  for (let i = S.tokEv.length - 1; i >= 0; i--) {
+    const e = S.tokEv[i], b = Math.floor(e.t / TPS_BUCKET);
+    if (b < startB) break;
+    if (b < endB) raw[b - startB] += e.chars / 4 / TPS_BUCKET;   // only finished buckets: no half-filled dip at the end
+  }
+  const series = new Array(TPS_N), a = .55;
+  let ema = 0, peak = 0;
+  for (let i = 0; i < TPS_N; i++) { ema = a * raw[i] + (1 - a) * ema; series[i] = ema; if (ema > peak) peak = ema; }
+  tpsCache = { at: now, n: S.tokEv.length, series, cur: ema < .5 ? 0 : ema, peak };
+  return tpsCache;
+}
+function tpsNow() { return tpsSeries().cur; }
+function ctxEstimate() {   // how many more requests until the context is full, at the recent growth rate
+  const main = S.reqs.filter((r) => r.agent === "main" && r.in > 0).slice(-9);
+  if (main.length < 3 || !S.ctx.usable) return null;
+  let grow = 0, n = 0;
+  for (let i = 1; i < main.length; i++) { const d = main[i].in - main[i - 1].in; if (d > 0) { grow += d; n++; } }
+  if (!n) return null;
+  const avg = grow / n, left = Math.max(0, S.ctx.usable - S.ctx.used);
+  return { avg, left, n: Math.floor(left / avg) };
+}
+function limitRows() {
+  if (!S.limits) return [];
+  const age = Math.max(0, clock() - S.limits.t);
+  return S.limits.rows.map((r) => {
+    const lim = Number(r.limit), rem = Number(r.remaining), left = r.reset_s == null ? null : Number(r.reset_s) - age;
+    return { name: String(r.name), rem, lim, frac: lim > 0 && Number.isFinite(rem) ? clamp(rem / lim, 0, 1) : null, left };
+  });
+}
+
+// the chart cards: static markup (built once per place), live content drawn by drawUsage()
+function usageSkeleton(place, big) {
+  const h = big ? 70 : 42;
+  return `<div class="charts${big ? " big" : ""}" data-usage="${place}">`
+    + `<div class="chart"><div class="ch"><b>Tokens / s</b><span class="bignum" data-v="tps">0</span></div>`
+    + `<canvas data-c="tps" style="height:${h}px"></canvas>`
+    + `<div class="cf"><span data-v="call">no model call</span><span>~ characters ÷ 4 · peak <span data-v="peak">0</span></span></div></div>`
+    + `<div class="chart"><div class="ch"><b>Tokens per request</b><span data-v="last">–</span></div>`
+    + `<canvas data-c="reqs" style="height:${h}px"></canvas>`
+    + `<div class="cf"><span><i style="background:${C.teal};opacity:.45"></i>prompt <i style="background:${C.cyan}"></i>reply <i style="background:${C.violet};opacity:.45"></i>sub-agent</span><span data-v="nreq">0 requests</span></div></div>`
+    + `<div class="chart"><div class="ch"><b>Context used</b><span data-v="ctx">0%</span></div>`
+    + `<canvas data-c="ctx" style="height:${h}px"></canvas>`
+    + `<div class="cf"><span data-v="est">Estimate: needs a few more requests</span></div></div>`
+    + `<div class="chart"><div class="ch"><b>Provider limits</b><span data-v="lmodel"></span></div><div data-v="limits"></div></div>`
+    + "</div>";
+}
+function setText(root, key, text) { const el = root.querySelector(`[data-v="${key}"]`); if (el && el.textContent !== text) el.textContent = text; }
+function sizeCanvas(cv) {
+  const w = cv.clientWidth, h = cv.clientHeight;
+  if (!w || !h) return null;
+  if (cv.width !== Math.round(w * DPR) || cv.height !== Math.round(h * DPR)) { cv.width = Math.round(w * DPR); cv.height = Math.round(h * DPR); }
+  const g = cv.getContext("2d"); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, w, h);
+  return { g, w, h };
+}
+function drawTps(cv) {
+  const c = sizeCanvas(cv); if (!c) return;
+  const { g, w, h } = c, s = tpsSeries(), max = Math.max(20, s.peak * 1.1), n = s.series.length;
+  g.strokeStyle = "rgba(94,234,212,.12)"; g.lineWidth = 1; g.beginPath(); g.moveTo(0, h - .5); g.lineTo(w, h - .5); g.stroke();
+  g.beginPath();
+  for (let i = 0; i < n; i++) { const x = i / (n - 1) * w, y = h - 1 - (h - 3) * s.series[i] / max; if (i) g.lineTo(x, y); else g.moveTo(x, y); }
+  g.strokeStyle = C.cyan; g.lineWidth = 1.5; g.lineJoin = "round"; g.stroke();
+  g.lineTo(w, h); g.lineTo(0, h); g.closePath(); g.fillStyle = "rgba(103,232,249,.12)"; g.fill();
+}
+function drawReqs(cv, big) {
+  const c = sizeCanvas(cv); if (!c) return;
+  const { g, w, h } = c, list = S.reqs.slice(big ? -60 : -30);
+  if (!list.length) return;
+  const max = Math.max(1, ...list.map((r) => r.in + r.out)), bw = w / Math.max(list.length, big ? 60 : 30);
+  list.forEach((r, i) => {
+    const x = i * bw + .5, ww = Math.max(1, bw - 1.5), hi = (h - 1) * r.in / max, ho = Math.max(1, (h - 1) * r.out / max);
+    g.globalAlpha = .45; g.fillStyle = r.agent === "main" ? C.teal : C.violet; g.fillRect(x, h - hi, ww, hi);
+    g.globalAlpha = 1; g.fillStyle = C.cyan; g.fillRect(x, h - hi - ho, ww, ho);
+  });
+  g.globalAlpha = 1;
+}
+function drawCtx(cv) {
+  const c = sizeCanvas(cv); if (!c) return;
+  const { g, w, h } = c, pts = S.ctxSeries, now = clock();
+  g.strokeStyle = "rgba(251,113,133,.45)"; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(0, 1.5); g.lineTo(w, 1.5); g.stroke(); g.setLineDash([]);
+  if (!pts.length) return;
+  const t0 = Math.max(0, Math.min(pts[0].t, now - 30)), span = Math.max(1, now - t0), x = (t) => (t - t0) / span * w;
+  const y = (p) => h - 1 - (h - 3) * clamp(p / 100, 0, 1);
+  g.beginPath(); g.moveTo(x(pts[0].t), y(pts[0].pct));
+  for (let i = 1; i < pts.length; i++) { g.lineTo(x(pts[i].t), y(pts[i - 1].pct)); g.lineTo(x(pts[i].t), y(pts[i].pct)); }   // steps: it jumps when a context event arrives
+  g.lineTo(w, y(pts[pts.length - 1].pct));
+  g.strokeStyle = C.teal; g.lineWidth = 1.5; g.stroke();
+  g.lineTo(w, h); g.lineTo(x(pts[0].t), h); g.closePath(); g.fillStyle = "rgba(94,234,212,.1)"; g.fill();
+}
+function drawLimits(root) {
+  const box = root.querySelector('[data-v="limits"]'); if (!box) return;
+  setText(root, "lmodel", S.limits ? S.limits.model || "" : "");
+  if (!S.limits) {
+    const msg = S.reqs.length ? "The provider does not report limits" : "Shown after the first reply, if the provider reports them";
+    if (box.dataset.sig !== msg) { box.dataset.sig = msg; box.innerHTML = `<div class="empty">${esc(msg)}</div>`; }
+    return;
+  }
+  const rows = limitRows(), sig = rows.map((r) => r.name).join("|");
+  if (box.dataset.sig !== sig) {
+    box.dataset.sig = sig;
+    box.innerHTML = rows.map((r) => `<div class="gauge"><div class="gl"><span>${esc(r.name)}</span><span data-g="t"></span></div><div class="bar"><i data-g="b"></i></div></div>`).join("");
+  }
+  [...box.children].forEach((el, i) => {
+    const r = rows[i]; if (!r) return;
+    const reset = r.left == null ? "" : r.left > 0 ? ` · resets in ${fmtLeft(r.left)}` : " · reset";
+    const txt = `${Number.isFinite(r.rem) ? fmtInt(r.rem) : "?"}/${Number.isFinite(r.lim) ? fmtInt(r.lim) : "?"}${reset}`;
+    const t = el.querySelector('[data-g="t"]'); if (t.textContent !== txt) t.textContent = txt;
+    const b = el.querySelector('[data-g="b"]'), col = r.frac == null ? C.dim : r.frac > .2 ? C.teal : r.frac > .05 ? C.amber : C.rose;
+    const wd = (r.frac == null ? 0 : r.frac * 100).toFixed(1) + "%";
+    if (b.style.width !== wd) b.style.width = wd;
+    if (b.dataset.col !== col) { b.style.background = col; b.dataset.col = col; }
+  });
+}
+function llmNow() {   // the model call that matters most right now: streaming > sent > preparing, newest first
+  const rank = { streaming: 3, sent: 2, preparing: 1 };
+  let best = null;
+  S.llm.forEach((c) => { if (!best || rank[c.state] > rank[best.state] || (rank[c.state] === rank[best.state] && c.start > best.start)) best = c; });
+  return best;
+}
+function callText() {   // the current model call's own clock: waiting vs streaming
+  const c = llmNow();
+  if (!c) { const l = S.lastCall.get("main"); return l && l.end != null ? `last call ${fmtDur(l.end - l.start)}` : "no model call"; }
+  const now = clock(), who = c.agent === "main" ? "" : c.agent + ": ";
+  if (c.state === "preparing") return `${who}preparing ${fmtDur(now - c.start)}`;
+  if (c.state === "sent") return `${who}waiting ${fmtDur(now - c.sentAt)}`;
+  return `${who}waited ${fmtDur((c.firstAt ?? now) - (c.sentAt ?? c.start))} · streaming ${fmtDur(now - c.firstAt)}`;
+}
+function drawUsageRoot(root) {
+  const big = root.classList.contains("big"), s = tpsSeries();
+  setText(root, "tps", s.cur ? "~" + Math.round(s.cur) : "0");
+  setText(root, "peak", "~" + Math.round(s.peak));
+  setText(root, "call", callText());
+  const last = S.reqs[S.reqs.length - 1];
+  setText(root, "last", last ? `${fmtNum(last.in)} in · ${fmtNum(last.out)} out` : "–");
+  setText(root, "nreq", `${S.reqs.length} request${S.reqs.length === 1 ? "" : "s"}`);
+  const pct = S.ctx.usable ? 100 * S.ctx.used / S.ctx.usable : 0;
+  setText(root, "ctx", pct.toFixed(pct < 10 ? 1 : 0) + "%");
+  const est = ctxEstimate();
+  setText(root, "est", est ? `Estimate: at this rate the context fills in ~${fmtNum(est.n)} more request${est.n === 1 ? "" : "s"} (+${fmtNum(Math.round(est.avg))} tokens each, ${fmtNum(est.left)} left)`
+    : "Estimate: needs a few more requests");
+  for (const cv of root.querySelectorAll("canvas[data-c]")) {
+    if (cv.dataset.c === "tps") drawTps(cv); else if (cv.dataset.c === "reqs") drawReqs(cv, big); else drawCtx(cv);
+  }
+  drawLimits(root);
+}
+let usageIdleAt = 0;
+function usageActive() {
+  return S.llm.size > 0 || (mode === "replay" && playing) || tpsSeries().cur > 0 || [...S.tools.values()].some((t) => t.state === "running");
+}
+function drawUsage(now) {   // every frame while something moves; once a second otherwise (countdowns)
+  if (!usageActive() && now - usageIdleAt < 1000) return;
+  usageIdleAt = now;
+  for (const root of document.querySelectorAll("[data-usage]")) if (root.offsetParent) drawUsageRoot(root);
+  const k = usageKeys();
+  if (k !== lastKeys) { $("fkeys").innerHTML = k; lastKeys = k; }
+}
+function usageKeys() {   // one line of key numbers for the collapsed strip
+  const parts = [], cur = tpsNow();
+  parts.push(`<span><b>${cur ? "~" + Math.round(cur) : "0"}</b> tok/s</span>`);
+  const last = S.reqs[S.reqs.length - 1];
+  if (last) parts.push(`<span>last <b>${fmtNum(last.in)}</b>→<b>${fmtNum(last.out)}</b></span>`);
+  if (S.ctx.usable) parts.push(`<span>ctx <b>${Math.round(100 * S.ctx.used / S.ctx.usable)}%</b></span>`);
+  const lr = limitRows()[0];
+  if (lr) parts.push(`<span>${esc(lr.name)} <b>${Number.isFinite(lr.rem) ? fmtInt(lr.rem) : "?"}</b>${lr.left != null && lr.left > 0 ? " · " + fmtLeft(lr.left) : ""}</span>`);
+  else if (S.reqs.length) parts.push('<span class="c-faint">no provider limits</span>');
+  return parts.join("");
+}
+
+// the compact strip at the bottom: a one-lane mini timeline + key numbers; click to expand
+let footOpen = storeGet("footer:open") === "1", lastKeys = "";
+function setFoot(open) {
+  footOpen = open; storeSet("footer:open", open ? "1" : null);
+  $("fbody").hidden = !open; $("fchev").textContent = open ? "▾" : "▸";
+  $("fbar").setAttribute("aria-expanded", open ? "true" : "false");
+  if (open && !$("charts").firstChild) $("charts").innerHTML = usageSkeleton("footer", false);
+  usageIdleAt = 0;
+}
+$("fbar").addEventListener("click", () => setFoot(!footOpen));
+$("fbar").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFoot(!footOpen); } });
+const mini = $("mini"), mctx = mini.getContext("2d");
+function drawMini() {
+  const r = mini.getBoundingClientRect(), w = r.width, h = r.height;
+  if (!w) return;
+  if (mini.width !== Math.round(w * DPR) || mini.height !== Math.round(h * DPR)) { mini.width = Math.round(w * DPR); mini.height = Math.round(h * DPR); }
+  mctx.setTransform(DPR, 0, 0, DPR, 0, 0); mctx.clearRect(0, 0, w, h);
+  const now = clock(), span = Math.max(30, Math.min(now, 120)), t0 = Math.max(0, now - span), x = (t) => (t - t0) / span * w;
+  mctx.fillStyle = "rgba(94,234,212,.06)"; mctx.fillRect(0, 0, w, h);
+  const bar = (s, e, y, hh, col) => { if (e < t0 || s == null) return; const x1 = x(Math.max(s, t0)); mctx.fillStyle = col; mctx.fillRect(x1, y, Math.max(1.5, x(e) - x1), hh); };
+  const half = Math.floor(h / 2);
+  const model = (sp, end) => { bar(sp.start, sp.first ?? end, 0, half - 1, "rgba(103,232,249,.28)"); if (sp.first != null) bar(sp.first, end, 0, half - 1, sp.ok === false ? C.rose : C.cyan); };
+  for (const sp of S.spans) {
+    if (sp.lane === 0) model(sp, sp.end);
+    else if (sp.lane === 1 && sp.start != null) bar(sp.start, sp.end, half, h - half, sp.ok === false ? C.rose : KIND_COLOR[sp.kind] || C.other);
+  }
+  S.llm.forEach((c) => model({ start: c.start, first: c.firstAt }, now));
+  S.tools.forEach((t) => { if (t.state === "running") bar(t.startAt, now, half, h - half, KIND_COLOR[t.kind]); else if (t.state === "asking") bar(t.askAt, now, half, h - half, C.amber); });
+}
+
+// copy what the drawer shows, as plain text
+async function copyText(text, btn) {
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; }
+  catch { ok = false; }
+  if (!ok) {   // no clipboard permission: select it so Ctrl+C works
+    const target = btn && btn.closest("pre") ? btn.closest("pre") : $("dbody");
+    const range = document.createRange(); range.selectNodeContents(target);
+    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+  }
+  if (btn) {
+    const old = btn.dataset.label || btn.textContent;
+    btn.dataset.label = old;
+    btn.classList.add("done"); btn.textContent = ok ? "Copied" : "Selected";
+    setTimeout(() => { btn.classList.remove("done"); btn.textContent = old; }, 1500);
+  }
+}
+function preText(pre) { const c = pre.cloneNode(true); c.querySelectorAll(".cpy").forEach((b) => b.remove()); return c.innerText; }
+function addPreCopy(root) {
+  for (const pre of root.querySelectorAll("pre")) {
+    if (pre.querySelector(".cpy")) continue;
+    const b = document.createElement("button");
+    b.className = "cpy"; b.type = "button"; b.title = "Copy this block"; b.setAttribute("aria-label", "Copy this block"); b.textContent = "⧉";
+    pre.prepend(b);
+  }
+}
+$("dcopy").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const body = $("dbody").cloneNode(true);
+  body.querySelectorAll(".cpy, .filters").forEach((b) => b.remove());
+  copyText($("dtitle").textContent + "\n\n" + body.innerText, $("dcopy"));
+});
+$("dbody").addEventListener("click", (e) => {
+  const b = e.target.closest(".cpy");
+  if (!b) return;
+  e.stopPropagation(); e.preventDefault();
+  copyText(preText(b.closest("pre")), b);
 }, true);
 
 // ------------------------------------------------------------------ timeline
@@ -1467,7 +1782,7 @@ function frame(now) {
   if (!fitted && layoutPos.size && viewport.clientWidth) { fitted = true; fitAll(.6); }
   if (!flat()) { drawWires(now); drawChips(now); followStep(dt); }
   if (now - lastTimers > 200) { lastTimers = now; updateTimers(world); }
-  drawTimeline();
+  drawTimeline(); drawMini(); drawUsage(now);
   requestAnimationFrame(frame);
 }
 
@@ -1502,6 +1817,11 @@ function connect() {
   let catching = true;
   es.addEventListener("hello", (m) => {
     const info = JSON.parse(m.data); mode = info.mode; following = info.following || "";
+    const rec = $("rec"), dl = $("download"), path = String(info.recording || "");
+    dl.href = "recording?t=" + encodeURIComponent(token); dl.hidden = false;
+    if (mode === "live" && path) { rec.hidden = false; rec.className = "badge rec"; rec.textContent = "REC"; rec.title = "Recording to " + path; }
+    else if (mode === "replay" && path) { rec.hidden = false; rec.className = "badge"; rec.textContent = "Recording · " + baseName(path); rec.title = path; }
+    else rec.hidden = true;
     if (mode === "replay") { setStatus("replay", ""); $("controls").classList.add("on"); recorded = []; applySpeed(); }
     else {
       setStatus("live", "live"); resetScene(); catching = true;
@@ -1579,7 +1899,7 @@ if (params.get("speed")) {
 }
 
 window.addEventListener("resize", () => { wiresDirty = true; applyCam(); });
-applyCam(); renderPanels(true); connect(); requestAnimationFrame(frame);
+setFoot(footOpen); applyCam(); renderPanels(true); connect(); requestAnimationFrame(frame);
 </script>
 </body>
 </html>

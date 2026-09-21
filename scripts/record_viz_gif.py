@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -85,6 +86,20 @@ class DevTools:
         return res.get("result", {}).get("result", {}).get("value")
 
 
+def redact_home(events: list[dict]) -> list[dict]:
+    """The GIF goes into a public README: show paths under your home folder as ~ (no user name)."""
+    import os
+
+    text = json.dumps(events)
+    homes = {str(Path.home()), os.path.expanduser("~"), str(Path.home().resolve())}
+    for home in sorted(homes, key=len, reverse=True):
+        for variant in (home, home.replace("\\", "/")):
+            text = text.replace(json.dumps(variant)[1:-1], "~")
+    # any other form of a user folder (e.g. the 8.3 short name in temp paths): C:\Users\<name> -> ~
+    text = re.sub(r'[A-Za-z]:(?:\\\\|/)Users(?:\\\\|/)[^\\\\/"]+', "~", text)
+    return json.loads(text)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("events")
@@ -96,7 +111,7 @@ def main() -> int:
     ap.add_argument("--fps", type=int, default=10)
     a = ap.parse_args()
 
-    server = VizServer(events=load_events(Path(a.events)), title="demo")
+    server = VizServer(events=redact_home(load_events(Path(a.events))), title="demo")
     url = server.start() + f"&speed={a.speed:g}"
     profile = tempfile.mkdtemp(prefix="muyah-gif-chrome-")
     chrome = subprocess.Popen([find_browser(), "--headless=new", f"--remote-debugging-port={PORT}",

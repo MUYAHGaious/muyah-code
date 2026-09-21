@@ -5,6 +5,16 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **Live view:**
+  - A **REC** badge shows where the session is being recorded, and **Download** saves the recording.
+  - Every detail view has a **Copy** button, plus a copy icon on each code block.
+  - The timeline is a compact strip with live numbers: tokens/s, last request, context %, and provider limits. Click it for the full timeline and **live charts**:
+    - tokens per second, reacting within ~0.3 s;
+    - tokens per request;
+    - context usage, with an estimate of how many requests until it fills;
+    - provider limits with live reset countdowns.
+  - The charts are also on the board, in a **Usage** panel.
+- The README GIF shows a longer, two-turn session (`scripts/make_viz_demo.py --scenario long`). Home-folder paths are redacted in it.
 - **Fix: the spinner froze.** A new spinner was built on every redraw, and Rich spinners pick their frame from their age, so they always showed the first frame while the timer kept counting. The spinner now animates the whole time (verified: all 10 frames, hundreds of changes per turn).
 - **The spinner never goes quiet during a turn.** Between steps it shows "Working…"; the learning step after a turn shows "Learning from this turn…". While thinking, the words change every few seconds.
 - **Compaction shows progress:** "Compacting the conversation (N messages, X tokens)" while it runs, then the size before → after.
