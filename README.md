@@ -108,6 +108,33 @@ muyah connect https://openrouter.ai/api/v1 --api-key sk-or-... --model qwen/qwen
 
 Every `connect` or `serve` saves a **profile**. Switch between profiles with `muyah --profile colab` or `/profile ollama` inside a session. `muyah doctor --deep` checks the whole setup, including a real completion and a tool-calling test.
 
+### Huge models on your own hardware: colibri and Soup
+
+MUYAH-CODE is built to drive models you run yourself, including ones far bigger than your GPU.
+
+- **[colibri](https://github.com/JustVugg/colibri)** runs very large mixture-of-experts models from NVMe
+  and RAM instead of VRAM. Build a model with colibri's tools, then start it and connect in one command:
+  ```bash
+  muyah serve colibri --model /nvme/glm52_i4 --ctx 65536
+  ```
+  MUYAH-CODE applies a preset made for it:
+  - no request timeout, because the first token can take minutes;
+  - no extra reflection calls;
+  - one request at a time.
+
+  The live view shows the long waits for what they are: *sent · waiting for reply*.
+- **Soup** serves models you fine-tuned with it:
+  ```bash
+  muyah serve soup --model ./output
+  ```
+- **Free GPU:** the [server notebook](backend/) runs vLLM, colibri or Soup on Colab. It prints the
+  `muyah connect …` line to run on your computer.
+- `muyah serve --status` shows the running server and `muyah serve --stop` stops it.
+
+MUYAH-CODE starts and connects these engines, but it does not download or convert models: getting a model
+ready is done with each engine's own tools. For one-command downloads, use `muyah serve ollama --model
+qwen2.5-coder:14b`.
+
 ### Engine modes
 
 Each engine gets a tuned preset. You select it with `--engine` or `muyah serve <engine>`.
@@ -210,6 +237,10 @@ Click any panel or item for the full detail: a whole file history, full command 
 it is stored. States are real events, never animation guesses: a tool waiting for your approval shows as
 waiting, not running. **Fit all** shows the whole board and **Follow** keeps the active panel in view.
 
+The **Activity** panel is the full log of every state change. Filter it (model calls, tools, commands,
+sub-agents, hooks, errors) and open any line to see the raw event. Every session's log is also saved
+next to its transcript, so `muyah viz --replay` can play any past session again.
+
 <p align="center">
   <img src="docs/images/viz-demo.gif" alt="Live view: prompt to context to model, an MCP call, an explore sub-agent, a failing then passing test" width="800">
 </p>
@@ -269,7 +300,9 @@ Your old colab-code config is imported automatically on first run.
 - **When to compact:** at 80% of the window. Old tool outputs are pruned first, then older turns are summarized.
 - **Overflow errors:** if the server still reports a context overflow, an emergency compaction runs and the request is retried.
 - **Scaled budgets:** output and tool-output limits scale with the window.
-- **Prefix caching:** the system prompt stays byte-stable between turns, so vLLM, colibri and llama.cpp can reuse their prefix cache.
+- **Prompt caching:** the system prompt stays byte-for-byte stable between turns, and per-turn material goes after it.
+  - Local servers (vLLM, colibri, llama.cpp) reuse their prefix cache instead of re-reading everything.
+  - On Anthropic the stable part is marked for caching. Cached input is billed at about a tenth of the normal price, so long sessions cost much less.
 
 **Hooks** follow Claude Code's format: `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `Stop` and more.
 - The hook gets JSON on stdin.

@@ -167,6 +167,13 @@ footer details[open] summary::before { content: "▾"; }
   header, footer { padding-left: 14px; padding-right: 14px; }
   .meta { margin-left: 0; }
 }
+#drawer .filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+#drawer .filters button { background: transparent; color: inherit; border: 1px solid rgba(127,166,160,.35); border-radius: 6px;
+  padding: 2px 8px; font: 12px ui-monospace, Consolas, monospace; cursor: pointer; }
+#drawer .filters button.on { border-color: currentColor; font-weight: 600; }
+#drawer details summary { cursor: pointer; list-style: none; }
+#drawer details summary::-webkit-details-marker { display: none; }
+#drawer details[open] summary { font-weight: 600; }
 </style>
 </head>
 <body>
@@ -335,7 +342,7 @@ function freshState() {
 let S = freshState();
 
 function log(ev, kind, text) {
-  S.log.push({ t: ev.t || 0, kind, text });
+  S.log.push({ t: ev.t || 0, kind, text, ev });
   if (S.log.length > 600) S.log.splice(0, S.log.length - 600);
 }
 function pushSpan(sp) { S.spans.push(sp); if (S.spans.length > 3000) S.spans.splice(0, S.spans.length - 3000); }
@@ -1211,6 +1218,29 @@ $("zoom").onclick = () => zoomAt(viewport.clientWidth / 2, viewport.clientHeight
 // ------------------------------------------------------------------ detail drawer: the full content of anything you click
 
 let drawerKey = "", drawerLast = "";
+// Activity log filters: see only one kind of state, and open any line to see the raw event behind it.
+const LOG_FILTERS = [
+  ["all", "All", () => true],
+  ["you", "You", (r) => ["turn_start", "turn_end", "user_message", "queue"].includes(r.ev && r.ev.type)],
+  ["model", "Model calls", (r) => r.ev && String(r.ev.type).startsWith("llm")],
+  ["tools", "Tools", (r) => r.ev && String(r.ev.type).startsWith("tool") && r.ev.name !== "Bash"],
+  ["commands", "Commands", (r) => r.ev && r.ev.name === "Bash"],
+  ["agents", "Sub-agents", (r) => r.ev && (String(r.ev.type).startsWith("subagent") || (r.ev.agent && r.ev.agent !== "main"))],
+  ["hooks", "Hooks & lessons", (r) => r.ev && ["hook", "lessons", "compact"].includes(r.ev.type)],
+  ["errors", "Errors", (r) => r.kind === "k-err"],
+];
+let activityFilter = "all";
+function setActivityFilter(name) { activityFilter = name; drawerLast = ""; renderDrawer(); }
+function activityBody() {
+  const pick = (LOG_FILTERS.find((f) => f[0] === activityFilter) || LOG_FILTERS[0])[2];
+  const rows = S.log.filter(pick);
+  let b = '<div class="filters">' + LOG_FILTERS.map(([k, label, fn]) =>
+    `<button class="${k === activityFilter ? "on" : ""}" onclick="setActivityFilter('${k}')">${label} <span class="sub">${S.log.filter(fn).length}</span></button>`).join("") + "</div>";
+  if (!rows.length) return b + '<div class="sub">Nothing of this kind yet.</div>';
+  b += '<div class="log">' + rows.map((r) => `<details><summary><time>${fmtTime(r.t)}</time> <span class="${r.kind}" style="white-space:normal">${esc(r.text)}</span></summary><pre>${esc(JSON.stringify(r.ev || {}, null, 2).slice(0, 20000))}</pre></details>`).join("") + "</div>";
+  return b;
+}
+
 function openDrawer(key) { drawerKey = key; drawerLast = ""; renderDrawer(); $("drawer").classList.add("open"); $("drawer").setAttribute("aria-hidden", "false"); }
 function closeDrawer() { drawerKey = ""; $("drawer").classList.remove("open"); $("drawer").setAttribute("aria-hidden", "true"); }
 function kv(pairs) { return '<div class="kv">' + pairs.filter((p) => p[1] !== "" && p[1] != null).map(([k, v]) => `<span>${esc(k)}</span><span>${esc(v)}</span>`).join("") + "</div>"; }
@@ -1311,7 +1341,7 @@ function detailContent(key) {
       b += '<div class="sec">Runs</div>' + (S.hookLog.slice().reverse().map((h) => `<div class="row"><span class="dot ${h.outcome === "blocked" ? "d-fail" : h.outcome === "warning" ? "d-ask" : "d-ok"}"></span><span class="grow">${esc(h.event)}${h.tool ? " · " + esc(h.tool) : ""} · ${esc(h.outcome)}</span><span class="sub">${fmtTime(h.t)} · ${fmtDur(h.duration)}</span></div>`).join("") || '<div class="empty">None yet</div>');
       return { title: "Hooks", body: b };
     }
-    case "activity": return { title: "Activity", body: '<div class="log">' + S.log.map((r) => `<div><time>${fmtTime(r.t)}</time><span class="${r.kind}" style="white-space:normal">${esc(r.text)}</span></div>`).join("") + "</div>" };
+    case "activity": return { title: "Activity · every event, filterable (open a line for the raw event)", body: activityBody() };
     case "todos": return { title: "Plan", body: PANELS.todos().body };
     case "now": return { title: "Right now", body: PANELS.now().body };
     case "tools": {

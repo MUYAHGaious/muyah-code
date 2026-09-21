@@ -5,6 +5,8 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **Live view logs:** the Activity panel's detail view is the full log of every state change. Filter it by kind (you, model calls, tools, commands, sub-agents, hooks and lessons, errors) and open any line to see the raw event.
+- README: a showcase for running huge models on your own hardware with colibri and Soup, and an accurate note on prompt caching.
 - **`/usage`** (also `muyah usage`): requests and tokens for this session, today and the last 7 days, broken down by model. It also shows the **live limits your provider reports**: requests and tokens left, and when they reset. Groq, OpenRouter, OpenAI, Anthropic and others send these with every reply; if a provider sends none (Gemini), `/usage` says so. `/cost` shows the same.
 - **An organized transcript**, following what Codex, Gemini CLI, OpenCode and Claude Code do:
   - Your prompt is a highlighted band, with no separator lines.
