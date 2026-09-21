@@ -3,7 +3,7 @@
     muyah                         interactive session
     muyah "fix the failing test"  interactive, starting with a prompt
     muyah -p "..."                headless: print the answer and exit (--output-format text|json|stream-json)
-    muyah -c / --resume [id]      continue the last / a specific session
+    muyah -c / --resume [id]      continue the last session / pick one from a list (or give its id)
     muyah login [provider]        pick a provider (Anthropic, OpenAI, Gemini, OpenRouter...), paste the key, done
     muyah connect <url> | --scan  set up a backend profile (local servers, Colab tunnels, custom URLs)
     muyah serve <engine> -m ...   run colibri / soup / ollama / vllm / llama.cpp locally and connect
@@ -24,6 +24,7 @@ from pathlib import Path
 from muyah_code import __version__
 
 SUBCOMMANDS = {"login", "logout", "connect", "serve", "doctor", "eval", "config", "sessions"}
+PICK = "__pick__"  # `--resume` given without an id
 
 
 def _utf8_stdio() -> None:
@@ -57,7 +58,8 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--output-format", choices=["text", "json", "stream-json"], default="text")
     p.add_argument("-v", "--verbose", action="store_true", help="Show tool activity in headless mode")
     p.add_argument("-c", "--continue", dest="continue_last", action="store_true", help="Continue the last session")
-    p.add_argument("-r", "--resume", metavar="ID", help="Resume a session by id (prefix ok)")
+    p.add_argument("-r", "--resume", metavar="ID", nargs="?", const=PICK,
+                   help="Resume a conversation: pick from a list, or give its id (prefix ok)")
     p.add_argument("-m", "--model", help="Model id")
     p.add_argument("--base-url", help="OpenAI-compatible endpoint, e.g. http://localhost:8000/v1")
     p.add_argument("--api-key", help="API key for the endpoint")
@@ -143,6 +145,8 @@ def _headless(cfg, cwd, args, prompt: str) -> int:
     if not prompt:
         print("error: -p needs a prompt (argument or stdin)", file=sys.stderr)
         return 2
+    if args.resume == PICK:  # no one to pick in headless mode: continue the latest conversation
+        args.resume, args.continue_last = None, True
     ui = HeadlessUI(args.output_format, verbose=args.verbose)
     try:
         app = _build_app(cfg, cwd, args, ui, headless=True)
@@ -186,6 +190,13 @@ def _interactive(cfg, cwd, args, prompt: str | None) -> int:
     if not ensure_trusted(cwd, cfg.home, console, Prompter()):
         console.print("[dim]OK, not opening this folder.[/]")
         return 0
+    if args.resume == PICK:  # `muyah --resume` without an id: choose from a list
+        from muyah_code.session import sessions_dir
+        from muyah_code.ui.history import pick_session
+
+        args.resume = pick_session(sessions_dir(cfg.home, cfg.project_root), Prompter())
+        if args.resume is None:
+            console.print("[dim]No earlier conversations in this folder - starting a new one.[/]")
     ui = TerminalUI(console, show_reasoning=args.show_reasoning)
     try:
         with console.status("Starting MUYAH-CODE..."):

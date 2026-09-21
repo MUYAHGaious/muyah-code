@@ -136,6 +136,7 @@ class App:
 
         self.ctx = self._make_ctx(ui, depth=0)
         self.agent = self._make_agent(self.registry, self.ctx, ui, session=self.session)
+        self.resumed = bool(history)
         if history:
             self.agent.load_history(history)
         self.emit_session()

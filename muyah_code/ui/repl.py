@@ -277,6 +277,10 @@ class Repl:
 
     def run(self, initial_prompt: str | None = None) -> int:
         self.header()
+        if getattr(self.app, "resumed", False):
+            from muyah_code.ui.history import print_history
+
+            print_history(self.console, self.app.agent.messages[1:])
         pending = initial_prompt
         while True:
             if pending is None:

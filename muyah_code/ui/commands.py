@@ -80,7 +80,7 @@ class CommandRouter:
             Command("permissions", "Show permission rules", self.permissions),
             Command("tools", "List available tools", self.tools),
             Command("mcp", "Show MCP server status", self.mcp),
-            Command("resume", "Resume an earlier session", self.resume, "[id]"),
+            Command("resume", "Resume an earlier conversation (pick from a list)", self.resume, "[id]"),
             Command("sessions", "List recent sessions for this project", self.sessions),
             Command("export", "Export the conversation to a markdown file", self.export, "[file]"),
             Command("cost", "Token usage for this session", self.cost),
@@ -339,7 +339,12 @@ class CommandRouter:
     def resume(self, arg):
         sdir = sessions_dir(self.app.home, self.app.root)
         if not arg:
-            return self.sessions("")
+            from muyah_code.ui.history import pick_session
+
+            arg = pick_session(sdir, self.repl.prompter)
+            if not arg:
+                self.console.print("[dim]No earlier conversations in this folder.[/]")
+                return
         try:
             session, messages, _ = Session.resume(sdir, arg)
         except FileNotFoundError as e:
@@ -348,7 +353,10 @@ class CommandRouter:
         self.app.session = session
         self.app.agent.session = session
         self.app.agent.load_history(messages)
-        self.console.print(f"Resumed {session.id} ({len(messages)} messages).")
+        from muyah_code.ui.history import print_history
+
+        print_history(self.console, messages)
+        self.console.print(f"[dim]Resumed {session.id} ({len(messages)} messages).[/]")
 
     def sessions(self, arg):
         infos = Session.list_sessions(sessions_dir(self.app.home, self.app.root))

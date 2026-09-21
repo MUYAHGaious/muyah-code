@@ -17,7 +17,7 @@ from muyah_code.ui.terminal import TerminalUI
 ENTER, DOWN, CTRL_C = "\r", "\x1b[B", "\x03"
 
 
-def run_session(project, keys, script, lines=True):
+def run_session(project, keys, script, lines=True, **app_kwargs):
     """keys: lines of text (Enter appended) or, with lines=False, raw keystrokes."""
     out = io.StringIO()
     console = Console(file=out, width=100, force_terminal=False, color_system=None)
@@ -26,7 +26,7 @@ def run_session(project, keys, script, lines=True):
             create_app_session(input=pipe, output=DummyOutput()):
         cfg = load_config(cwd=project, overrides={"base_url": srv.url, "model": "fake-model"})
         cfg.set("learning.reflect", False)
-        app = App(cfg, ui, cwd=project, mode="acceptEdits", enable_mcp=False)
+        app = App(cfg, ui, cwd=project, mode="acceptEdits", enable_mcp=False, **app_kwargs)
         for k in keys:
             pipe.send_text(k + ENTER if lines else k)
         repl = Repl(app, ui)
@@ -234,3 +234,46 @@ def test_resize_redraws_everything_and_keeps_typed_text(project):
     after_clear = screen.getvalue().split(CLEAR_SCREEN)[-1]
     assert "say hi" in after_clear and "hello" in after_clear  # the conversation was redrawn
     assert any(m.get("content") == "half-typed" for m in app.agent.messages)  # typed text survived
+
+
+def test_resume_shows_the_earlier_conversation(project):
+    first = [reply("", [{"name": "Glob", "arguments": {"pattern": "*.py"}}]), reply("There are **no** Python files.")]
+    _, _, app = run_session(project, ["list the python files", "/exit"], first)
+    session_id = app.session.id
+
+    code, out, app2 = run_session(project, ["/exit"], [], resume=session_id)
+    assert code == 0 and app2.session.id == session_id
+    assert "list the python files" in out         # your prompt
+    assert "Glob(*.py)" in out                     # the tool call
+    assert "There are no Python files." in out     # the answer, rendered
+    assert "resumed" in out
+
+
+def test_resume_command_without_id_opens_a_picker(project):
+    _, _, first = run_session(project, ["hello there", "/exit"], [reply("Hi!")])
+    # /resume, then Enter picks the most recent conversation in the arrow-key list
+    code, out, app = run_session(project, ["/resume", "", "/exit"], [])
+    assert app.session.id == first.session.id
+    assert "hello there" in out and "Hi!" in out
+
+
+def test_pick_session_lists_recent_sessions_newest_first(tmp_path):
+    import os
+    import time
+
+    from test_providers import Answers
+
+    from muyah_code.session import Session
+    from muyah_code.ui.history import ago, pick_session
+
+    assert pick_session(tmp_path / "none", Answers()) is None
+    old = Session(tmp_path, "20260101-000000-aaaaaa")
+    old.log_message({"role": "user", "content": "first task"})
+    new = Session(tmp_path, "20260102-000000-bbbbbb")
+    new.log_message({"role": "user", "content": "second task"})
+    os.utime(old.path, (time.time() - 7200, time.time() - 7200))
+    user = Answers()
+    assert pick_session(tmp_path, user) == new.id          # Enter = newest
+    kind, message, ids = user.asked[0]
+    assert kind == "select" and ids == [new.id, old.id]
+    assert ago(time.time() - 7200) == "2 hours ago" and ago(time.time()) == "just now"

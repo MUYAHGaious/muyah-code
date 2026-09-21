@@ -5,6 +5,7 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **`muyah --resume`** opens an arrow-key list of this folder's recent conversations (title, age, message count). The one you pick opens with its prompts, tool calls and answers back on screen. `/resume` without an id does the same inside a session, and `muyah --resume <id>` still works.
 - **Workspace trust check:** the first time you open a folder, MUYAH-CODE asks whether you trust it before loading anything from it. That folder's hooks and MCP servers can run commands, so they wait for your answer.
 - **New look:** an M-shaped mascot (with a short shimmer on start) next to the name, model and folder. The input sits between two rules with the status line underneath.
 - **Menus take only the space they need:** "Enter to confirm · Esc to cancel", and the number keys still work as shortcuts.

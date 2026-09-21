@@ -129,7 +129,8 @@ muyah                                   # interactive
 muyah "fix the failing test in tests/test_api.py"
 muyah -p "summarize this repo" --output-format json      # headless (CI, scripts)
 git diff | muyah -p "review this diff"                   # stdin is attached to the prompt
-muyah -c                                # continue the last session;  muyah -r <id> to resume one
+muyah -c                                # continue the last session
+muyah --resume                          # pick an earlier conversation from a list (or: muyah --resume <id>)
 ```
 
 **Interactive shortcuts:**
