@@ -80,6 +80,30 @@ def render_diff(diff: str, limit: int = MAX_DIFF_LINES) -> Text:
 CLEAR_SCREEN = "\x1b[2J\x1b[3J\x1b[H"  # clear screen + scrollback, cursor home
 
 
+def _copy_to_clipboard(text: str) -> bool:
+    """Best effort: put text on the system clipboard (Windows clip, macOS pbcopy, Linux wl-copy/xclip)."""
+    import shutil
+    import subprocess
+    import sys
+
+    if sys.platform == "win32":
+        cmds = [["clip"]]
+    elif sys.platform == "darwin":
+        cmds = [["pbcopy"]]
+    else:
+        cmds = [["wl-copy"], ["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]]
+    for cmd in cmds:
+        if not shutil.which(cmd[0]):
+            continue
+        try:
+            data = text.encode("utf-16-le" if cmd[0] == "clip" else "utf-8")
+            subprocess.run(cmd, input=data, timeout=3, check=True, capture_output=True)
+            return True
+        except (OSError, subprocess.SubprocessError):
+            continue
+    return False
+
+
 def _paused(console: Console):
     return console.paused() if isinstance(console, ReplayConsole) else nullcontext()
 
@@ -711,6 +735,29 @@ class TerminalUI(UI):
                 return PermissionReply("no")
             if len(ans) > 1:
                 return PermissionReply("no", feedback=ans)
+
+    def handoff(self, command: str, targets: list[str]) -> None:
+        """A delete the agent wanted to run: shown to you to run yourself (MUYAH-CODE never deletes)."""
+        t = theme()
+        self._stop_live()
+        body = Text()
+        body.append(command.strip() + "\n", style=f"bold {t.tool}")
+        if targets:
+            body.append("\nWould remove:\n", style=t.dim)
+            for path in targets[:12]:
+                exists = Path(path).exists()
+                body.append(f"  {path}", style="bold" if exists else t.dim)
+                body.append("\n" if exists else "  (not found)\n", style=t.dim)
+            if len(targets) > 12:
+                body.append(f"  … and {len(targets) - 12} more\n", style=t.dim)
+        copied = _copy_to_clipboard(command.strip())
+        body.append("\nMUYAH-CODE never deletes files itself. If you want this done, run it in your own terminal"
+                    + (" (it is on your clipboard)." if copied else "."), style=t.dim)
+        self._space("block")
+        self.console.print(Panel(body, title=f"[bold {t.warn}]Delete: run this yourself[/]", title_align="left",
+                                 border_style=t.warn, expand=False, padding=(0, 1)))
+        self._last = "block"
+        self._keep_working()
 
     def _decision(self, reply: PermissionReply, req: PermissionRequest) -> None:
         t = theme()

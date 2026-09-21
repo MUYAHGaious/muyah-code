@@ -50,6 +50,96 @@ _RULES: list[tuple[re.Pattern, str]] = [(re.compile(p, re.IGNORECASE), why) for 
 ]]
 
 
+# --------------------------------------------------------------------------- deletes (never run by the agent)
+
+DELETE_PROGRAMS = {"rm", "rmdir", "rd", "del", "erase", "unlink", "shred", "srm", "wipe", "trash", "trash-put",
+                   "remove-item", "ri", "rimraf", "deltree"}
+_PREFIXES = {"sudo", "doas", "time", "nohup", "command", "builtin", "exec", "nice", "env", "&", "."}
+_SEGMENT = re.compile(r"\s*(?:&&|\|\||;|\||\n|\$\(|`|\))\s*")
+_INLINE_DELETE = re.compile(
+    r"(os\.(remove|unlink|rmdir|removedirs)|shutil\.rmtree|\.unlink\s*\(|\.rmdir\s*\(|send2trash|"
+    r"fs(?:\.promises)?\.(rm|rmSync|unlink|unlinkSync|rmdir|rmdirSync)|\brimraf\b|Remove-Item|"
+    r"\[System\.IO\.(File|Directory)\]::Delete|File\.Delete|Directory\.Delete|FileUtils\.rm)", re.IGNORECASE)
+
+
+def _program(tokens: list[str]) -> tuple[str, list[str]]:
+    """The program a command segment runs (after sudo/env/VAR=x prefixes), and its arguments."""
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        low = tok.lower()
+        if low in _PREFIXES or ("=" in tok and not tok.startswith(("-", "/")) and "\\" not in tok.split("=")[0]):
+            i += 1
+            continue
+        break
+    if i >= len(tokens):
+        return "", []
+    prog = re.split(r"[\\/]", tokens[i].strip("'\""))[-1].lower()
+    for ext in (".exe", ".cmd", ".bat", ".ps1"):
+        if prog.endswith(ext):
+            prog = prog[: -len(ext)]
+    return prog, tokens[i + 1:]
+
+
+def is_delete_command(command: str) -> bool:
+    """True if any part of the command deletes files or folders. The agent never runs these: the user
+    gets the command to run themselves (the user asked for this after agents wiped whole drives)."""
+    if not command or not command.strip():
+        return False
+    if _INLINE_DELETE.search(command):
+        return True
+    for segment in _SEGMENT.split(command):
+        tokens = segment.split()
+        prog, args = _program(tokens)
+        if prog == "xargs":  # xargs [flags] rm ...
+            rest = [a for a in args if not a.startswith("-")]
+            prog, args = _program(rest)
+        if prog in DELETE_PROGRAMS:
+            return True
+        if prog == "git" and args and args[0].lower() in ("clean", "rm"):
+            return True
+        if prog in ("find", "fd"):
+            low = [a.lower().strip("'\"") for a in args]
+            if "-delete" in low or "--delete" in low:
+                return True
+            if any(a in ("-exec", "-execdir", "-x", "--exec") for a in low) and \
+                    any(a in DELETE_PROGRAMS for a in low):
+                return True
+        if prog in ("cmd", "powershell", "pwsh", "bash", "sh", "zsh", "wsl") and args:
+            # cmd /c del x · bash -c "rm -rf x" · pwsh -Command "..." : look at the command inside
+            rest = list(args)
+            while rest and rest[0].startswith(("-", "/")):
+                rest.pop(0)
+            inner = " ".join(rest).strip("'\"")
+            if inner and is_delete_command(inner):
+                return True
+    return False
+
+
+def delete_targets(command: str, cwd) -> list[str]:
+    """Best-effort list of what a delete command would remove, with ~ and variables expanded."""
+    import os
+    from pathlib import Path
+
+    targets: list[str] = []
+    for segment in _SEGMENT.split(command):
+        prog, args = _program(segment.split())
+        if prog == "xargs":
+            prog, args = _program([a for a in args if not a.startswith("-")])
+        if prog not in DELETE_PROGRAMS and not (prog == "git" and args and args[0] in ("clean", "rm")):
+            continue
+        for arg in args:
+            if arg.startswith("-") or arg.lower() in ("/s", "/q", "/f", "rm", "clean") or arg.startswith("2>"):
+                continue
+            arg = arg.strip("'\"")
+            expanded = os.path.expandvars(os.path.expanduser(arg))
+            path = Path(expanded)
+            if not path.is_absolute():
+                path = Path(cwd) / path
+            targets.append(str(path))
+    return targets
+
+
 def risky_command(command: str) -> str | None:
     """Why this shell command needs a human even in auto mode, or None if it can run."""
     for pattern, why in _RULES:

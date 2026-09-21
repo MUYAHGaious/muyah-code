@@ -48,6 +48,12 @@ class HeadlessUI(UI):
         elif self.verbose:
             self._log(f"  < {'ERROR ' if result.is_error else ''}{result.summary or ''}")
 
+    def handoff(self, command: str, targets: list[str]) -> None:
+        if self.format == "stream-json":
+            self._event(type="handoff", command=command, targets=targets)
+        else:
+            self._log(f"Delete not run (MUYAH-CODE never deletes). To do it yourself: {command}")
+
     def on_todos(self, todos: list[dict]) -> None:
         if self.format == "stream-json":
             self._event(type="todos", todos=todos)

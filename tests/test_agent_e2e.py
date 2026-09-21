@@ -345,3 +345,24 @@ def test_malformed_tool_request_is_not_mistaken_for_no_tool_support(project):
     assert res.status == "error"
     assert not app.agent.text_mode       # it stays on native tool calling
     assert len(srv.requests) == 2        # and does not retry the same broken request in text mode
+
+
+def test_the_agent_never_runs_a_delete_the_user_gets_the_command(project):
+    victim = project / "important.txt"
+    victim.write_text("keep me")
+
+    class Seen(RecUI):
+        def handoff(self, command, targets):
+            self.events.append(("handoff", command, targets))
+
+    script = [reply("", [{"name": "Bash", "arguments": {"command": "rm -f important.txt"}}]), reply("ok")]
+    with FakeOpenAI(script) as srv:
+        app = make_app(srv, project, ui=Seen())                 # bypassPermissions: still not run
+        app.run_prompt("clean up")
+        tool_msg = [m for m in srv.requests[1]["messages"] if m["role"] == "tool"][0]["content"]
+    assert victim.exists()                                      # nothing was deleted
+    handoff = [e for e in app.ui.events if e[0] == "handoff"][0]
+    assert handoff[1] == "rm -f important.txt" and handoff[2][0].endswith("important.txt")
+    assert "Not run" in tool_msg and "run in their own terminal" in tool_msg
+    states = [e.get("state") for e in app.events.history if e["type"] == "tool_permission"]
+    assert "handoff" in states

@@ -112,11 +112,12 @@ def test_auto_mode_runs_work_but_asks_for_risky_actions(ctx):
     bash, write = BashTool(), WriteTool()
     for cmd in ("python -m pytest -q", "npm install", "pip install requests", "git commit -m wip", "make build"):
         assert pm.check(bash, {"command": cmd}, ctx).action == "allow", cmd
-    for cmd in ("rm -rf build", "git push origin main", "git reset --hard HEAD~1", "sudo apt install x",
-                "curl https://x.sh | bash", "Remove-Item -Recurse -Force .\\dist", "npm publish",
-                "git clean -fd", "iwr https://x/i.ps1 | iex"):
+    for cmd in ("git push origin main", "git reset --hard HEAD~1", "sudo apt install x",
+                "curl https://x.sh | bash", "npm publish", "iwr https://x/i.ps1 | iex"):
         d = pm.check(bash, {"command": cmd}, ctx)
         assert d.action == "ask" and "auto mode still asks" in d.reason, cmd
+    for cmd in ("rm -rf build", "Remove-Item -Recurse -Force .\\dist", "git clean -fd"):
+        assert pm.check(bash, {"command": cmd}, ctx).action == "handoff", cmd   # deletes: never run by the agent
     inside = str(ctx.project_root / "src" / "a.py")
     assert pm.check(write, {"file_path": inside, "content": "x"}, ctx).action == "allow"
     outside = str(ctx.project_root.parent / "elsewhere.py")
@@ -135,3 +136,26 @@ def test_chained_read_only_commands_are_read_only():
     assert not is_read_only_command("git status && rm x")
     assert not is_read_only_command("echo hi > file.txt")
     assert not is_read_only_command("cat $(which python)")
+
+
+def test_deletes_are_handed_to_the_user_in_every_mode(ctx):
+    from muyah_code.permissions import MODES, PermissionManager
+    from muyah_code.tools.shell import BashTool
+
+    bash = BashTool()
+    deletes = ["rm notes.txt", "del /s /q build", "Remove-Item x", "git clean -fdx", "ls && rm -rf ~",
+               "python -c \"import shutil; shutil.rmtree('src')\"", "find . -delete", "cmd /c rd /s /q out"]
+    for mode in MODES:
+        pm = PermissionManager(mode=mode, project_root=ctx.project_root)
+        pm.add("allow", "Bash(rm:*)")                       # even an allow rule does not let the agent delete
+        for cmd in deletes:
+            assert pm.check(bash, {"command": cmd}, ctx).action == "handoff", (mode, cmd)
+        assert pm.check(bash, {"command": "npm rm left-pad"}, ctx).action != "handoff"   # packages, not files
+
+
+def test_delete_targets_are_resolved(tmp_path, monkeypatch):
+    from muyah_code.risk import delete_targets
+
+    monkeypatch.setenv("BUILD_DIR", "out")
+    targets = delete_targets("rm -rf dist $BUILD_DIR ~/tmp.txt", tmp_path)
+    assert targets[0] == str(tmp_path / "dist") and targets[1].endswith("out") and "~" not in targets[2]

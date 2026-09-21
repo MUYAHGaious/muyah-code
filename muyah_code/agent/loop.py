@@ -659,6 +659,24 @@ class Agent:
             self._track_signal(tool, args, res, result, failures)
         return [o if o is not None else ToolResult.error("Error: no result") for o in outputs]
 
+    def _handoff(self, tool: Tool, args: dict, tool_id: int) -> ToolResult:
+        """A delete: never executed. The user sees the exact command (and what it would remove) to run in
+        their own terminal; the model is told so and must not try another way."""
+        from muyah_code.risk import delete_targets
+
+        command = args.get("command", "")
+        targets = delete_targets(command, self.ctx.cwd)
+        self.ui.handoff(command, targets)
+        self._emit("tool_permission", id=tool_id, name=tool.name, state="handoff",
+                   reason="deletes are left to the user", command=command[:500], targets=targets[:50])
+        res = ToolResult(
+            "Not run. MUYAH-CODE never deletes files or folders itself: the exact command was shown to the user "
+            "to run in their own terminal if they want it. Do not try to delete another way (no scripts, other "
+            "commands or tools). Continue with the rest of the task; if the deletion matters for it, tell the "
+            "user what to run.", summary="delete handed to you to run", meta={"handoff": True})
+        self._emit_tool_end(tool_id, tool.name, res, 0.0)
+        return res
+
     def _refuse(self, title: str, name: str, message: str, tool_id: int | None = None) -> ToolResult:
         """A call that never ran (blocked, denied): shown as a failed line; the live view never shows it running."""
         tool_id = tool_id if tool_id is not None else self._new_tool_id()
@@ -693,6 +711,8 @@ class Agent:
         elif forced == "ask" and decision.action == "allow":
             decision.action = "ask"
 
+        if decision.action == "handoff":
+            return self._handoff(tool, args, tool_id)
         if decision.action == "deny":
             self._emit("tool_permission", id=tool_id, name=tool.name, state="denied", reason=decision.reason)
             return self._refuse(title, tool.name, f"Permission denied: {decision.reason}.", tool_id)

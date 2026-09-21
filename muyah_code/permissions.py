@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
-from muyah_code.risk import risky_command
+from muyah_code.risk import is_delete_command, risky_command
 from muyah_code.tools.base import EXEC, META, NETWORK, READ, WRITE, Tool, ToolContext
 from muyah_code.tools.search import matches_glob
 
@@ -205,6 +205,8 @@ class PermissionManager:
         rule = self._find(self.deny, name, subject)
         if rule:
             return Decision("deny", f"denied by rule {rule}", str(rule))
+        if name == "Bash" and is_delete_command(args.get("command", "")):
+            return Decision("handoff", "deleting files is always left to you")
 
         read_only = tool.is_read_only(args)
         if self.mode == "plan" and not read_only and tool.kind in (WRITE, EXEC):
