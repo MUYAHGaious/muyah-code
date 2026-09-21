@@ -6,6 +6,7 @@ to exit) · Ctrl+D exit · typing "/" opens the command menu (↑/↓ + Enter).
 
 from __future__ import annotations
 
+import asyncio
 import time
 
 from prompt_toolkit import PromptSession
@@ -16,13 +17,14 @@ from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.styles import Style
 from rich.markup import escape
+from rich.rule import Rule
 from rich.text import Text
 
 from muyah_code import __version__
 from muyah_code.tools.search import list_files
 from muyah_code.ui.commands import EXIT, CommandRouter
 from muyah_code.ui.select import Prompter
-from muyah_code.ui.terminal import TerminalUI
+from muyah_code.ui.terminal import ReplayConsole, TerminalUI
 from muyah_code.ui.theme import theme
 
 MODE_LABEL = {
@@ -32,6 +34,9 @@ MODE_LABEL = {
     "bypassPermissions": "⚠ bypass permissions on",
 }
 EXIT_WINDOW = 2.0  # seconds between two Ctrl+C presses to exit
+RESIZE_POLL = 0.1     # how often the prompt checks the terminal width
+RESIZE_SETTLE = 0.3   # redraw once the width has stayed the same this long (user stopped dragging)
+_RESIZED = object()   # prompt result meaning "the terminal was resized; redraw and ask again"
 MENU_ROWS = 8      # rows the "/" and "@" menus may use
 
 
@@ -92,6 +97,8 @@ class Repl:
         self.ui.prompter = self.prompter
         self.router = CommandRouter(self)
         self._last_interrupt = 0.0
+        self._layout_width: int | None = None   # width the transcript was last laid out at
+        self._resume_text = ""                  # typed text to restore after a resize redraw
         kb = KeyBindings()
 
         @kb.add("s-tab")
@@ -149,7 +156,8 @@ class Repl:
     def _toolbar(self):
         """Under the input: a closing rule, then one status line (mode · context · hint)."""
         t = theme()
-        rule = [("fg:ansibrightblack", "─" * self._cols() + "\n")]
+        # one column short of the edge: an exactly full-width line gets re-wrapped by terminals on resize
+        rule = [("fg:ansibrightblack", "─" * max(1, self._cols() - 1) + "\n")]
         if time.monotonic() - self._last_interrupt < EXIT_WINDOW:
             return rule + [(f"fg:{t.accent}", "  Press Ctrl+C again to exit")]
         mode = MODE_LABEL.get(self.app.permissions.mode, "")
@@ -162,7 +170,7 @@ class Repl:
 
     def _prompt_message(self):
         """A rule above the ❯ prompt (the input sits between two rules, like Claude Code)."""
-        return [("fg:ansibrightblack", "─" * self._cols() + "\n"), (f"fg:{theme().accent}", "❯ ")]
+        return [("fg:ansibrightblack", "─" * max(1, self._cols() - 1) + "\n"), (f"fg:{theme().accent}", "❯ ")]
 
     def _provider_label(self) -> str:
         from muyah_code.providers import BY_ID
@@ -208,18 +216,64 @@ class Repl:
         self.app.agent.invalidate_system_prompt()
         return f"Saved to {path}"
 
+    def _watch_resize(self) -> None:
+        """Runs inside the prompt: when the width changes and then stays still for a moment (the user
+        stopped dragging), leave the prompt so the whole conversation can be redrawn at the new width."""
+        app = get_app()
+
+        async def watch():
+            pending, since = None, 0.0
+            while True:
+                await asyncio.sleep(RESIZE_POLL)
+                cols = self._cols()
+                if cols == self._layout_width:
+                    pending = None
+                    continue
+                if cols != pending:
+                    pending, since = cols, time.monotonic()
+                elif time.monotonic() - since >= RESIZE_SETTLE:
+                    self._resume_text = app.current_buffer.text
+                    app.exit(result=_RESIZED)
+                    return
+
+        app.create_background_task(watch())
+
+    def _redraw(self) -> None:
+        self._layout_width = self._cols_now()
+        self.ui.rerender()
+
+    def _cols_now(self) -> int:
+        try:
+            return self.session.app.output.get_size().columns
+        except Exception:
+            return self.console.width
+
     def _read_line(self) -> str | None:
         """Returns the typed line, or None to exit."""
         while True:
+            if self._layout_width is None:
+                self._layout_width = self._cols_now()
+            elif self._cols_now() != self._layout_width:  # resized while the agent was working
+                self._redraw()
+            default, self._resume_text = self._resume_text, ""
             try:
-                return self.session.prompt(self._prompt_message)
+                line = self.session.prompt(self._prompt_message, default=default, pre_run=self._watch_resize)
             except KeyboardInterrupt:  # Ctrl+C on an empty line
                 now = time.monotonic()
                 if now - self._last_interrupt < EXIT_WINDOW:
                     return None
                 self._last_interrupt = now
+                continue
             except EOFError:  # Ctrl+D
                 return None
+            if line is _RESIZED:
+                self._redraw()
+                continue
+            # what prompt_toolkit left on screen (rule + ❯ line), so a later redraw shows it too
+            if isinstance(self.console, ReplayConsole):
+                self.console.remember(Rule(style="bright_black"))
+                self.console.remember(Text("❯ ", style=theme().accent) + Text(line))
+            return line
 
     def run(self, initial_prompt: str | None = None) -> int:
         self.header()

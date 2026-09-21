@@ -13,9 +13,13 @@ from __future__ import annotations
 import io
 import re
 import time
+from contextlib import contextmanager, nullcontext
 
 from rich.console import Console, Group
+from rich.control import Control
 from rich.live import Live
+from rich.segment import Segment
+from rich.style import Style
 from rich.markdown import Markdown
 from rich.markup import escape
 from rich.panel import Panel
@@ -65,6 +69,73 @@ def render_diff(diff: str, limit: int = MAX_DIFF_LINES) -> Text:
     return out
 
 
+CLEAR_SCREEN = "\x1b[2J\x1b[3J\x1b[H"  # clear screen + scrollback, cursor home
+
+
+def _paused(console: Console):
+    return console.paused() if isinstance(console, ReplayConsole) else nullcontext()
+
+
+class ReplayConsole(Console):
+    """A Rich console that remembers what it printed as renderables (not pre-wrapped text), so the whole
+    conversation can be redrawn at a new width after the terminal is resized - the approach Claude Code
+    uses instead of leaving old output wrapped at the old width."""
+
+    MAX_ENTRIES = 4000
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.transcript: list[tuple[tuple, dict]] = []
+        self._paused = 0
+
+    def print(self, *objects, **kwargs):  # noqa: A003 - Rich API name
+        super().print(*objects, **kwargs)
+        if not self._paused and not (objects and all(isinstance(o, Control) for o in objects)):
+            self.remember(*objects, **kwargs)
+
+    def remember(self, *objects, **kwargs) -> None:
+        """Remember something for replay without printing it (e.g. what prompt_toolkit drew)."""
+        keep = {k: v for k, v in kwargs.items() if k in ("end", "style", "justify", "overflow", "no_wrap", "soft_wrap")}
+        self.transcript.append((objects, keep))
+        if len(self.transcript) > self.MAX_ENTRIES:
+            del self.transcript[: len(self.transcript) - self.MAX_ENTRIES]
+
+    @contextmanager
+    def paused(self):
+        self._paused += 1
+        try:
+            yield
+        finally:
+            self._paused -= 1
+
+    def replay(self) -> None:
+        """Clear the screen and scrollback, then redraw everything at the current width."""
+        self.file.write(CLEAR_SCREEN)
+        self.file.flush()
+        with self.paused():
+            for objects, kwargs in list(self.transcript):
+                super().print(*objects, **kwargs)
+
+
+class PrefixedMarkdown:
+    """An assistant message: markdown with the ● bullet, laid out at whatever width it is printed at."""
+
+    def __init__(self, text: str):
+        self.text = text
+
+    def __rich_console__(self, console, options):
+        width = max(20, options.max_width - 2)
+        lines = console.render_lines(Markdown(self.text, code_theme=theme().code_theme),
+                                     options.update(width=width), pad=False)
+        while lines and not "".join(s.text for s in lines[-1]).strip():
+            lines.pop()
+        bullet = Segment("● ", Style.parse(theme().accent))
+        for i, line in enumerate(lines):
+            yield bullet if i == 0 else Segment("  ")
+            yield from line
+            yield Segment.line()
+
+
 class _MarkdownStream:
     """Render streaming markdown: print settled lines permanently, keep the tail live."""
 
@@ -94,8 +165,7 @@ class _MarkdownStream:
         self.text += chunk
         if self.live is None:  # not animating (piped output, screenshots): render once at the end
             if final:
-                for i, ln in enumerate(self._lines(self.text)):
-                    self.console.print(self._prefix(i) + Text.from_ansi(ln))
+                self.console.print(PrefixedMarkdown(self.text))
             return
         now = time.monotonic()
         if not final and now - self._last_render < 0.08:
@@ -103,8 +173,13 @@ class _MarkdownStream:
         self._last_render = now
         lines = self._lines(self.text)
         settled = len(lines) if final else max(0, len(lines) - LIVE_TAIL_LINES)
-        for i in range(self.printed, settled):
-            self.live.console.print(self._prefix(i) + Text.from_ansi(lines[i]))
+        # The streamed lines are laid out for the current width; for redraws after a resize we remember
+        # the whole message as markdown instead (see ReplayConsole).
+        with _paused(self.console):
+            for i in range(self.printed, settled):
+                self.live.console.print(self._prefix(i) + Text.from_ansi(lines[i]))
+        if final and isinstance(self.console, ReplayConsole):
+            self.console.remember(PrefixedMarkdown(self.text))
         self.printed = max(self.printed, settled)
         tail = Text()
         for i in range(self.printed, len(lines)):
@@ -117,7 +192,7 @@ class TerminalUI(UI):
     headless = False
 
     def __init__(self, console: Console | None = None, show_reasoning: bool = False, animate: bool | None = None):
-        self.console = console or Console(highlight=False)
+        self.console = console or ReplayConsole(highlight=False)
         self.show_reasoning = show_reasoning
         # spinners/live markdown only on a real terminal; plain output when piped or recorded
         self.animate = self.console.is_terminal if animate is None else animate
@@ -278,6 +353,14 @@ class TerminalUI(UI):
             self._live.console.print(text)
         else:
             self.console.print(text)
+
+    def rerender(self) -> bool:
+        """Redraw the whole conversation at the current terminal width (after a resize)."""
+        if isinstance(self.console, ReplayConsole) and self.console.is_terminal:
+            self._stop_live()
+            self.console.replay()
+            return True
+        return False
 
     def turn_footer(self, status: str, seconds: float, tool_calls: int, files_changed: int, ctx_pct: int) -> None:
         t = theme()

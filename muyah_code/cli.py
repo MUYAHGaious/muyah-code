@@ -35,9 +35,9 @@ def _utf8_stdio() -> None:
 
 
 def _console():
-    from rich.console import Console
+    from muyah_code.ui.terminal import ReplayConsole
 
-    return Console(highlight=False)
+    return ReplayConsole(highlight=False)
 
 
 def main(argv: list[str] | None = None) -> int:

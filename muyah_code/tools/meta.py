@@ -66,6 +66,9 @@ class TodoWriteTool(Tool):
         ui = ctx.service("ui")
         if ui is not None:
             ui.on_todos(clean)
+        events = ctx.service("events")
+        if events is not None:
+            events.emit("todos", items=[{"content": t["content"], "status": t["status"]} for t in clean])
         active = sum(1 for t in clean if t["status"] == "in_progress")
         note = ""
         if active > 1:

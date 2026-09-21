@@ -123,6 +123,38 @@ class Agent:
         self.messages: list[dict] = [{"role": "system", "content": ""}]
         self.last_user_prompt = ""
         self._prompt_dirty = True
+        self.events = None       # muyah_code.events.EventBus (feeds /viz); None = no events
+        self.label = "main"      # which agent emitted an event (sub-agents use their type name)
+        self._tool_seq = 0
+
+    # ------------------------------------------------------------------ events (for /viz)
+
+    def _emit(self, type_: str, **data) -> None:
+        if self.events is not None:
+            self.events.emit(type_, agent=self.label, **data)
+
+    def emit_context(self) -> None:
+        if self.events is None:
+            return
+        from muyah_code.agent.context import is_tool_result_message
+
+        tools_msgs = [m for m in self.messages[1:] if is_tool_result_message(m)]
+        convo = [m for m in self.messages[1:] if not is_tool_result_message(m)]
+        c = self.context
+        self._emit("context", used=c.count(self.messages), usable=c.usable, window=c.window,
+                   parts={"system": c.count(self.messages[:1]), "conversation": c.count(convo),
+                          "tools": c.count(tools_msgs)})
+
+    def _show_tool_start(self, title: str, name: str) -> int:
+        self._tool_seq += 1
+        self.ui.tool_start(title)
+        self._emit("tool_start", id=self._tool_seq, name=name, title=title[:160])
+        return self._tool_seq
+
+    def _show_tool_end(self, tool_id: int, title: str, name: str, res: ToolResult, duration: float) -> None:
+        self.ui.tool_end(title, res)
+        self._emit("tool_end", id=tool_id, name=name, ok=not res.is_error, summary=(res.summary or "")[:120],
+                   duration=round(duration, 3), chars=len(res.content or ""))
 
     # ------------------------------------------------------------------ public
 
@@ -154,11 +186,14 @@ class Agent:
         self.messages = new
         if self.session:
             self.session.log_replace(self.messages[1:], "compact")
+        self._emit("compact", description=desc, emergency=emergency)
+        self.emit_context()
         return desc
 
     def run(self, prompt: str) -> TurnResult:
         start = time.time()
         result = TurnResult()
+        self._emit("subagent_start" if self.is_subagent else "turn_start", prompt=prompt[:300])
         try:
             self._run(prompt, result)
         except KeyboardInterrupt:
@@ -166,6 +201,9 @@ class Agent:
             result.status = "interrupted"
             self.ui.warn("Interrupted. Tell MUYAH-CODE what to do instead.")
         result.duration = time.time() - start
+        self._emit("subagent_end" if self.is_subagent else "turn_end", status=result.status,
+                   duration=round(result.duration, 2), tool_calls=result.tool_calls)
+        self.emit_context()
         return result
 
     # ------------------------------------------------------------------ internals
@@ -287,11 +325,34 @@ class Agent:
             self.ui.assistant_start()
             hider = _TagHider(self.ui.text) if self.text_mode else None
             on_text = hider.feed if hider else self.ui.text
+            on_reasoning = self.ui.reasoning
+            meter = None
+            if self.events is not None:
+                from muyah_code.events import TokenMeter
+
+                meter = TokenMeter(self.events)
+                self.emit_context()
+                self._emit("llm_start", model=getattr(self.llm, "model", ""))
+                show_text, show_reasoning = on_text, on_reasoning
+
+                def on_text(chunk, _show=show_text, _meter=meter):
+                    _meter.feed(chunk)
+                    _show(chunk)
+
+                def on_reasoning(chunk, _show=show_reasoning, _meter=meter):
+                    _meter.feed(chunk)
+                    _show(chunk)
+            started = time.time()
             try:
-                resp = self.llm.chat(self.messages, tools=tools, on_text=on_text, on_reasoning=self.ui.reasoning,
+                resp = self.llm.chat(self.messages, tools=tools, on_text=on_text, on_reasoning=on_reasoning,
                                      max_tokens=max_tokens)
                 if hider:
                     hider.flush()
+                if meter is not None:
+                    meter.flush()
+                    self._emit("llm_end", prompt_tokens=int(resp.usage.get("prompt_tokens") or 0),
+                               completion_tokens=int(resp.usage.get("completion_tokens") or 0),
+                               duration=round(time.time() - started, 3), calls=[c.name for c in resp.tool_calls])
             except ToolsUnsupportedError as e:
                 self.ui.assistant_end()
                 if self.tool_mode == "native":
@@ -377,13 +438,17 @@ class Agent:
             for _, t, a in prepared
         )
         if parallel:
+            def timed(t, a):
+                t0 = time.time()
+                res = self.registry.execute(t, a, self.ctx, self._max_output())
+                return res, time.time() - t0
+
             with ThreadPoolExecutor(max_workers=min(6, len(prepared))) as pool:
-                futures = {i: pool.submit(self.registry.execute, t, a, self.ctx, self._max_output())
-                           for i, t, a in prepared}
+                futures = {i: pool.submit(timed, t, a) for i, t, a in prepared}
                 for i, t, a in prepared:
-                    res = futures[i].result()
-                    self.ui.tool_start(t.title(a))
-                    self.ui.tool_end(t.title(a), res)
+                    res, took = futures[i].result()
+                    tid = self._show_tool_start(t.title(a), t.name)
+                    self._show_tool_end(tid, t.title(a), t.name, res, took)
                     outputs[i] = res
         else:
             for n, (i, tool, args) in enumerate(prepared):
@@ -405,6 +470,12 @@ class Agent:
             self._track_signal(tool, args, res, result, failures)
         return [o if o is not None else ToolResult.error("Error: no result") for o in outputs]
 
+    def _refuse(self, title: str, name: str, message: str) -> ToolResult:
+        tid = self._show_tool_start(title, name)
+        res = ToolResult.error(message)
+        self._show_tool_end(tid, title, name, res, 0.0)
+        return res
+
     def _max_output(self) -> int:
         return self.context.tool_output_chars(self.max_tool_output_chars)
 
@@ -417,10 +488,7 @@ class Agent:
             for w in out.warnings:
                 self.ui.warn(w)
             if out.blocked:
-                self.ui.tool_start(title)
-                res = ToolResult.error(f"Blocked by PreToolUse hook: {out.reason}")
-                self.ui.tool_end(title, res)
-                return res
+                return self._refuse(title, tool.name, f"Blocked by PreToolUse hook: {out.reason}")
             if out.updated_input:
                 args = {**args, **out.updated_input}
                 title = tool.title(args)
@@ -433,18 +501,12 @@ class Agent:
             decision.action = "ask"
 
         if decision.action == "deny":
-            self.ui.tool_start(title)
-            res = ToolResult.error(f"Permission denied: {decision.reason}.")
-            self.ui.tool_end(title, res)
-            return res
+            return self._refuse(title, tool.name, f"Permission denied: {decision.reason}.")
         if decision.action == "ask":
             if self.ctx.headless:
-                self.ui.tool_start(title)
-                res = ToolResult.error(
-                    f"Permission denied: {tool.name} needs approval, and this is a non-interactive run. "
-                    "It was not executed. Use a different approach or report what you would run.")
-                self.ui.tool_end(title, res)
-                return res
+                return self._refuse(title, tool.name,
+                                    f"Permission denied: {tool.name} needs approval, and this is a non-interactive "
+                                    "run. It was not executed. Use a different approach or report what you would run.")
             rule = suggest_rule(tool, args, self.ctx)
             preview = tool.preview(args, self.ctx) or tool.permission_subject(args, self.ctx)
             reply = self.ui.ask_permission(PermissionRequest(tool.name, title, preview or "", decision.reason,
@@ -459,9 +521,10 @@ class Agent:
                     path = self.ctx.config.append_rule("allow", rule, scope="local")
                     self.ui.info(f"Saved rule {rule} to {path}")
 
-        self.ui.tool_start(title)
+        tid = self._show_tool_start(title, tool.name)
+        t0 = time.time()
         res = self.registry.execute(tool, args, self.ctx, self._max_output())
-        self.ui.tool_end(title, res)
+        self._show_tool_end(tid, title, tool.name, res, time.time() - t0)
 
         if self.hooks:
             event = "PostToolUseFailure" if res.is_error else "PostToolUse"

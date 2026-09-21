@@ -10,7 +10,6 @@ import time
 
 from rich.console import Console, Group
 from rich.live import Live
-from rich.table import Table
 from rich.text import Text
 
 from muyah_code.ui.theme import theme
@@ -67,15 +66,35 @@ def mascot(shift: float = 0.0, blink: bool = False) -> list[Text]:
     return lines
 
 
-def header_renderable(lines: list[Text], shift: float = 0.0, blink: bool = False) -> Table:
-    """Mascot on the left, up to three text lines on the right (like Claude Code's welcome)."""
-    grid = Table.grid(padding=(0, 3))
-    grid.add_column(no_wrap=True)
-    grid.add_column(no_wrap=True, overflow="ellipsis")
-    art = mascot(shift, blink)
-    for i in range(3):
-        grid.add_row(art[i], lines[i] if i < len(lines) else Text(""))
-    return grid
+GAP = 3
+
+
+class Header:
+    """Mascot on the left, up to three text lines on the right (like Claude Code's welcome).
+
+    Laid out at whatever width it is printed at: the mascot keeps its size, the text is truncated with
+    an ellipsis - so it also redraws cleanly after the terminal is resized."""
+
+    def __init__(self, lines: list[Text], shift: float = 0.0, blink: bool = False):
+        self.lines = lines
+        self.shift = shift
+        self.blink = blink
+
+    def __rich_console__(self, console, options):
+        art = mascot(self.shift, self.blink)
+        room = max(0, options.max_width - len(PIXELS[0]) - GAP)
+        for i, art_line in enumerate(art):
+            row = art_line.copy()
+            text = self.lines[i].copy() if i < len(self.lines) else Text("")
+            text.truncate(room, overflow="ellipsis")
+            row.append(" " * GAP)
+            row.append_text(text)
+            row.no_wrap = True
+            yield row
+
+
+def header_renderable(lines: list[Text], shift: float = 0.0, blink: bool = False) -> Header:
+    return Header(lines, shift, blink)
 
 
 def play_intro(console: Console, lines: list[Text], animate: bool = True) -> None:

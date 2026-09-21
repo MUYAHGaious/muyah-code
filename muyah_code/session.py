@@ -89,7 +89,7 @@ class Session:
 
     @classmethod
     def resume(cls, directory: Path, session_id: str) -> tuple[Session, list[dict], dict]:
-        matches = sorted(directory.glob(f"{session_id}*.jsonl"))
+        matches = sorted(p for p in directory.glob(f"{session_id}*.jsonl") if not p.name.endswith(".events.jsonl"))
         if not matches:
             raise FileNotFoundError(f"No session '{session_id}' in {directory}")
         path = matches[0]
@@ -103,7 +103,8 @@ class Session:
         if not directory.is_dir():
             return []
         out = []
-        for p in sorted(directory.glob("*.jsonl"), key=lambda x: x.stat().st_mtime, reverse=True)[:limit]:
+        transcripts = [p for p in directory.glob("*.jsonl") if not p.name.endswith(".events.jsonl")]
+        for p in sorted(transcripts, key=lambda x: x.stat().st_mtime, reverse=True)[:limit]:
             title, count = "", 0
             try:
                 with open(p, encoding="utf-8") as f:

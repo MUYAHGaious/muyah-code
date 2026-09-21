@@ -11,6 +11,7 @@ from muyah_code.agent.context import ContextManager
 from muyah_code.agent.loop import Agent, TurnResult
 from muyah_code.agent.prompts import PromptInputs, build_system_prompt, git_snapshot, turn_context_block
 from muyah_code.config import Config, load_config
+from muyah_code.events import EventBus
 from muyah_code.hooks import HookRunner
 from muyah_code.learning.lessons import Lesson, LessonStore, Reflector, is_correction
 from muyah_code.llm.client import LLMClient, make_client
@@ -126,6 +127,8 @@ class App:
             self.session = Session(sdir) if persist_session else None
         if self.session:
             self.session.start({"cwd": str(self.cwd), "model": self.llm.model, "version": __version__})
+        # Live event stream for /viz; also recorded next to the session file so it can be replayed.
+        self.events = EventBus(record_to=self.session.path.with_suffix(".events.jsonl") if self.session else None)
 
         self.registry = ToolRegistry(builtin_tools() + list(self.mcp_tools))
         self.subagents = SubagentManager(self.agent_defs, self._make_subagent, depth=0)
@@ -135,6 +138,7 @@ class App:
         self.agent = self._make_agent(self.registry, self.ctx, ui, session=self.session)
         if history:
             self.agent.load_history(history)
+        self.emit_session()
 
         if self.hooks.has("SessionStart"):
             out = self.hooks.run("SessionStart", {"session_id": self.session_id, "source":
@@ -148,11 +152,20 @@ class App:
     def session_id(self) -> str:
         return self.session.id if self.session else ""
 
+    def emit_session(self) -> None:
+        from muyah_code.providers import BY_ID
+
+        prov = BY_ID.get(self.cfg.get("provider") or "")
+        self.events.emit("session", model=self.llm.model, provider=prov.name if prov else self.llm.base_url,
+                         window=self.window, cwd=str(self.cwd), mode=self.permissions.mode,
+                         session_id=self.session_id, tools=self.registry.names())
+        self.agent.emit_context()
+
     def _make_ctx(self, ui: UI, depth: int) -> ToolContext:
         ctx = ToolContext(cwd=self.cwd, project_root=self.root, config=self.cfg, depth=depth, headless=self.headless)
         ctx.services.update({
             "ui": ui, "llm": self.llm, "skills": self.skills, "jobs": self.jobs,
-            "checkpoints": self.checkpoints, "context_window": self.window,
+            "checkpoints": self.checkpoints, "context_window": self.window, "events": self.events,
         })
         return ctx
 
@@ -175,11 +188,13 @@ class App:
         found = self.lessons.search(prompt, k=k)
         self._current_lessons = found
         self.lessons.record_use(found)
+        if found:
+            self.events.emit("lessons", items=[x.render()[2:][:160] for x in found])
         return turn_context_block("\n".join(x.render() for x in found))
 
     def _make_agent(self, registry: ToolRegistry, ctx: ToolContext, ui: UI, session=None, extra: str = "",
                     subagent: bool = False, max_steps: int | None = None) -> Agent:
-        return Agent(
+        agent = Agent(
             llm=self.llm, registry=registry, permissions=self.permissions, ctx=ctx, ui=ui, context=self.context,
             system_prompt=self._prompt_builder(registry, extra, subagent),
             turn_context=None if subagent else self._turn_context,
@@ -188,6 +203,8 @@ class App:
             max_tool_output_chars=int(self.cfg.get("max_tool_output_chars", 24000)),
             is_subagent=subagent, session_id=self.session_id,
         )
+        agent.events = self.events
+        return agent
 
     def _make_subagent(self, d: AgentDef, depth: int) -> Agent:
         exclude = ["AskUser"] + list(d.disallowed_tools)
@@ -204,6 +221,7 @@ class App:
                  "questions; work autonomously and end with a concise report.")
         agent = self._make_agent(registry, ctx, sub_ui, session=None, extra=extra, subagent=True,
                                  max_steps=d.max_steps)
+        agent.label = d.name
         if d.permission_mode:
             # a read-only helper gets its own permission view without changing the parent's mode
             child_perms = PermissionManager(d.permission_mode, project_root=self.root)
@@ -252,7 +270,9 @@ class App:
         self.cfg.data = fresh.data
         self.cfg.sources = fresh.sources
         self._install_llm(make_client(self.cfg))
-        return f"Profile {name}: " + self._refresh_window(explicit=bool(self.cfg.get("context_window")))
+        msg = f"Profile {name}: " + self._refresh_window(explicit=bool(self.cfg.get("context_window")))
+        self.emit_session()
+        return msg
 
     def set_mode(self, mode: str) -> str:
         m = self.permissions.set_mode(mode)

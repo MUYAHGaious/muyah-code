@@ -185,3 +185,52 @@ def test_trust_prompt_blocks_untrusted_folder_until_accepted(tmp_path):
     asked_again = Pick("no")
     assert ensure_trusted(folder / "sub", home, console, asked_again) is True  # subfolders inherit trust
     assert asked_again.asked == []
+
+
+def test_resize_redraws_everything_and_keeps_typed_text(project):
+    """Shrink the terminal while typing: the conversation is cleared and redrawn at the new width
+    (not left wrapped at the old one) and the half-typed prompt is restored."""
+    import threading
+    import time
+
+    from prompt_toolkit.data_structures import Size
+    from prompt_toolkit.output.vt100 import Vt100_Output
+
+    from muyah_code.ui.terminal import CLEAR_SCREEN, ReplayConsole
+
+    size = {"cols": 100}
+
+    class FakeTerminal(Vt100_Output):
+        def get_rows_below_cursor_position(self) -> int:
+            return 10
+
+    screen = io.StringIO()
+    term = FakeTerminal(screen, lambda: Size(rows=30, columns=size["cols"]), term="xterm", enable_cpr=False)
+    console = ReplayConsole(file=screen, width=100, force_terminal=True, color_system=None)
+    ui = TerminalUI(console, animate=False)
+    with FakeOpenAI([reply("hello")]) as srv, create_pipe_input() as pipe, create_app_session(input=pipe, output=term):
+        cfg = load_config(cwd=project, overrides={"base_url": srv.url, "model": "fake-model"})
+        app = App(cfg, ui, cwd=project, mode="acceptEdits", enable_mcp=False)
+
+        def drive():
+            pipe.send_text("say hi" + ENTER)
+            time.sleep(1.0)
+            pipe.send_text("half-typed")
+            time.sleep(0.3)
+            before = screen.tell()
+            size["cols"] = 60        # user shrinks the window
+            console.width = 60
+            time.sleep(1.0)          # watcher notices, waits for the size to settle, redraws
+            state["redrawn"] = CLEAR_SCREEN in screen.getvalue()[before:]
+            pipe.send_text(ENTER)    # submits the restored "half-typed" text
+            time.sleep(0.8)
+            pipe.send_text("/exit" + ENTER)
+
+        state = {}
+        threading.Thread(target=drive, daemon=True).start()
+        Repl(app, ui).run()
+        app.shutdown()
+    assert state.get("redrawn") is True
+    after_clear = screen.getvalue().split(CLEAR_SCREEN)[-1]
+    assert "say hi" in after_clear and "hello" in after_clear  # the conversation was redrawn
+    assert any(m.get("content") == "half-typed" for m in app.agent.messages)  # typed text survived
