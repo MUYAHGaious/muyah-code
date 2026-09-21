@@ -35,6 +35,7 @@ from muyah_code.ui.base import UI, PermissionReply, PermissionRequest
 from muyah_code.ui.theme import calm_markdown, markdown_styles, theme
 
 MAX_DIFF_LINES = 40
+PLACEHOLDER = "grey35"      # hint text in an empty input box: faint, so it never reads as something typed
 LIVE_TAIL_LINES = 8
 HUNK_RE = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 # While the model thinks, the label changes every few seconds (so a long wait visibly moves on)
@@ -445,9 +446,9 @@ class TerminalUI(UI):
             field.append(draft[cur] if cur < len(draft) else " ", style="reverse")   # the cursor
             field.append(draft[cur + 1:])
         elif queued:
-            field.append("Press up to edit queued messages", style=t.dim)
+            field.append("Press up to edit queued messages", style=PLACEHOLDER)
         else:
-            field.append("type to queue a message · esc: interrupt · /btw: ask on the side", style=t.dim)
+            field.append("type to queue a message · esc: interrupt · /btw: ask on the side", style=PLACEHOLDER)
         if not draft:
             field.no_wrap, field.overflow = True, "ellipsis"   # the hint stays on one line; your text wraps
         rows.append(field)
@@ -828,6 +829,12 @@ class TerminalUI(UI):
 
     # ------------------------------------------------------------------ tools
 
+    _allowed_by = ""
+
+    def tool_allowed(self, how: str) -> None:
+        """The next tool ran without asking: say why under it (e.g. "Auto-approved · auto mode")."""
+        self._allowed_by = how
+
     def tool_start(self, title: str) -> None:
         tt = blocks.parse_title(title)
         if tt.label and self._tool is not None and self._tool[0].name == "Agent":
@@ -864,6 +871,7 @@ class TerminalUI(UI):
         children: list = []
         kind = tt.kind
         took = f" · {elapsed:.1f}s" if elapsed >= 1 else ""
+        allowed, self._allowed_by = self._allowed_by, ""
         if not ok:
             lines = (result.content or result.summary or "failed").strip().splitlines()
             if lines and re.fullmatch(r"\[exit code -?\d+\]", lines[-1].strip()):
@@ -874,6 +882,8 @@ class TerminalUI(UI):
                 code = result.meta.get("exit_code")
                 if code is not None:
                     children.append(Text(f"exit {code}{took}", style=t.err))
+            if allowed:
+                children.append(Text(allowed, style=t.dim))
             self._space("block")
             self._out(blocks.gutter(glyph, head, children))
             return
@@ -914,6 +924,8 @@ class TerminalUI(UI):
         else:
             if result.summary:
                 children.append(Text(result.summary + took, style=t.dim))
+        if allowed:
+            children.append(Text(allowed, style=t.dim))
         self._space("block")
         self._out(blocks.gutter(glyph, head, children))
 
@@ -1087,11 +1099,13 @@ class TerminalUI(UI):
     def _decision(self, reply: PermissionReply, req: PermissionRequest) -> None:
         t = theme()
         if reply.choice == "no":
-            line = Text("✗ You declined", style=f"bold {t.err}")
+            line = Text("✗ ", style=t.err)
+            line.append("You declined")
             if reply.feedback:
                 line.append(f" and said: {reply.feedback}", style=t.err)
         else:
-            line = Text("✔ You approved", style=f"bold {t.ok}")
+            line = Text("✓ ", style=t.ok)
+            line.append("You approved")
             line.append({"yes": " this once", "always": f" · allowed for this session: {req.suggested_rule}",
                          "project": f" · allowed in this project: {req.suggested_rule}"}.get(reply.choice, ""),
                         style=t.dim)

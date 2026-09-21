@@ -38,6 +38,9 @@ class UI:
     def compact_started(self, messages: int, yours: int, tokens: int) -> None: ...   # compaction begins
     def compact_progress(self, written: int, limit: int) -> None: ...   # summary tokens written so far
 
+    def tool_allowed(self, how: str) -> None:   # the next tool ran without asking, and why
+        pass
+
     def show_plan(self, plan: str) -> None:   # plan mode: the plan, before the user decides
         self.info(plan)
 

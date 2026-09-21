@@ -201,3 +201,28 @@ def test_transcribe_api_posts_the_wav_as_multipart():
         srv.shutdown()
     assert text == "hello there" and seen["auth"] == "Bearer key1"
     assert b"whisper-large-v3-turbo" in seen["body"] and b"RIFFdata" in seen["body"] and b'name="language"' in seen["body"]
+
+
+def test_changes_allowed_without_asking_say_why_under_the_tool(project):
+    from muyah_code.agent.loop import allowed_note
+
+    assert allowed_note("auto mode").startswith("Auto-approved · auto mode")
+    assert allowed_note("acceptEdits mode") == "Auto-approved · edit mode"
+    assert allowed_note("read-only") == ""
+
+    class NoteUI(RecUI):
+        def __init__(self):
+            super().__init__()
+            self.notes = []
+
+        def tool_allowed(self, how):
+            self.notes.append(how)
+
+    write = {"name": "Write", "arguments": {"file_path": "n.txt", "content": "n"}}
+    read = {"name": "Read", "arguments": {"file_path": "n.txt"}}
+    with FakeOpenAI([reply("", [write]), reply("", [read]), reply("ok")]) as srv:
+        ui = NoteUI()
+        app = make_app(srv, project, ui=ui, mode="auto")
+        app.run_prompt("go")
+        app.shutdown()
+    assert ui.notes == ["Auto-approved · auto mode (risky actions still ask)"]    # the write only, not the read

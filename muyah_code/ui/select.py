@@ -17,6 +17,7 @@ from typing import Any
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.application import Application
+from prompt_toolkit.application.current import get_app
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import HSplit, Layout, Window
 from prompt_toolkit.layout.controls import FormattedTextControl
@@ -42,6 +43,8 @@ def _menu(message: str, options: Sequence[tuple[Any, str]], default: Any = None)
         return top, top + MAX_VISIBLE
 
     def lines():
+        if get_app().is_done:           # answered: keep one quiet line, not the whole menu and its hint
+            return [("bold", message + "  "), ("fg:ansibrightblack", options[state["i"]][1])] if message else []
         out: list[tuple[str, str]] = [("bold", message + "\n")] if message else []
         start, end = visible_range()
         if start > 0:
@@ -86,7 +89,11 @@ def _menu(message: str, options: Sequence[tuple[Any, str]], default: Any = None)
 
     control = FormattedTextControl(lines, focusable=True, show_cursor=False)
     height = (1 if message else 0) + min(len(options), MAX_VISIBLE) + 2 + (2 if len(options) > MAX_VISIBLE else 0)
-    app = Application(layout=Layout(HSplit([Window(control, height=Dimension.exact(height))])),
+
+    def rows() -> Dimension:
+        return Dimension.exact((1 if message else 0) if get_app().is_done else height)
+
+    app = Application(layout=Layout(HSplit([Window(control, height=rows)])),
                       key_bindings=kb, full_screen=False, erase_when_done=False)
     return app.run()
 

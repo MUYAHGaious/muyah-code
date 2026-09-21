@@ -5,6 +5,13 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **Why a change ran without asking** is tucked under the tool, for example `Auto-approved · auto mode (risky actions still ask)`, `Auto-approved · edit mode` or the saved rule that allowed it.
+- **Approvals look calm:**
+  - a plain green ✓ (the heavy check mark showed as a purple emoji in Windows Terminal);
+  - the answered menu shrinks to one line (`Do you want to proceed?  Yes`), without its key hint;
+  - a blank line comes before the spinner.
+- **The empty box's hint** (`type to queue a message`) is faint, so it no longer looks like typed text.
+
 - **Calmer answers:**
   - headings and list numbers are plain white, not magenta and cyan (Rich's defaults);
   - only `code` keeps the accent, and quotes and tables are quiet.

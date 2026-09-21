@@ -66,6 +66,19 @@ def _k(n: int) -> str:
     return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
 
 
+def allowed_note(reason: str) -> str:
+    """Why a change ran without asking, as shown under the tool; nothing for reads and approvals you gave."""
+    if reason == "auto mode":
+        return "Auto-approved · auto mode (risky actions still ask)"
+    if reason == "acceptEdits mode":
+        return "Auto-approved · edit mode"
+    if reason.startswith("allowed by rule"):
+        return reason[0].upper() + reason[1:]
+    if reason == "bypassPermissions mode":
+        return "Not checked · bypass mode"
+    return ""
+
+
 def compact_summary(last: dict, before: int, after: int) -> str:
     """One clean line: what was compacted and what it saved."""
     saved = f"{_k(before)} → {_k(after)} tokens" + (f" (−{100 - 100 * after // max(1, before)}%)" if after < before else "")
@@ -948,6 +961,10 @@ class Agent:
                     path = self.ctx.config.append_rule("allow", rule, scope="local")
                     self.ui.info(f"Saved rule {rule} to {path}")
 
+        if decision.action == "allow" and not tool.is_read_only(args):
+            how = allowed_note(decision.reason)
+            if how:
+                self.ui.tool_allowed(how)
         rewind = self.ctx.service("rewind")
         if rewind is not None and not tool.is_read_only(args):
             rewind.before_change()   # the turn's snapshot must be done before anything changes
