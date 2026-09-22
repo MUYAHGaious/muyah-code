@@ -43,12 +43,14 @@ irm https://raw.githubusercontent.com/MUYAHGaious/muyah-code/main/install.ps1 | 
 curl -fsSL https://raw.githubusercontent.com/MUYAHGaious/muyah-code/main/install.sh | sh
 ```
 
-Then, in any project folder:
+Then, in any project folder, type `muyah`. The first time, it asks which AI to use:
 
-```bash
-muyah login     # pick a provider, paste your key (or use a local model)
-muyah           # start
-```
+- **a model already running on your computer** (Ollama, LM Studio): free and private, and it needs no key;
+- **a free key in about a minute** (Groq, Google Gemini or OpenRouter): the key page opens for you;
+- **"Try it now"**: a free public model that needs no key at all. It's slow, and good for a first look;
+- **your own key** for Claude, OpenAI, DeepSeek and more.
+
+Change it any time with `/provider` (or `muyah login`).
 
 The installer works out where to install, and puts `muyah` on your PATH so it works from any folder. You need
 Python 3.10 or newer. If you prefer to install it yourself, run `pipx install git+https://github.com/MUYAHGaious/muyah-code`

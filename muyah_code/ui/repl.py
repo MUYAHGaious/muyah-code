@@ -364,8 +364,10 @@ class Repl:
                                               f"({self.mic_key.upper()} to stop)"))
         elif voice_state == "transcribing":
             status.append(("fg:ansibrightblack", " · transcribing…"))
-        else:
+        elif not self._on_trial():            # on the trial, the /provider hint needs the room
             status.append(("fg:ansibrightblack", f" · {self.mic_key.upper()}: speak"))
+        if self._on_trial():
+            status.append((f"fg:{theme().warn}", " · trial model: /provider"))
         viz = getattr(self.app, "viz", None)
         if viz is not None and viz.running:
             status.append((f"fg:{t.accent}", " · ● live view on (/viz reopens it)"))
@@ -415,7 +417,16 @@ class Repl:
             for name, status in a.mcp.status.items():
                 if status.startswith("failed"):
                     self.ui.warn(f"MCP server {name}: {status}")
+        if self._on_trial():
+            from muyah_code.onboarding import TRIAL_NOTE
+
+            self.console.print(Text(TRIAL_NOTE, style=t.warn))
         self.console.print()
+
+    def _on_trial(self) -> bool:
+        from muyah_code.onboarding import is_trial
+
+        return is_trial(self.app.cfg)
 
     def add_memory(self, note: str) -> str:
         path = self.app.root / "MUYAH.md"
@@ -610,6 +621,9 @@ class Repl:
                 self.ui.turn_footer(result.status, result.duration, result.tool_calls, len(changes),
                                     self._ctx_pct(), warnings=weakened, cost=self.app.ledger.cost - cost_before,
                                     tokens=self.app.ledger.tokens_out - out_before)
+                if self._on_trial():
+                    self.console.print(Text("  Free trial model: slow and public. /provider switches to your own "
+                                            "key or a local model (faster, private).", style=theme().dim))
                 self.console.print()
             except KeyboardInterrupt:  # an Esc that arrived just as the turn ended
                 pass

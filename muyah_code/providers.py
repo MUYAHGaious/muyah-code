@@ -31,7 +31,10 @@ class Provider:
     billing_url: str = ""           # where to add credits when the account has no balance
     pin_prefer: bool = False        # True: `prefer` order wins over version (use only for a curated, current list)
     extra: dict = field(default_factory=dict)  # extra profile settings
+    keyless: bool = False           # a hosted service that needs no key (the free trial)
 
+
+TRIAL = "trial"
 
 PROVIDERS: list[Provider] = [
     Provider("anthropic", "Anthropic (Claude)", "https://api.anthropic.com", "claude-opus-5",
@@ -85,6 +88,11 @@ PROVIDERS: list[Provider] = [
     Provider("lmstudio", "LM Studio (local)", "http://localhost:1234/v1", "", local=True, prefer=("coder",)),
     Provider("llamacpp", "llama.cpp server (local)", "http://localhost:8080/v1", "", local=True),
     Provider("vllm", "vLLM / colibri / Soup (local :8000)", "http://localhost:8000/v1", "", local=True),
+    # No key, no sign-up: to see MUYAH-CODE work right away. Slow (one request every 15 s) and public (prompts go
+    # to Pollinations, a free open-source service), so it is never chosen for you, only offered.
+    Provider(TRIAL, "Free trial, no key (Pollinations: slow, public)", "https://text.pollinations.ai/openai",
+             "openai-fast", key_url="", keyless=True, context_window=32768,
+             extra={"min_request_interval": 16, "request_timeout": 180}),
 ]
 BY_ID = {p.id: p for p in PROVIDERS}
 
@@ -226,7 +234,9 @@ def build_provider_profile(provider: Provider, model: str, context_window: int |
     prof: dict = {"base_url": provider.base_url, "model": model, "provider": provider.id}
     if provider.api != "openai":
         prof["api"] = provider.api
-    if not provider.local:
+    if provider.keyless:
+        prof["api_key"] = "none"  # nothing to resolve: the service needs no key
+    elif not provider.local:
         prof["credential"] = provider.id
         prof["api_key"] = "none"  # the real key is resolved from credentials at load time
     window = context_window or provider.context_window

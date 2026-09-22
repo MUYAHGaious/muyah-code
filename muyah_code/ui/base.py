@@ -44,6 +44,15 @@ class UI:
     def show_plan(self, plan: str) -> None:   # plan mode: the plan, before the user decides
         self.info(plan)
 
+    def ask_questions(self, questions: list[dict]) -> list:
+        """Several questions, each {question, header, options: [{label, description}], multiSelect}. One answer
+        each: a label, a list of labels (multiSelect), what the user typed, or "" when skipped."""
+        answers = []
+        for q in questions:
+            labels = [o["label"] for o in q.get("options", [])]
+            answers.append(self.ask_user(q["question"], labels))
+        return answers
+
     def approve_plan(self, plan: str, options: list[str]) -> str:
         """Show the plan and ask how to go on; returns the chosen option, or what the user typed instead."""
         self.show_plan(plan)

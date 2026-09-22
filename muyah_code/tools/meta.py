@@ -83,28 +83,69 @@ class AskUserTool(Tool):
     name = "AskUser"
     kind = META
     description = (
-        "Ask the user a question when you are blocked on a decision only they can make (ambiguous requirements, "
-        "choosing between valid approaches). Provide 2-4 concrete options when possible. Do not use it for "
-        "permission to proceed or for things you can find out yourself."
+        "Ask the user 1-4 questions when you are blocked on decisions only they can make (unclear requirements, "
+        "choosing between valid approaches). Each question has a short header (a chip, max 12 characters), 2-4 "
+        "options with a label (1-5 words) and a one-line description of what it means or costs; put your "
+        "recommended option first and add \" (Recommended)\" to its label. The user can always type another "
+        "answer. multiSelect: true when several options can apply. Do not ask for permission to proceed or for "
+        "things you can find out yourself."
     )
     parameters = {
         "type": "object",
         "properties": {
-            "question": {"type": "string", "description": "The question"},
-            "options": {"type": "array", "items": {"type": "string"}, "description": "Suggested answers"},
+            "questions": {"type": "array", "minItems": 1, "maxItems": 4, "items": {
+                "type": "object",
+                "properties": {
+                    "question": {"type": "string", "description": "The full question, ending with ?"},
+                    "header": {"type": "string", "description": "Very short label, e.g. \"Auth method\""},
+                    "options": {"type": "array", "minItems": 2, "maxItems": 4, "items": {
+                        "type": "object",
+                        "properties": {"label": {"type": "string"}, "description": {"type": "string"}},
+                        "required": ["label"]}},
+                    "multiSelect": {"type": "boolean"},
+                },
+                "required": ["question", "options"]}},
+            "question": {"type": "string", "description": "Short form for one question (with `options` as strings)"},
+            "options": {"type": "array", "items": {"type": "string"}},
         },
-        "required": ["question"],
     }
 
+    def title(self, args):
+        qs = _questions(args)
+        return f"AskUser({qs[0]['question'][:60]})" if qs else "AskUser"
+
     def run(self, args, ctx):
+        questions = _questions(args)
+        if not questions:
+            raise ToolError("Give at least one question: questions=[{question, header, options:[{label, description}]}]")
         ui = ctx.service("ui")
         if ctx.headless or ui is None:
             raise ToolError("No user is available (headless run). Make the most reasonable assumption, state it "
                             "explicitly in your final answer, and continue.")
-        answer = ui.ask_user(args["question"], [str(o) for o in (args.get("options") or [])])
-        if not answer:
-            return ToolResult("The user did not answer. Proceed with your best judgement and say what you assumed.")
-        return ToolResult(f"User answered: {answer}", summary=answer[:80])
+        answers = ui.ask_questions(questions)
+        lines = []
+        for q, a in zip(questions, answers, strict=False):
+            text = ", ".join(a) if isinstance(a, list) else (a or "")
+            lines.append(f"- {q['question']} → {text or '(skipped: use your best judgement and say what you assumed)'}")
+        summary = "; ".join((", ".join(a) if isinstance(a, list) else a) for a in answers if a)
+        return ToolResult("The user answered:\n" + "\n".join(lines), summary=summary[:80] or "no answer")
+
+
+def _questions(args: dict) -> list[dict]:
+    """Both forms: questions=[...] (with header, described options, multiSelect), or question + options."""
+    out = []
+    for q in args.get("questions") or []:
+        if isinstance(q, dict) and q.get("question"):
+            opts = [o if isinstance(o, dict) else {"label": str(o)} for o in (q.get("options") or [])]
+            out.append({"question": str(q["question"]), "header": str(q.get("header", "") or "")[:24],
+                        "options": [{"label": str(o.get("label", "")), "description": str(o.get("description", "") or "")}
+                                    for o in opts if o.get("label")],
+                        "multiSelect": bool(q.get("multiSelect"))})
+    if not out and args.get("question"):
+        out.append({"question": str(args["question"]), "header": "",
+                    "options": [{"label": str(o), "description": ""} for o in (args.get("options") or [])],
+                    "multiSelect": False})
+    return out
 
 
 class SkillTool(Tool):

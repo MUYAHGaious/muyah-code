@@ -1127,9 +1127,48 @@ class TerminalUI(UI):
         self._last = "block"
 
     def ask_user(self, question: str, options: list[str]) -> str:
-        self._attention(f"Question: {question[:120]}")
+        answers = self.ask_questions([{"question": question, "options": [{"label": o} for o in options]}])
+        answer = answers[0] if answers else ""
+        return ", ".join(answer) if isinstance(answer, list) else answer
+
+    def ask_questions(self, questions: list[dict]) -> list:
+        """Like Claude Code: a label chip, the question, numbered options with a line of explanation each, and
+        "Type something else"; several questions go one after the other, then a short summary of the answers."""
+        self._attention(f"Question: {questions[0]['question'][:120]}" if questions else "Question")
+        answers: list = []
         with self._keyboard_to_prompt():
-            return self._ask_user(question, options)
+            self._stop_live()
+            self._space("block")
+            question_fn = getattr(self.prompter, "question", None)
+            for i, q in enumerate(questions):
+                opts = [(str(o.get("label", "")), str(o.get("description", "") or "")) for o in q.get("options", [])]
+                step = f"{i + 1} of {len(questions)}" if len(questions) > 1 else ""
+                if question_fn is None:                     # a simple prompter (tests): plain options
+                    answers.append(self._ask_user(q["question"], [label for label, _ in opts]))
+                    continue
+                if not opts:
+                    self.console.print(Text(q["question"], style="bold"))
+                    answers.append(self.prompter.ask("Your answer: ").strip())
+                    continue
+                picked = question_fn(q["question"], opts, header=str(q.get("header", "") or ""),
+                                     multi=bool(q.get("multiSelect")), step=step)
+                if picked == "__other__":
+                    picked = self.prompter.ask("Your answer: ").strip()
+                answers.append(picked or "")
+            self._print_answers(questions, answers)
+        return answers
+
+    def _print_answers(self, questions: list[dict], answers: list) -> None:
+        t = theme()
+        for q, a in zip(questions, answers, strict=False):
+            line = Text()                                  # built by appending: only the bullet is colored
+            line.append("● ", style=t.accent)
+            line.append((q.get("header") or q["question"])[:60], style="bold")
+            line.append("  →  ", style=t.dim)
+            text = ", ".join(a) if isinstance(a, list) else a
+            line.append(text or "skipped", style="" if text else t.dim)
+            self.console.print(line)
+        self._last = "block"
 
     def approve_plan(self, plan: str, options: list[str]) -> str:
         self._attention("The plan is ready")

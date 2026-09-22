@@ -139,7 +139,9 @@ def setup_provider(cfg: Config, console: Console, ui: Prompts, choice: str | Non
     console.print(f"[bold]{escape(p.name)}[/]")
 
     source = "pasted"
-    if p.local:
+    if p.keyless:
+        key, models, source = "none", [p.default_model], "keyless"
+    elif p.local:
         key = "none"
         ep = probe(p.base_url, timeout=3)
         if not ep.ok:

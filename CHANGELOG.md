@@ -5,6 +5,20 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **First run asks which AI to use,** so nobody is stuck before they can type. The choices are:
+  - a model already running on this computer (found automatically; free, private, no key);
+  - a free key in about a minute (Groq, Google Gemini, OpenRouter; the key page opens in the browser);
+  - **"Try it now"**, which needs no key: Pollinations' free public model, labelled slow and public;
+  - your own key for any of the 20 providers.
+- **While the free trial is in use, `/provider` is always in view:** on the start screen, in the status line, and after each answer.
+- **Rate-limited services are paced:** the client waits out a service's minimum gap between requests (`min_request_interval`) instead of failing.
+- **Questions look like Claude Code's:**
+  - a label chip, the question, and numbered options, each with a line of explanation, the recommended one first;
+  - "Type something else…" as the last option, and questions that allow several answers;
+  - up to four questions in a row ("1 of 2"), then a short summary of the answers.
+
+  The model sends `questions: [{question, header, options: [{label, description}], multiSelect}]`; the old `question` + `options` form still works.
+
 - **Read understands documents**, in every mode, plan mode included. Before this they were refused as "binary", so a `.docx` spec could not be read at all.
   - Formats:
     - PDF, 20 pages at a time with `pages="1-5"`, like Claude Code;

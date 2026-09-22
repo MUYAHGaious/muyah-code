@@ -115,6 +115,15 @@ def _split_rules(values: list[str]) -> list[str]:
     return out
 
 
+def _overrides(args) -> dict:
+    return {"model": args.model, "base_url": args.base_url, "api_key": args.api_key, "profile": args.profile,
+            "context_window": args.context_window, "max_steps": args.max_steps, "tool_mode": args.tool_mode}
+
+
+def _explicit_model(args) -> bool:
+    return any((args.model, args.base_url, args.api_key, args.profile))
+
+
 def _main(argv: list[str]) -> int:
     args = _parser().parse_args(argv)
     from muyah_code.config import ConfigError, load_config
@@ -133,10 +142,8 @@ def _main(argv: list[str]) -> int:
             print(f"error: {e}", file=sys.stderr)
             return 2
         worktree, cwd = (path, args.worktree, created), path
-    overrides = {"model": args.model, "base_url": args.base_url, "api_key": args.api_key, "profile": args.profile,
-                 "context_window": args.context_window, "max_steps": args.max_steps, "tool_mode": args.tool_mode}
     try:
-        cfg = load_config(cwd=cwd, settings_file=args.settings, overrides=overrides)
+        cfg = load_config(cwd=cwd, settings_file=args.settings, overrides=_overrides(args))
         if args.max_cost is not None:
             cfg.set("budget.session_usd", args.max_cost)
     except ConfigError as e:
@@ -195,7 +202,13 @@ def _build_app(cfg, cwd, args, ui, headless: bool):
 
 
 def _headless(cfg, cwd, args, prompt: str) -> int:
+    from muyah_code.onboarding import needs_setup
     from muyah_code.ui.headless import HeadlessUI
+
+    if needs_setup(cfg, _explicit_model(args)):
+        print("No model is set up yet. Run `muyah login` once (a local model, a free key, or the free trial), "
+              "or pass --base-url and --model.", file=sys.stderr)
+        return 2
 
     if not prompt:
         print("error: -p needs a prompt (argument or stdin)", file=sys.stderr)
@@ -246,6 +259,18 @@ def _interactive(cfg, cwd, args, prompt: str | None) -> int:
     if not ensure_trusted(cwd, cfg.home, console, Prompter()):
         console.print("[dim]OK, not opening this folder.[/]")
         return 0
+    from muyah_code.onboarding import first_run, needs_setup
+
+    if needs_setup(cfg, _explicit_model(args)):
+        # nothing set up yet: ask once which AI to use (a local model, a free key, the free trial, your key)
+        if first_run(cfg, console, Prompter()) is None:
+            console.print("[dim]No model set up yet. Run [bold]muyah login[/] (or /provider inside a session) when "
+                          "you are ready.[/]")
+            return 0
+        from muyah_code.config import load_config
+
+        cfg = load_config(cwd=cwd, settings_file=args.settings, overrides=_overrides(args))
+        console.print()
     if args.resume == PICK:  # `muyah --resume` without an id: choose from a list
         from muyah_code.session import sessions_dir
         from muyah_code.ui.history import pick_session

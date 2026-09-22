@@ -244,9 +244,13 @@ class LLMClient:
         stream: bool = True,
         extra_headers: dict | None = None,
         max_retries: int = 3,
+        min_request_interval: float = 0.0,
     ):
         self.base_url = base_url
         self.model = model
+        # services that allow one request every N seconds (the free trial): wait out the gap instead of failing
+        self.min_request_interval = float(min_request_interval or 0)
+        self._last_request_at = 0.0
         self.api_key = api_key or "none"
         self.temperature = temperature
         self.max_tokens = max_tokens
@@ -279,7 +283,18 @@ class LLMClient:
             timeout=float(cfg.get("request_timeout", 300)),
             stream=bool(cfg.get("stream", True)),
             extra_headers=cfg.get("extra_headers") or {},
+            min_request_interval=float(cfg.get("min_request_interval", 0) or 0),
         )
+
+    def _pace(self) -> None:
+        if self.min_request_interval <= 0:
+            return
+        wait = self._last_request_at + self.min_request_interval - time.monotonic()
+        if wait > 0:
+            if getattr(self, "on_status", None) is not None:
+                self.on_status("pacing")
+            time.sleep(wait)
+        self._last_request_at = time.monotonic()
 
     # ------------------------------------------------------------------ discovery
 
@@ -339,6 +354,7 @@ class LLMClient:
         while True:
             attempt += 1
             try:
+                self._pace()
                 if self.stream:
                     result = self._chat_stream(kwargs, on_text, on_reasoning)
                 else:
@@ -374,7 +390,7 @@ class LLMClient:
                 if _retryable(e):
                     if attempt > self.max_retries:
                         raise LLMError(self._describe(e), kind=error_kind(e)) from e
-                    time.sleep(min(2 ** attempt, 20))
+                    time.sleep(max(min(2 ** attempt, 20), self.min_request_interval))
                     continue
                 raise LLMError(self._describe(e), kind=error_kind(e)) from e
 
