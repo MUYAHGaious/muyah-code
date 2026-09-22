@@ -5,6 +5,10 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **Resuming a session puts you back in its mode** (manual, edit, ask, plan or auto), with its plan file in plan mode and the approved plan while building.
+  - `--mode` at resume still wins.
+  - Bypass mode (no checks) is never restored on its own: you get manual mode and a note to ask for bypass again.
+
 - **Fix: harmless commands were handed over as "deletes".**
   - A test script calling `/api/admin/remove-item`, and a seed script with SQL `DELETE FROM`, were refused as file deletes. The detector searched for words anywhere in the command, quoted text included.
   - Like Claude Code's auto mode, it now judges what actually runs: the program in each part of the command, split where the shell splits it (never inside quotes), and for `python -c` the Python itself, parsed, so only real delete calls count (`os.remove`, `shutil.rmtree`, `.unlink()`, a subprocess running `rm`).

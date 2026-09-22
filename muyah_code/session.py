@@ -96,6 +96,8 @@ class Session:
                         display = list(messages)
                 elif t == "title":
                     meta["title"] = ev.get("title")
+                elif t == "mode":                   # the last mode wins: resuming puts you back in it
+                    meta["mode"] = {k: ev.get(k) for k in ("mode", "plan_file", "active_plan")}
                 elif t in ("checkpoint", "epoch"):
                     meta.setdefault("rewind", []).append(ev)
         meta["display"] = display

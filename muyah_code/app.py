@@ -187,6 +187,7 @@ class App:
                 resume = infos[0].id if infos else None
             if resume:
                 self.session, history, resume_meta = Session.resume(sdir, resume)
+                self._restore_mode(resume_meta.get("mode"), explicit=mode is not None)
             else:
                 self.session = Session(sdir)
         else:
@@ -532,6 +533,7 @@ class App:
         if self.permissions.mode == "plan":
             if self.permissions.plan_file is None:
                 self.permissions.plan_file = new_plan_path(self.root, prompt)
+                self._save_mode()                 # resuming keeps writing to this same plan file
             return planning_note(self.permissions.plan_file, self.root)
         if self.active_plan is not None and self.active_plan.exists():
             return building_note(self.active_plan, self.root)
@@ -693,7 +695,41 @@ class App:
         if m == "plan" and before != "plan":
             self.permissions.plan_file = None     # a new plan gets its own file (named from the next request)
         self.agent.invalidate_system_prompt()
+        self._save_mode()
         return m
+
+    def _save_mode(self) -> None:
+        """Written to the session, so resuming it puts you back in this mode (with its plan)."""
+        if self.session is None:
+            return
+        plan, active = self.permissions.plan_file, self.active_plan
+        self.session.log_event("mode", mode=self.permissions.mode, plan_file=str(plan) if plan else None,
+                               active_plan=str(active) if active else None)
+
+    notice: str = ""                       # said once when the session starts (e.g. a mode not restored)
+
+    def _restore_mode(self, saved: dict | None, explicit: bool) -> None:
+        """Resume in the mode the session was in, unless --mode was given. Bypass (no checks at all) is never
+        restored by itself: it has to be asked for again, each time."""
+        if not saved or not saved.get("mode") or explicit:
+            return
+        mode = saved["mode"]
+        if mode == "bypassPermissions":
+            self.notice = ("This session was in bypass mode (no permission checks). That is not restored on its "
+                           "own: resumed in manual mode. Start with --mode bypassPermissions to use it again.")
+            return
+        try:
+            self.permissions.set_mode(mode)
+        except ValueError:
+            return
+        for key, attr in (("plan_file", None), ("active_plan", "active_plan")):
+            value = saved.get(key)
+            if not value:
+                continue
+            if attr is None:
+                self.permissions.plan_file = Path(value)
+            else:
+                self.active_plan = Path(value)
 
     def expand_mentions(self, prompt: str) -> str:
         """Inline @file mentions (and list @dir/ mentions) so the model starts with the content."""

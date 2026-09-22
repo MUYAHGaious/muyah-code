@@ -440,6 +440,8 @@ class Repl:
             from muyah_code.onboarding import TRIAL_NOTE
 
             self.console.print(Text(TRIAL_NOTE, style=t.warn))
+        if getattr(a, "notice", ""):
+            self.console.print(Text(a.notice, style=t.warn))
         self.console.print()
 
     def _on_trial(self) -> bool:

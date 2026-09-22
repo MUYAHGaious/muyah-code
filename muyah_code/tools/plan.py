@@ -61,7 +61,7 @@ class ExitPlanModeTool(Tool):
         mode = CHOICES.get(answer)
         if mode:
             self.app.active_plan = path
-            self.set_mode(mode)
+            self.set_mode(mode)                   # saved to the session with the approved plan
             where = f" in {ctx.rel(path)}" if path is not None else ""
             return ToolResult(f"The user approved the plan{where}. The mode is now {NAMES[mode]}. Build it now, step "
                               "by step: start with a TodoWrite list of its steps, and keep to the plan.",

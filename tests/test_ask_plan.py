@@ -278,3 +278,39 @@ def test_a_new_plan_gets_a_new_file(project):
     first.write_text("x", encoding="utf-8")
     second = new_plan_path(project, "add discount codes")
     assert second != first and second.name.endswith("-2.md")
+
+
+def test_resuming_a_session_puts_you_back_in_its_mode(project):
+    from muyah_code.app import App
+    from muyah_code.config import load_config
+
+    def app(srv, **kw):
+        cfg = load_config(cwd=project, overrides={"base_url": srv.url, "model": "fake-model", "api_key": "k"})
+        cfg.set("learning.reflect", False)
+        return App(cfg, RecUI(), cwd=project, enable_mcp=False, **kw)
+
+    with FakeOpenAI([reply("ok"), reply("ok")]) as srv:
+        first = app(srv, mode=None)
+        first.run_prompt("hello")
+        first.set_mode("auto")                                   # Shift+Tab to auto, then quit
+        sid = first.session_id
+        first.shutdown()
+
+        resumed = app(srv, mode=None, resume=sid)
+        assert resumed.permissions.mode == "auto"
+        resumed.set_mode("plan")
+        resumed.run_prompt("plan the discounts")                 # names the plan file
+        plan_file = resumed.permissions.plan_file
+        resumed.shutdown()
+
+        again = app(srv, mode=None, resume=sid)
+        assert again.permissions.mode == "plan" and again.permissions.plan_file == plan_file
+        again.shutdown()
+        assert app(srv, mode="acceptEdits", resume=sid).permissions.mode == "acceptEdits"   # --mode wins
+
+        risky = app(srv, mode="bypassPermissions", resume=sid)
+        risky.set_mode("bypassPermissions")
+        risky.shutdown()
+        back = app(srv, mode=None, resume=sid)
+        assert back.permissions.mode == "default" and "bypass" in back.notice             # never silently
+        back.shutdown()
