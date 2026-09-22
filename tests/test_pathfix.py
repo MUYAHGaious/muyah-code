@@ -67,3 +67,19 @@ def test_installers_exist_and_end_with_the_path_step():
     sh = (root / "install.sh").read_text(encoding="utf-8")
     assert "muyah_code path" in ps1 and "muyah_code path" in sh
     assert "uv tool install" in ps1 and "pipx install" in ps1 and "uv tool install" in sh
+
+
+def test_windows_copies_the_launcher_where_old_windows_already_look(tmp_path, monkeypatch):
+    monkeypatch.setattr(pathfix.os, "name", "nt")
+    folder = tmp_path / "Scripts"
+    folder.mkdir()
+    (folder / pathfix.LAUNCHER).write_bytes(b"launcher v2")
+    old_bin, not_on_path = tmp_path / "local-bin", tmp_path / "elsewhere"
+    old_bin.mkdir()
+    not_on_path.mkdir()
+    (old_bin / pathfix.LAUNCHER).write_bytes(b"launcher v1")          # from an earlier version
+    path_value = os.pathsep.join([str(old_bin)])
+    got = pathfix.install_shim(folder, path_value, candidates=(not_on_path, old_bin))
+    assert got == old_bin and (old_bin / pathfix.LAUNCHER).read_bytes() == b"launcher v2"
+    assert not (not_on_path / pathfix.LAUNCHER).exists()               # only where the window searches
+    assert pathfix.install_shim(folder, "", candidates=(old_bin,)) is None

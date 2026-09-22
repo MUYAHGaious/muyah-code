@@ -10,6 +10,12 @@ to your user PATH:
     when you have them).
 
 Nothing is changed when the folder is already on PATH; running it twice adds nothing twice.
+
+A terminal keeps the PATH it started with, and terminals inside an app (VS Code, Cursor, Antigravity, Windows
+Terminal) copy the app's, which can be days old. So on Windows the launcher is also copied into a folder
+those windows already search: ~/.local/bin (where uv and pipx put commands) or, failing that, the per-user
+WindowsApps folder. A pip launcher is self-contained (it carries the path to its Python), so the copy works
+from anywhere; `muyah path` refreshes it after an upgrade.
 """
 
 from __future__ import annotations
@@ -57,6 +63,28 @@ def on_path(folder: Path, path_value: str | None = None) -> bool:
 
 def command_available() -> bool:
     return shutil.which("muyah") is not None
+
+
+SHIM_DIRS = (Path.home() / ".local" / "bin",
+             Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))) / "Microsoft" / "WindowsApps")
+
+
+def install_shim(folder: Path, path_value: str | None = None, candidates=SHIM_DIRS) -> Path | None:
+    """Windows: copy the launcher into a folder that windows opened long ago already search. Returns where."""
+    source = folder / LAUNCHER
+    if os.name != "nt" or not source.exists():
+        return None
+    for d in candidates:
+        if d == folder or not d.is_dir() or not on_path(d, path_value):
+            continue
+        target = d / LAUNCHER
+        try:
+            if not target.exists() or target.read_bytes() != source.read_bytes():
+                shutil.copy2(source, target)
+        except OSError:
+            continue                 # in use or not writable: try the next folder
+        return d
+    return None
 
 
 def add_to_path(folder: Path, home: Path | None = None) -> str:
@@ -130,6 +158,11 @@ def fix(console) -> int:
         console.print(f"[red]Could not change PATH:[/] {e}. Add this folder to PATH yourself: {folder}")
         return 1
     console.print(f"[green]✓[/] {message}")
+    shim = install_shim(folder)
+    if shim is not None:
+        console.print(f"[green]✓[/] Also put `muyah` in {shim}, which this window already searches: "
+                      "type [bold]muyah[/] in any folder, even in terminals opened before today.")
+        return 0
     if os.name == "nt":
         # a terminal keeps the PATH it started with, and terminals inside an app (VS Code, Cursor, Windows
         # Terminal) copy the app's: give the one line that reloads it in this window, with no restart
