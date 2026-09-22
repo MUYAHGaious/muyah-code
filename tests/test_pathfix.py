@@ -42,7 +42,9 @@ def test_fix_adds_the_launcher_folder_and_says_to_open_a_new_terminal(tmp_path, 
     monkeypatch.setenv("PATH", str(tmp_path / "elsewhere"))
     out = io.StringIO()
     assert pathfix.fix(Console(file=out, width=200)) == 0
-    assert added == [folder] and "new terminal" in out.getvalue()
+    text = out.getvalue()
+    assert added == [folder] and "in this window now" in text           # the one line that fixes this window
+    assert ("$env:Path" in text) if os.name == "nt" else ("export PATH" in text)
     assert "python -m muyah_code path" in pathfix.startup_hint()
 
 
