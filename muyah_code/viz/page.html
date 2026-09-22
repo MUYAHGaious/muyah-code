@@ -665,6 +665,9 @@ function apply(ev, fx) {
     case "limits":   // the provider's rate limits after a reply (only providers that report them)
       S.limits = { t: ev.t || 0, model: ev.model || "", rows: Array.isArray(ev.rows) ? ev.rows : [] };
       break;
+    case "compact_start":
+      S.caption = `Compacting the conversation (${ev.messages || 0} messages)…`;
+      break;
     case "compact":
       S.compactions.push({ t: ev.t || 0, description: ev.description || "", emergency: !!ev.emergency });
       log(ev, "k-sub", `${ev.emergency ? "emergency " : ""}compaction · ${ev.description || ""}`);
@@ -2013,6 +2016,7 @@ function seekTo(target) {
 // ------------------------------------------------------------------ Record: only while you ask, as a video
 let recorder = null, recChunks = [], recStart = 0, recTimer = null, recEvents = null;
 let recPausedAt = 0, recPausedFor = 0;          // a paused stretch is not part of the recording or its clock
+let recAutoPaused = false;                      // paused by compaction (nothing to watch), resumed after it
 function recElapsed() {
   const now = recPausedAt || performance.now();
   return (now - recStart - recPausedFor) / 1000;
@@ -2029,14 +2033,15 @@ function recUi(on) {
   if (!on) { b.textContent = "● Record"; recPausedAt = 0; recPausedFor = 0; return; }
   const draw = () => {
     b.textContent = "■ Stop " + fmtLeft(recElapsed());
-    p.textContent = recPausedAt ? "● Resume" : "❚❚ Pause";
+    p.textContent = recPausedAt ? (recAutoPaused ? "● Resume (paused while compacting)" : "● Resume") : "❚❚ Pause";
     p.classList.toggle("on", !!recPausedAt);
   };
   recTimer = setInterval(draw, 500);
   draw();
 }
-function togglePause() {
+function togglePause(auto) {
   if (!recorder) return;
+  if (!auto) recAutoPaused = false;             // you took over: compaction ending will not resume it
   if (recPausedAt) {                                // resume
     recPausedFor += performance.now() - recPausedAt; recPausedAt = 0;
     if (recorder !== "events" && recorder.state === "paused") recorder.resume();
@@ -2046,7 +2051,14 @@ function togglePause() {
   }
   recUi(true);
 }
-$("recpause").addEventListener("click", togglePause);
+$("recpause").addEventListener("click", () => togglePause(false));
+// While the conversation is compacted nothing happens on the board: the recording pauses by itself and
+// resumes when compaction is done (unless you paused it yourself).
+function autoPauseFor(ev) {
+  if (!recorder) return;
+  if (ev.type === "compact_start" && !recPausedAt) { togglePause(true); recAutoPaused = true; }
+  else if (ev.type === "compact" && recAutoPaused && recPausedAt) { togglePause(true); recAutoPaused = false; }
+}
 async function startRecording() {
   recStart = performance.now(); recPausedAt = 0; recPausedFor = 0;
   recEvents = { from: S.log.length ? S.log[S.log.length - 1].t : 0, events: [] };   // the span, as a replayable log too
@@ -2136,6 +2148,7 @@ function connect() {
       return;
     }
     liveBase = { t: ev.t || 0, at: performance.now() };
+    if (!catching) autoPauseFor(ev);
     if (recEvents && !catching && !recPausedAt) recEvents.events.push(ev);
     if (ev.type === "session_end" && !catching) { sessionEnded(es); return; }
     apply(ev, catching ? null : fx);

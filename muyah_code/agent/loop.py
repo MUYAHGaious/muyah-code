@@ -418,6 +418,7 @@ class Agent:
         convo = self.messages[1:]
         yours = sum(1 for m in convo if is_real_user_message(m))
         self.ui.compact_started(len(convo), yours, before)
+        self._emit("compact_start", messages=len(convo), tokens=before, emergency=emergency)
         new, detail = self.context.compact(self.messages, self.summarizer or self.llm, focus=focus,
                                            todos=self.ctx.todos, tools=tools, emergency=emergency,
                                            on_progress=self.ui.compact_progress)

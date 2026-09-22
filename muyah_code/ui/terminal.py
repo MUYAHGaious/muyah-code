@@ -787,6 +787,13 @@ class TerminalUI(UI):
     _compact_done = None
 
     def compact_finished(self, summary: str) -> None:
+        # The bar measures the summary against the most it may use, and summaries end well before that: show
+        # it reach the end (at 60% it used to jump straight to "Compacted", as if it had been cut short).
+        done = self._compact_done
+        if self._live is not None and done and done[0] > 0:
+            self._compact_done = (done[1], done[1])
+            self._live.refresh()
+            time.sleep(0.35)
         self._compacting = None
         self._stop_live()
         t = theme()
