@@ -114,16 +114,22 @@ def kill_tree(proc: subprocess.Popen) -> None:
         pass
 
 
+def _text(data: bytes) -> str:
+    """Command output as text, without NUL bytes: providers reject a prompt that contains one, and some
+    Windows tools (and a file left zero-padded by a full disk) emit them."""
+    return data.decode("utf-8", errors="replace").replace("\x00", "")
+
+
 def run_command(command: str, cwd: Path, timeout: float, shell: ShellSpec) -> tuple[int | None, str, bool]:
     """Run to completion. Returns (exit_code, output, timed_out). Ctrl+C kills the process tree."""
     proc = _popen(shell.argv(command), cwd, subprocess.PIPE)
     try:
         out, _ = proc.communicate(timeout=timeout)
-        return proc.returncode, out.decode("utf-8", errors="replace"), False
+        return proc.returncode, _text(out), False
     except subprocess.TimeoutExpired:
         kill_tree(proc)
         out, _ = proc.communicate()
-        return None, (out or b"").decode("utf-8", errors="replace"), True
+        return None, _text(out or b""), True
     except KeyboardInterrupt:
         kill_tree(proc)
         raise
@@ -233,7 +239,7 @@ class JobManager:
             assert proc.stdout is not None
             for raw in iter(proc.stdout.readline, b""):
                 with job.lock:
-                    job.chunks.append(raw.decode("utf-8", errors="replace"))
+                    job.chunks.append(_text(raw))
             proc.stdout.close()
 
         threading.Thread(target=pump, daemon=True).start()

@@ -216,6 +216,24 @@ class _ThinkFilter:
             cb(text)
 
 
+CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def printable(value):
+    """Strip NUL and other control bytes from anything sent to a model (tabs and newlines stay).
+
+    A single zero byte anywhere - a binary file that slipped past the text check, command output, a file a
+    full disk left zero-padded - makes providers reject the whole request ("NUL bytes are not supported in
+    prompts"), and it would keep failing until that message was compacted away."""
+    if isinstance(value, str):
+        return CONTROL.sub("", value) if CONTROL.search(value) else value
+    if isinstance(value, dict):
+        return {k: printable(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [printable(v) for v in value]
+    return value
+
+
 def _retryable(e: BaseException) -> bool:
     return isinstance(e, httpx.HTTPError) or (isinstance(e, HTTPStatusFailure) and
                                              (e.status_code == 429 or e.status_code >= 500))
@@ -568,7 +586,7 @@ class LLMClient:
         if out.get("tool_calls") and message.get(ENDPOINT_KEY) != self.base_url:
             out["tool_calls"] = [{k: v for k, v in tc.items() if k in ("id", "type", "function")}
                                  for tc in out["tool_calls"]]
-        return out
+        return printable(out)
 
     def _describe(self, e: Exception) -> str:
         status = getattr(e, "status_code", None)

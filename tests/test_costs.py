@@ -189,3 +189,21 @@ def test_the_estimate_is_recorded_and_totalled(project):
     usage.record_call(project, call)
     week = usage.summarize(project)["7 days"]
     assert week.cost == 0 and round(week.equivalent, 4) == 0.0042
+
+
+def test_nul_bytes_never_reach_the_model():
+    """A single zero byte (a binary file, odd command output, a file a full disk left zero-padded) made the
+    provider reject every request: "NUL bytes are not supported in prompts"."""
+    from muyah_code.llm.client import LLMClient, printable
+    from muyah_code.tools.fs import is_binary
+    from muyah_code.tools.shell import _text
+
+    dirty = "line one" + chr(0) + "line two"
+    assert printable(dirty) == "line oneline two"
+    assert printable({"role": "user", "content": dirty})["content"] == "line oneline two"
+    assert printable([{"content": [{"text": dirty}]}])[0]["content"][0]["text"] == "line oneline two"
+    assert printable("tabs\tand\nnewlines stay") == "tabs\tand\nnewlines stay"
+    client = LLMClient("http://x/v1", "m")
+    assert chr(0) not in client._outgoing({"role": "tool", "content": dirty})["content"]
+    assert _text(b"ok" + b"\x00" + b" fine") == "ok fine"
+    assert is_binary(b"a" * 9000 + b"\x00")          # not only the first 8 KB

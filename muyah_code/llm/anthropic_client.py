@@ -200,7 +200,9 @@ class AnthropicClient:
     # ------------------------------------------------------------------ chat
 
     def _params(self, messages, tools, max_tokens) -> dict:
-        system, msgs = to_anthropic(messages)
+        from muyah_code.llm.client import printable
+
+        system, msgs = printable(to_anthropic(messages))   # no NUL / control bytes: providers reject them
         params: dict[str, Any] = {"model": self.model, "max_tokens": max_tokens or self.max_tokens,
                                   "messages": msgs, "cache_control": {"type": "ephemeral"}}
         if system:

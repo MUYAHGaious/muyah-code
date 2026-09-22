@@ -29,7 +29,9 @@ IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".ico"}
 
 
 def is_binary(data: bytes) -> bool:
-    return b"\x00" in data[:8192]
+    """A zero byte ANYWHERE means it is not text. (Looking only at the first 8 KB let a file with NULs
+    further in through, and the model provider then rejected the whole request.)"""
+    return b"\x00" in data
 
 
 def read_text(path: Path) -> str:
