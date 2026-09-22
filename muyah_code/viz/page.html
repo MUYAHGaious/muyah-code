@@ -49,6 +49,9 @@ main { position: relative; min-height: 0; min-width: 0; }
 .wire.hot { stroke: var(--c); stroke-width: 2.2; stroke-dasharray: 7 7; animation: flow calc(.55s * var(--k, 1)) linear infinite; }
 @keyframes flow { to { stroke-dashoffset: -14; } }
 .toolbar { position: absolute; top: 10px; right: 12px; display: flex; gap: 6px; z-index: 5; }
+#ended { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+  background: rgba(7, 16, 18, .86); font: 15px var(--mono); color: var(--fg, #d6e7e4); text-align: center; line-height: 1.7; }
+#ended b { color: var(--teal); font-weight: 600; }
 .toolbar button.on { color: var(--bg); background: var(--teal); border-color: var(--teal); }
 .caption { position: absolute; left: 12px; bottom: 10px; max-width: calc(100% - 24px); font: 12px var(--mono); color: var(--dim);
   background: var(--bg2); border: 1px solid var(--line); border-radius: 6px; padding: 3px 9px; z-index: 5;
@@ -251,6 +254,7 @@ details.call[open] summary { color: var(--text); }
   </div>
   <span id="status" class="badge">connecting…</span>
   <button id="record" title="Record a video of this view: click to start, click again to stop and save">● Record</button>
+  <button id="recpause" hidden title="Pause the recording (nothing is recorded until you resume)">❚❚ Pause</button>
   <span id="rec" class="badge rec" hidden>REC</span>
   <a id="download" class="btn" download hidden title="Download this session's event log (JSONL, replayable)">Download log</a>
   <div class="meta">
@@ -2008,20 +2012,43 @@ function seekTo(target) {
 
 // ------------------------------------------------------------------ Record: only while you ask, as a video
 let recorder = null, recChunks = [], recStart = 0, recTimer = null, recEvents = null;
+let recPausedAt = 0, recPausedFor = 0;          // a paused stretch is not part of the recording or its clock
+function recElapsed() {
+  const now = recPausedAt || performance.now();
+  return (now - recStart - recPausedFor) / 1000;
+}
 function recStamp() { return new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-"); }
 function saveBlob(blob, name) {
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;
   document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
 function recUi(on) {
-  const b = $("record"); b.classList.toggle("on", on);
+  const b = $("record"), p = $("recpause"); b.classList.toggle("on", on);
   clearInterval(recTimer);
-  if (!on) { b.textContent = "● Record"; return; }
-  recTimer = setInterval(() => { b.textContent = "■ Stop " + fmtLeft((performance.now() - recStart) / 1000); }, 500);
-  b.textContent = "■ Stop 0s";
+  p.hidden = !on;
+  if (!on) { b.textContent = "● Record"; recPausedAt = 0; recPausedFor = 0; return; }
+  const draw = () => {
+    b.textContent = "■ Stop " + fmtLeft(recElapsed());
+    p.textContent = recPausedAt ? "● Resume" : "❚❚ Pause";
+    p.classList.toggle("on", !!recPausedAt);
+  };
+  recTimer = setInterval(draw, 500);
+  draw();
 }
+function togglePause() {
+  if (!recorder) return;
+  if (recPausedAt) {                                // resume
+    recPausedFor += performance.now() - recPausedAt; recPausedAt = 0;
+    if (recorder !== "events" && recorder.state === "paused") recorder.resume();
+  } else {
+    recPausedAt = performance.now();
+    if (recorder !== "events" && recorder.state === "recording") recorder.pause();
+  }
+  recUi(true);
+}
+$("recpause").addEventListener("click", togglePause);
 async function startRecording() {
-  recStart = performance.now();
+  recStart = performance.now(); recPausedAt = 0; recPausedFor = 0;
   recEvents = { from: S.log.length ? S.log[S.log.length - 1].t : 0, events: [] };   // the span, as a replayable log too
   try {
     const stream = await navigator.mediaDevices.getDisplayMedia({ video: { displaySurface: "browser", frameRate: 30 },
@@ -2045,6 +2072,7 @@ async function startRecording() {
   }
 }
 function stopRecording() {
+  if (recPausedAt && recorder && recorder !== "events" && recorder.state === "paused") recorder.resume();
   if (recorder === "events") {
     const lines = recEvents.events.map((ev) => JSON.stringify(ev)).join("\n");
     saveBlob(new Blob([lines + "\n"], { type: "application/x-ndjson" }), `muyah-live-${recStamp()}.events.jsonl`);
@@ -2053,6 +2081,31 @@ function stopRecording() {
   recEvents = null;
 }
 $("record").addEventListener("click", () => { if (recorder) stopRecording(); else startRecording(); });
+
+// ------------------------------------------------------------------ the session ended: save, then close
+let ended = false;
+function sessionEnded(es) {
+  ended = true;
+  es.close();
+  setStatus("ended", "off");
+  const had = !!recorder;
+  const finish = () => {
+    // a tab can only close itself if a script opened it; otherwise say so, and leave it to you
+    window.close();
+    setTimeout(() => {
+      const d = document.createElement("div");
+      d.id = "ended";
+      d.innerHTML = "<div><b>The session ended.</b>" + (had ? "<br>The recording was saved to your downloads." : "") +
+        "<br>You can close this tab.</div>";
+      document.body.appendChild(d);
+    }, 300);
+  };
+  if (!had) { finish(); return; }
+  if (recorder === "events") { stopRecording(); setTimeout(finish, 1200); return; }
+  const rec = recorder;
+  rec.addEventListener("stop", () => setTimeout(finish, 1500), { once: true });   // let the download start first
+  stopRecording();
+}
 
 function setStatus(text, cls) { const s = $("status"); s.textContent = text; s.className = "badge " + (cls || ""); }
 
@@ -2083,7 +2136,8 @@ function connect() {
       return;
     }
     liveBase = { t: ev.t || 0, at: performance.now() };
-    if (recEvents && !catching) recEvents.events.push(ev);
+    if (recEvents && !catching && !recPausedAt) recEvents.events.push(ev);
+    if (ev.type === "session_end" && !catching) { sessionEnded(es); return; }
     apply(ev, catching ? null : fx);
   };
   es.addEventListener("caughtup", () => { catching = false; renderPanels(true); });
@@ -2097,7 +2151,7 @@ function connect() {
   // tries the session is gone: stop retrying instead of filling the console, and say so.
   let failures = 0;
   es.onerror = () => {
-    if (mode !== "live") return;
+    if (mode !== "live" || ended) return;
     failures += 1;
     setStatus("disconnected", "off");
     if (failures >= 5) {

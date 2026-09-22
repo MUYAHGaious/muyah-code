@@ -162,6 +162,7 @@ class PermissionManager:
         self.ask: list[Rule] = []
         self.deny: list[Rule] = []
         self.errors: list[str] = []
+        self.plan_file: Path | None = None     # plan mode may write this one file (see plans.py)
         for kind, rules in (("allow", allow), ("ask", ask), ("deny", deny)):
             for r in rules:
                 self.add(kind, r)
@@ -211,6 +212,9 @@ class PermissionManager:
             return Decision("handoff", "deleting files is always left to you")
 
         read_only = tool.is_read_only(args)
+        if self.mode == "plan" and tool.kind == WRITE and self.plan_file is not None and subject \
+                and _same_file(Path(subject), self.plan_file):
+            return Decision("allow", "the plan file")
         if self.mode == "plan" and not read_only and tool.kind in (WRITE, EXEC):
             return Decision("deny", "plan mode is read-only: explore and present a plan; do not modify anything")
         if self.mode == "ask" and not read_only and tool.kind in (WRITE, EXEC):
@@ -257,6 +261,13 @@ def _auto_decision(tool: Tool, args: dict, subject: str, read_only: bool, projec
     if tool.name == "McpServers":
         return Decision("ask", "auto mode still asks: this starts a program on your machine (an MCP server)")
     return Decision("allow", "auto mode")
+
+
+def _same_file(a: Path, b: Path) -> bool:
+    try:
+        return a.resolve() == b.resolve()
+    except OSError:
+        return False
 
 
 def _is_within(path: Path, root: Path) -> bool:

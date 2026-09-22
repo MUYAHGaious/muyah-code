@@ -70,10 +70,10 @@ def plan_run(project, choice, after):
 
 def test_an_approved_plan_switches_mode_and_the_work_starts(project):
     ui, mode, tools, srv = plan_run(project, "Yes, auto", after=True)
-    assert ui.plans == ["## Plan\n1. add retry.py\n2. test it"]
+    assert ui.plans[0].startswith("## Plan\n1. add retry.py\n2. test it") and ".muyah/plans/" in ui.plans[0]
     question, options = ui.questions[0]
     assert options[-1] == "No, keep planning" and any("manual" in o for o in options)
-    assert mode == "auto" and "Implement the plan now" in tools[0]
+    assert mode == "auto" and "Build it now" in tools[0]
     assert (project / "retry.py").read_text(encoding="utf-8") == "RETRIES = 3\n"   # built in the same turn
     assert "PLAN MODE" not in srv.requests[-1]["messages"][0]["content"]         # the prompt followed the switch
 
@@ -227,3 +227,54 @@ def test_changes_allowed_without_asking_say_why_under_the_tool(project):
         app.run_prompt("go")
         app.shutdown()
     assert ui.notes == ["Auto-approved · auto mode (risky actions still ask)"]    # the write only, not the read
+
+
+
+def test_plan_mode_writes_only_its_plan_file_and_the_build_follows_it(project):
+    """Like Claude Code: the plan is a file (the one thing plan mode may change), ExitPlanMode shows that file
+    (edits included), and after approval every turn points the agent back at it."""
+    import re
+
+    first = {"name": "Write", "arguments": {"file_path": "app.py", "content": "x = 1\n"}}
+    with FakeOpenAI([reply("", [first]), reply("I cannot write app.py in plan mode.")]) as srv:
+        ui = PlanUI("No")
+        app = make_app(srv, project, ui=ui, mode="plan")
+        app.run_prompt("add discount codes to the cart")
+        note = srv.requests[0]["messages"][-1]["content"]
+        plan_rel = re.search(r"write the plan to (\S+) ", note).group(1)
+        assert plan_rel.startswith(".muyah/plans/") and plan_rel.endswith("discount-codes-cart.md")
+        assert not (project / "app.py").exists()                     # any other file: refused
+        app.shutdown()
+
+    plan_path = project / plan_rel
+    write_plan = {"name": "Write", "arguments": {"file_path": plan_rel, "content": "## Plan\n1. discounts.py\n"}}
+    exit_plan = {"name": "ExitPlanMode", "arguments": {}}
+    script = [reply("", [write_plan]), reply("", [exit_plan]), reply("Starting."), reply("Next step.")]
+    with FakeOpenAI(script) as srv:
+        ui = PlanUI("Yes, accept edits")
+        app = make_app(srv, project, ui=ui, mode="plan")
+        original = ui.approve_plan
+
+        def edited_by_the_user(plan, options):             # the user tweaks the file before choosing
+            plan_path.write_text("## Plan\n1. discounts.py\n2. and a test\n", encoding="utf-8")
+            return original(plan_path.read_text(encoding="utf-8"), options)
+        ui.approve_plan = edited_by_the_user
+        app.permissions.plan_file = plan_path
+        app.run_prompt("add discount codes to the cart")
+        assert plan_path.read_text(encoding="utf-8").endswith("2. and a test\n")
+        assert "2. and a test" in ui.plans[0] and app.permissions.mode == "acceptEdits"
+        assert app.active_plan == plan_path
+        app.run_prompt("go on")
+        app.shutdown()
+    assert f"carrying out the approved plan in {plan_rel}" in srv.requests[-1]["messages"][-1]["content"]
+
+
+def test_a_new_plan_gets_a_new_file(project):
+    from muyah_code.plans import new_plan_path, slug
+
+    assert slug("Please add discount codes to the cart!") == "add-discount-codes-cart"
+    first = new_plan_path(project, "add discount codes")
+    first.parent.mkdir(parents=True)
+    first.write_text("x", encoding="utf-8")
+    second = new_plan_path(project, "add discount codes")
+    assert second != first and second.name.endswith("-2.md")

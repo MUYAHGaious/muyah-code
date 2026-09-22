@@ -95,10 +95,14 @@ class ReadTool(Tool):
     name = "Read"
     kind = READ
     description = (
-        "Read a text file. Returns lines prefixed with line numbers (cat -n format: number, TAB, content). "
+        "Read a file. Returns lines prefixed with line numbers (cat -n format: number, TAB, content). "
         "The line-number prefix is NOT part of the file - never include it in Edit old_string. "
         f"Reads up to {DEFAULT_LIMIT} lines by default; use offset (1-based line) and limit for large files. "
-        "You must Read a file before editing or overwriting it. Accepts absolute or relative paths."
+        "You must Read a file before editing or overwriting it. Accepts absolute or relative paths. "
+        "Also reads documents as text: PDF (pages=\"1-5\", 20 pages at a time), Word .docx/.doc, Excel "
+        ".xlsx/.xls, PowerPoint .pptx/.ppt, OpenDocument, .rtf, .epub, .eml, Jupyter notebooks; lists archives "
+        "(.zip/.tar/...) and SQLite schemas; images are attached for you to see. To create or change a "
+        "document, write a script (see the documents skill); Edit and Write only change text files."
     )
     parameters = {
         "type": "object",
@@ -106,6 +110,7 @@ class ReadTool(Tool):
             "file_path": {"type": "string", "description": "Path to the file (absolute or relative to cwd)"},
             "offset": {"type": "integer", "description": "1-based line number to start from"},
             "limit": {"type": "integer", "description": "Maximum number of lines to read"},
+            "pages": {"type": "string", "description": "PDF only: pages to read, e.g. \"3\" or \"1-5\" (max 20)"},
         },
         "required": ["file_path"],
     }
@@ -129,6 +134,14 @@ class ReadTool(Tool):
                 return ToolResult(f"{ctx.rel(path)} is an image, but it cannot be attached: {e}.", summary="image")
             return ToolResult(f"{describe(ctx.rel(path), data)} is an image; it is attached for you to look at.",
                               summary="image", images=[(media, b64)])
+        from muyah_code.tools.documents import DocumentError, extract, is_document
+
+        if is_document(path):
+            try:
+                text, kind = extract(path, args.get("pages"))
+            except DocumentError as e:
+                raise ToolError(f"Cannot read {ctx.rel(path)}: {e}.") from e
+            return self._numbered(text, args, f"{ctx.rel(path)} ({kind}, as text)")
         raw = path.read_bytes()
         editor_read = ctx.service("editor_read")
         if editor_read is not None and not is_binary(raw):
@@ -143,6 +156,12 @@ class ReadTool(Tool):
         ctx.file_state[str(path)] = mtime_ns(path)
         if not text:
             return ToolResult(f"{ctx.rel(path)} exists but is empty.", summary="empty file")
+        return self._numbered(text, args)
+
+    @staticmethod
+    def _numbered(text: str, args: dict, header: str = "") -> ToolResult:
+        if not text.strip():
+            return ToolResult(f"{header or 'The file'}: no text in it.", summary="no text")
         lines = text.splitlines(keepends=True)
         offset = max(1, int(args.get("offset") or 1))
         limit = max(1, int(args.get("limit") or DEFAULT_LIMIT))
@@ -154,7 +173,8 @@ class ReadTool(Tool):
         note = ""
         if end < len(lines) or offset > 1:
             note = f"\n\n[Showing lines {offset}-{end} of {len(lines)}. Use offset/limit to read more.]"
-        return ToolResult(body + note, summary=f"Read {len(chunk)} lines" + (f" (of {len(lines)})" if note else ""))
+        return ToolResult((header + "\n" if header else "") + body + note,
+                          summary=f"Read {len(chunk)} lines" + (f" (of {len(lines)})" if note else ""))
 
 
 class WriteTool(Tool):

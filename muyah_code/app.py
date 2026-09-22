@@ -215,7 +215,7 @@ class App:
             self.registry.register(McpServersTool(self))
         from muyah_code.tools.plan import ExitPlanModeTool
 
-        self.registry.register(ExitPlanModeTool(self.set_mode))
+        self.registry.register(ExitPlanModeTool(self))
         self.subagents = SubagentManager(self.agent_defs, self._make_subagent, depth=0, roles=self._roles)
         self.registry.register(AgentTool(self.subagents))
 
@@ -518,10 +518,25 @@ class App:
             ))
         return build
 
+    active_plan: Path | None = None       # the approved plan being built (plans.py)
+
+    def _plan_note(self, prompt: str) -> str:
+        from muyah_code.plans import building_note, new_plan_path, planning_note
+
+        if self.permissions.mode == "plan":
+            if self.permissions.plan_file is None:
+                self.permissions.plan_file = new_plan_path(self.root, prompt)
+            return planning_note(self.permissions.plan_file, self.root)
+        if self.active_plan is not None and self.active_plan.exists():
+            return building_note(self.active_plan, self.root)
+        return ""
+
     def _turn_context(self, prompt: str) -> str:
         self._current_lessons = []
         pushback = len(self.agent.messages) > 2 and is_correction(prompt)
         note, self.verify_note = self.verify_note, ""
+        plan = self._plan_note(prompt)
+        note = "\n".join(x for x in (plan, note) if x)
         if not self.learning_enabled:
             return turn_context_block("", pushback=pushback, verify=note)
         k = int(self.cfg.get("learning.max_lessons_in_prompt", 5))
@@ -667,7 +682,10 @@ class App:
         return msg
 
     def set_mode(self, mode: str) -> str:
+        before = self.permissions.mode
         m = self.permissions.set_mode(mode)
+        if m == "plan" and before != "plan":
+            self.permissions.plan_file = None     # a new plan gets its own file (named from the next request)
         self.agent.invalidate_system_prompt()
         return m
 
@@ -773,6 +791,10 @@ class App:
         self.rewind.close()
         if self._tree_thread is not None:
             self._tree_thread.join(3)      # a listing still running: let its event be recorded
+        # the live view saves a recording it is making and closes (`muyah viz` reads this from the log)
+        self.events.emit("session_end", session_id=self.session_id)
+        if self.viz is not None:
+            time.sleep(0.4)                # let an open page receive it before the server stops
         self.events.close()
         if self.session is not None:
             self.session.close()

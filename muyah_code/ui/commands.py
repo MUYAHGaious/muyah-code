@@ -66,7 +66,8 @@ class CommandRouter:
             Command("profile", "Show or switch backend profile", self.profile, "[name]"),
             Command("connect", "Point at a new endpoint (URL) and pick a model", self.connect, "<url> [model]"),
             Command("mode", "Mode: manual | edit | ask | plan | auto (or bypassPermissions)", self.mode, "[mode]"),
-            Command("plan", "Toggle plan mode (read-only exploration, then a plan)", self.plan),
+            Command("plan", "Toggle plan mode; '/plan show' prints the current plan, '/plan open' opens it", self.plan,
+                    "[show | open]"),
             Command("undo", "Undo the last turn: its file changes and its messages", self.undo),
             Command("rewind", "Go back to before any earlier turn: code, conversation, or both (Esc Esc)",
                     self.rewind),
@@ -256,8 +257,36 @@ class CommandRouter:
             self.console.print(f"[red]{escape(str(e))}[/]")
 
     def plan(self, arg):
+        action = arg.strip().lower()
+        if action in ("show", "open"):
+            path = self.app.permissions.plan_file if self.app.permissions.mode == "plan" else None
+            path = path or self.app.active_plan
+            if path is None or not path.exists():
+                self.console.print("[dim]No plan yet. In plan mode (Shift+Tab) the plan is written to .muyah/plans/.[/]")
+                return
+            if action == "open":
+                self._open_file(path)
+                self.console.print(f"[dim]Opened {escape(str(path))}[/]")
+                return
+            from rich.markdown import Markdown
+
+            self.console.print(f"[dim]{escape(str(path))}[/]")
+            self.console.print(Markdown(path.read_text(encoding="utf-8")))
+            return
         new = "default" if self.app.permissions.mode == "plan" else "plan"
         self.console.print(f"Mode: [bold]{self.app.set_mode(new)}[/]")
+
+    @staticmethod
+    def _open_file(path) -> None:
+        import os
+        import subprocess
+        import sys
+
+        if sys.platform == "win32":
+            os.startfile(str(path))                                   # noqa: S606 - the user's own file, their default app
+        else:
+            subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(path)],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def undo(self, arg):
         self.console.print(escape(self.app.undo()))

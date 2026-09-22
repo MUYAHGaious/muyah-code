@@ -5,6 +5,29 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **Read understands documents**, in every mode, plan mode included. Before this they were refused as "binary", so a `.docx` spec could not be read at all.
+  - Formats:
+    - PDF, 20 pages at a time with `pages="1-5"`, like Claude Code;
+    - Word `.docx`, with headings, lists and tables kept;
+    - Excel `.xlsx`, every sheet as rows, formulas kept;
+    - PowerPoint `.pptx`, slide by slide with speaker notes;
+    - OpenDocument, `.rtf`, `.epub`, `.eml` (the body, plus a list of attachments), and Jupyter notebooks (cells and outputs);
+    - old `.doc`, `.xls` and `.ppt`, through LibreOffice when it is installed.
+  - Archives are listed without being unpacked, and SQLite databases show their tables (opened read-only).
+  - Untrusted files are handled safely: XML that declares entities is refused, parsing goes through `defusedxml`, and every archive member is size-capped against ZIP bombs.
+  - New dependencies: `pypdf`, `defusedxml`.
+- **New `documents` skill** for creating and changing Word, Excel, PowerPoint, PDF and CSV files. It writes a script with the right library, runs it, then reads the result back to check it.
+- **Plan mode works like Claude Code's:**
+  - it explores (with explore sub-agents for broad searches), asks the questions that matter, then writes the plan to `.muyah/plans/<date>-<topic>.md`;
+  - that file is the only one plan mode may change, and you can edit it before choosing;
+  - after you approve, every turn points the agent back to the plan file, so the plan holds through a long session;
+  - `/plan show` prints the plan and `/plan open` opens it.
+- **Plan mode allows looking around in another folder:** `cd folder && ls` is read-only. Before, any command starting with `cd` was refused.
+- **Live view:**
+  - Record has **Pause / Resume**, and paused time is left out of the recording;
+  - when the session ends, the page saves a running recording, then closes. When the browser won't let a page close its own tab, it says the session ended and the recording was saved.
+- **`muyah path` on Windows** also copies the launcher into `~/.local/bin`. Terminals opened by an app that has been running for days (VS Code, Cursor, Antigravity, Windows Terminal) then find `muyah` without a restart.
+
 - **One-line install that puts `muyah` on your PATH.**
   - Run `install.ps1` (Windows) or `install.sh` (macOS/Linux). It uses uv or pipx when you have one. Otherwise it uses pip on Windows, or a private virtual environment on macOS/Linux.
   - Before this, `pip install --user` could leave `muyah` "not recognized".

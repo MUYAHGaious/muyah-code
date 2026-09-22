@@ -21,14 +21,17 @@ NAMES = {"auto": "auto", "acceptEdits": "edit", "default": "manual"}
 class ExitPlanModeTool(Tool):
     name = "ExitPlanMode"
     kind = META
-    description = ("Plan mode only: when your plan is complete, present it with this tool (markdown: the context, the "
-                   "files to change and how, how you will verify). The user chooses how to proceed or asks you to keep "
-                   "planning. If approved, the mode switches and you implement the plan right away.")
-    parameters = {"type": "object", "properties": {"plan": {"type": "string", "description": "The plan, in markdown"}},
-                  "required": ["plan"]}
+    description = ("Plan mode only: when the plan file is complete, call this to show it to the user. They choose how "
+                   "to build it or ask you to keep planning. If approved, the mode switches and you build it right "
+                   "away, following the plan file. `plan` is optional: the plan file is what is shown.")
+    parameters = {"type": "object", "properties": {"plan": {"type": "string", "description": (
+        "Only if you did not write the plan file: the plan, in markdown (it is saved to the plan file)")}}}
 
-    def __init__(self, set_mode):
-        self.set_mode = set_mode
+    def __init__(self, app):
+        self.app = app
+
+    def set_mode(self, mode):
+        return self.app.set_mode(mode)
 
     def title(self, args):
         return "ExitPlanMode(plan ready)"
@@ -37,9 +40,18 @@ class ExitPlanModeTool(Tool):
         perms = ctx.service("permissions")
         if perms is None or perms.mode != "plan":
             raise ToolError("You are not in plan mode: go ahead with the task (no approval step is needed).")
+        path = getattr(perms, "plan_file", None)
         plan = str(args.get("plan") or "").strip()
+        if path is not None and path.exists():
+            written = path.read_text(encoding="utf-8").strip()
+            plan = written or plan                  # the file (the user may have edited it) is the plan
+        elif plan and path is not None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(plan + "\n", encoding="utf-8")
         if not plan:
-            raise ToolError("Put the plan itself in `plan` (markdown).")
+            raise ToolError("Write the plan to the plan file first (see your turn notes), then call ExitPlanMode.")
+        if path is not None:
+            plan += f"\n\n*Saved in `{ctx.rel(path)}`: edit it there if you like, then choose.*"
         ui = ctx.service("ui")
         if ctx.headless:
             ui.show_plan(plan)
@@ -48,10 +60,13 @@ class ExitPlanModeTool(Tool):
         answer = ui.approve_plan(plan, [*CHOICES, KEEP])
         mode = CHOICES.get(answer)
         if mode:
+            self.app.active_plan = path
             self.set_mode(mode)
-            return ToolResult(f"The user approved the plan. The mode is now {NAMES[mode]}. Implement the plan now, "
-                              "step by step: start with a TodoWrite list of its steps.", summary=f"approved · {NAMES[mode]}")
+            where = f" in {ctx.rel(path)}" if path is not None else ""
+            return ToolResult(f"The user approved the plan{where}. The mode is now {NAMES[mode]}. Build it now, step "
+                              "by step: start with a TodoWrite list of its steps, and keep to the plan.",
+                              summary=f"approved · {NAMES[mode]}")
         said = answer if answer and answer != KEEP else ""
         return ToolResult("The user wants to keep planning. " + (f"They said: {said}. " if said else
-                          "Ask what they would like to change. ") + "Stay in plan mode and revise the plan.",
+                          "Ask what they would like to change. ") + "Stay in plan mode and revise the plan file.",
                           summary="keep planning")
