@@ -162,6 +162,8 @@ class Repl:
         self.ui.on_mic = lambda: self._talk(into_box=True)
         self.ui.slash_menu = self.router.menu
         self.ui.slash_needs_args = self.router.needs_args
+        self.ui.slash_runs_now = self.router.runs_now
+        self.ui.on_instant = self._instant_async
 
         def talk(event):
             self._talk()
@@ -304,6 +306,23 @@ class Repl:
             app.loop.call_soon_threadsafe(put)
         else:
             self._resume_text = (self._resume_text + " " + text).strip()
+
+    def _instant_async(self, line: str) -> None:
+        """A command that only shows something (/usage, /context...) typed while it works: run now, printed
+        above the live area, without waiting for the turn (Claude Code does the same)."""
+        import threading
+
+        def run():
+            try:
+                self.console.print()
+                self.console.print(blocks.user_prompt(line))
+                self.console.print()
+                self.router.dispatch(line)
+                self.console.print()
+            except Exception as e:   # a failing command must never disturb the running turn
+                self.ui.error(f"{line.split()[0]} failed: {e}")
+
+        threading.Thread(target=run, name="muyah-instant", daemon=True).start()
 
     def _btw_async(self, question: str) -> None:
         """/btw typed while it works: answered in parallel, shown as soon as it is ready."""

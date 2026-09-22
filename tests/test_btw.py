@@ -252,3 +252,24 @@ def test_delete_handoff_shows_paths_as_you_would_say_them(tmp_path):
     text = out.getvalue()
     assert "  build" in text and str(tmp_path) not in text                 # inside the project: relative
     assert "~" in text and str(Path.home()) not in text                      # your home folder: ~
+
+
+def test_commands_that_only_show_something_run_mid_turn_the_rest_wait(project):
+    from test_repl import run_session
+
+    code, out, app = run_session(project, ["/exit"], [])
+    from muyah_code.ui.commands import CommandRouter
+
+    router = CommandRouter.__new__(CommandRouter)
+    router.commands = {name: None for name in ("usage", "context", "compact", "clear", "mode", "theme", "lessons",
+                                               "plan", "model", "mcp")}
+    now = lambda line: CommandRouter.runs_now(router, line)            # noqa: E731
+    assert now("/usage") and now("/context") and now("/mode plan") and now("/plan show") and now("/lessons")
+    assert not now("/compact") and not now("/clear") and not now("/model") and not now("/nope")
+    assert not now("/mode") and not now("/theme") and not now("/mcp disable x") and not now("/lessons rm 3")
+
+    ui = TerminalUI(Console(file=io.StringIO(), width=100))
+    ran = []
+    ui.on_instant, ui.slash_runs_now = ran.append, now
+    keys(ui, "/usage", "enter", "/compact", "enter")
+    assert ran == ["/usage"] and ui._queued == ["/compact"]

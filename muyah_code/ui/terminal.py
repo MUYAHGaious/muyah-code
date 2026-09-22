@@ -278,6 +278,8 @@ class TerminalUI(UI):
         self.on_mic = None         # () -> None: the talk key while it works (set by the REPL)
         self.slash_menu = None     # () -> [(name, help)]: the "/" suggestions (set by the REPL)
         self.slash_needs_args = lambda name: False
+        self.slash_runs_now = lambda line: False   # a /command that runs mid-turn (set by the REPL)
+        self.on_instant = None                     # (line) -> None: run it now
         self._slash_sel = 0
         self.mic_key = "f2"
         self.focused: bool | None = None   # the terminal window has focus (None: it never said)
@@ -552,6 +554,7 @@ class TerminalUI(UI):
             return
         interrupt = False
         btw = ""
+        instant = ""
         before = list(self._queued)
         with self._keys:
             sel = self._selected if self._selected is not None and self._selected < len(self._queued) else None
@@ -566,7 +569,10 @@ class TerminalUI(UI):
             elif menu and key == "enter" and self.slash_needs_args(pick):
                 self._draft = f"/{pick} "          # it needs an argument: filled in for you to finish
             elif menu and key == "enter" and self._draft[1:] != pick:
-                self._queued.append(f"/{pick}")    # enter runs the highlighted command (after this turn)
+                if self.on_instant is not None and self.slash_runs_now(f"/{pick}"):
+                    instant = f"/{pick}"           # e.g. /usage: shown now, like Claude Code
+                else:
+                    self._queued.append(f"/{pick}")    # enter runs the highlighted command (after this turn)
                 self._draft = ""
             elif key == "tab":
                 pass
@@ -591,6 +597,8 @@ class TerminalUI(UI):
                 text = self._draft.strip()
                 if text.startswith("/btw ") and self.on_btw is not None:
                     btw = self._expand(text[5:].strip())
+                elif text.startswith("/") and self.on_instant is not None and self.slash_runs_now(text):
+                    instant = text
                 elif text:
                     self._queued.append(text)
                 self._draft = ""
@@ -621,6 +629,8 @@ class TerminalUI(UI):
             self._cursor = max(0, min(self._cursor, len(self._draft)))
         if btw:
             self.on_btw(btw)
+        if instant:
+            self.on_instant(instant)
         if key == "shift-tab" and self.on_mode_cycle is not None:
             self.on_mode_cycle()           # takes effect from the agent's next action
         if key in ("mic", self.mic_key) and self.on_mic is not None:

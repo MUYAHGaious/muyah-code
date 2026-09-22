@@ -131,6 +131,27 @@ class CommandRouter:
     def names(self) -> list[str]:
         return list(self.commands) + [s.name for s in self.app.skills.all() if s.user_invocable]
 
+    # While it works, these run at once, like Claude Code's /usage: they only show something (or open a view)
+    # and never touch the conversation. Everything else waits for the turn to end.
+    INSTANT = {"help", "usage", "cost", "context", "status", "todos", "tools", "skills", "agents", "permissions",
+               "config", "sessions", "models", "viz", "mic"}
+    INSTANT_IF = {                                  # instant only in these forms (the rest change things or ask)
+        "mode": lambda arg: bool(arg), "theme": lambda arg: bool(arg), "lessons": lambda arg: not arg or
+        arg.startswith("show"), "memory": lambda arg: not arg, "mcp": lambda arg: not arg,
+        "plan": lambda arg: arg in ("show", "open"),
+    }
+
+    def runs_now(self, line: str) -> bool:
+        """True for a command that can run in the middle of a turn (see INSTANT)."""
+        name, _, arg = line.strip()[1:].partition(" ")
+        name, arg = name.strip(), arg.strip()
+        if name not in self.commands:
+            return False
+        if name in self.INSTANT:
+            return True
+        check = self.INSTANT_IF.get(name)
+        return bool(check and check(arg))
+
     def dispatch(self, line: str):
         name, _, arg = line[1:].partition(" ")
         name, arg = name.strip(), arg.strip()

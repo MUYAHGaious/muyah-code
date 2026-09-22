@@ -5,6 +5,10 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **Commands that only show something run straight away while it works**, as in Claude Code:
+  - `/usage`, `/context`, `/status`, `/help`, `/todos`, `/tools`, `/skills`, `/config`, `/models`, `/viz` and more, plus `/mode <name>`, `/theme <name>` and `/plan show`;
+  - commands that change the conversation (`/clear`, `/compact`, `/model`, `/undo`...) still wait for the turn to end.
+
 - **First run asks which AI to use,** so nobody is stuck before they can type. The choices are:
   - a model already running on this computer (found automatically; free, private, no key);
   - a free key in about a minute (Groq, Google Gemini, OpenRouter; the key page opens in the browser);
