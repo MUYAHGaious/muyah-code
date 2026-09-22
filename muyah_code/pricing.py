@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import re
 import threading
 import time
 import urllib.request
@@ -60,6 +61,18 @@ class Price:
 
 
 FREE = Price(0.0, 0.0, 0.0, 0.0, source="self-hosted")
+
+# What a self-hosted model's name carries besides the model itself: engine, quantization, format, size tags
+NAME_NOISE = {"colibri", "soup", "local", "gguf", "ggml", "awq", "gptq", "exl2", "mlx", "fp8", "fp16", "bf16",
+              "int4", "int8", "i4", "i8", "q2", "q3", "q4", "q5", "q6", "q8", "k", "m", "s", "l", "xl", "latest",
+              "hf", "unsloth", "lora", "merged", "chat"}
+OFFICIAL = {"deepseek", "gemini", "mistral", "xai", "moonshot", "zai", "groq"}   # a maker's own API first
+
+
+def name_tokens(name: str) -> set[str]:
+    """"DeepSeek-V4-colibri" -> {"deepseek", "v4"}; "qwen2.5-coder:14b-q4_K_M" -> {"qwen2.5", "coder", "14b"}."""
+    last = name.lower().rsplit("/", 1)[-1]
+    return {t for t in re.split(r"[^a-z0-9.]+", last) if t and t not in NAME_NOISE}
 
 
 def _per_m(v) -> float | None:
@@ -214,6 +227,42 @@ class Pricing:
             return None
         per = [None if x is None else x / 1e6 for x in entry[:4]]
         return Price(per[0] or 0.0, per[1] or 0.0, per[2], per[3])
+
+    def equivalent(self, model: str, compare_to: str = "") -> tuple[Price, str] | None:
+        """For a model you run yourself: the price of the same model on a paid API, and its name.
+
+        compare_to (setting pricing.compare_to) picks the model to compare with; otherwise the price list is
+        searched for the same model: every word of your model's name (engine and quantization tags left out)
+        must be in the listing's name, the closest names win, a maker's own API before resellers, and among
+        those the cheapest (so the estimate errs low)."""
+        if compare_to:
+            provider, _, name = compare_to.partition(":") if ":" in compare_to else ("", "", compare_to)
+            entry = self._entry(name, provider)
+            return (self._to_price(entry), name) if entry is not None else None
+        want = name_tokens(model)
+        if not want:
+            return None
+        with self._lock:
+            items = list(self._models.items())
+        best = None
+        for key, entry in items:
+            if entry[0] is None and entry[1] is None:
+                continue
+            tokens = name_tokens(key)
+            if not want <= tokens:
+                continue
+            maker = key.split("/", 1)[0] if "/" in key else ""
+            rank = (len(tokens - want), maker not in OFFICIAL and maker != "", (entry[0] or 0) + (entry[1] or 0))
+            if best is None or rank < best[0]:
+                best = (rank, key, entry)
+        if best is None:
+            return None
+        return self._to_price(best[2]), best[1].rsplit("/", 1)[-1]
+
+    @staticmethod
+    def _to_price(entry: list) -> Price:
+        per = [None if x is None else x / 1e6 for x in entry[:4]]
+        return Price(per[0] or 0.0, per[1] or 0.0, per[2], per[3], "equivalent")
 
     def supports_vision(self, model: str, provider: str = "") -> bool | None:
         entry = self._entry(model, provider)

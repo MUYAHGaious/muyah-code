@@ -987,7 +987,8 @@ class TerminalUI(UI):
         return False
 
     def turn_footer(self, status: str, seconds: float, tool_calls: int, files_changed: int, ctx_pct: int,
-                    warnings: list[str] | None = None, cost: float = 0.0, tokens: int = 0) -> None:
+                    warnings: list[str] | None = None, cost: float = 0.0, tokens: int = 0,
+                    equivalent: tuple[float, str] | None = None) -> None:
         """✓ Worked 52s · ↓ 12.3k tokens · 3 tool calls · ... (context use is in the status line, bottom right)"""
         t = theme()
         self._stop_live()
@@ -1006,6 +1007,10 @@ class TerminalUI(UI):
             from muyah_code.pricing import money
 
             parts.append(money(cost))
+        elif equivalent and equivalent[0] > 0:
+            from muyah_code.pricing import money
+
+            parts.append(f"$0 · ≈ {money(equivalent[0])} on {equivalent[1]}")
         if not ok:
             parts.append(status)
         line = Text()

@@ -5,6 +5,10 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **Self-hosted models show what a paid API would charge.** For a model on your own GPU or tunnel (Colab, colibri, Ollama), the real cost stays $0, and an estimate is shown next to it: after each answer (`$0 · ≈ $0.42 on deepseek-v4-flash`) and in `/usage` (the session, today, the last 7 days).
+  - The estimate uses the same model in the public price list: engine and quantization tags are ignored, the maker's own API is preferred, and the cheapest close match is used, so the estimate errs low.
+  - With no exact match, no estimate is shown rather than a guess. `pricing.compare_to` picks the model to compare with.
+
 - **Commands that only show something run straight away while it works**, as in Claude Code:
   - `/usage`, `/context`, `/status`, `/help`, `/todos`, `/tools`, `/skills`, `/config`, `/models`, `/viz` and more, plus `/mode <name>`, `/theme <name>` and `/plan show`;
   - commands that change the conversation (`/clear`, `/compact`, `/model`, `/undo`...) still wait for the turn to end.

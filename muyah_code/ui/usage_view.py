@@ -59,6 +59,11 @@ def _session(console, app, ledger) -> None:
     if ledger.tokens_per_second:
         parts.append(f"{ledger.tokens_per_second:.0f} tokens/s")
     console.print(head + Text(" · ".join(parts)))
+    eq, eq_to = ledger.equivalent
+    if eq_to:
+        console.print(f"[dim]  Self-hosted, so it costs you nothing per token. On a paid API ({escape(eq_to)}) the same "
+                      f"work would be about [/][bold]{money(eq)}[/][dim]. Compare with another model: "
+                      'pricing.compare_to, e.g. "deepseek:deepseek-v4-pro".[/]')
     if ledger.unpriced and ledger.requests > ledger.unpriced:
         console.print(f"[dim]  {ledger.unpriced} request(s) are unpriced (the model is not in the price list; "
                       "set pricing.models to add it)[/]")
@@ -124,6 +129,8 @@ def _periods(console, home: Path, full: bool) -> None:
         p = periods[name]
         cost = money(p.cost) + (" +unpriced" if p.unpriced and p.cost else "") if p.requests > p.unpriced \
             else ("unpriced" if p.requests else "-")
+        if p.equivalent:
+            cost += f" (≈ {money(p.equivalent)} if paid)"
         t.add_row(label, str(p.requests), usage.compact(p.prompt_tokens), usage.compact(p.completion_tokens),
                   _pct(p.cache_read / p.prompt_tokens if p.prompt_tokens else None), cost)
     console.print()

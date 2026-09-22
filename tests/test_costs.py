@@ -159,3 +159,33 @@ def test_the_terminal_asks_before_going_over_budget(project):
         res = app.run_prompt("go")
         app.shutdown()
     assert res.status == "budget" and len(srv.requests) == 1
+
+
+def test_self_hosted_calls_show_what_a_paid_api_would_charge(tmp_path):
+    """Free for you (your GPU, your tunnel), and an estimate of the same work on a paid API."""
+    from muyah_code.pricing import Pricing, name_tokens
+
+    assert name_tokens("deepseek-v4-colibri") == {"deepseek", "v4"}
+    assert name_tokens("Qwen/Qwen2.5-Coder-32B-Instruct-AWQ") == {"qwen2.5", "coder", "32b", "instruct"}
+    p = Pricing(tmp_path, refresh=False)
+    p._models = {"deepseek-v4-flash": [0.3, 1.2, None, None, 0, 0], "deepseek-v4-pro": [1.0, 4.0, None, None, 0, 0],
+                 "fireworks_ai/deepseek-v4-flash": [0.2, 0.9, None, None, 0, 0],
+                 "qwen2.5-coder-32b-instruct": [0.8, 0.8, None, None, 0, 0]}
+    price, name = p.equivalent("deepseek-v4-colibri")
+    assert name == "deepseek-v4-flash"                       # the maker's own API, the cheapest close match
+    assert round(price.cost(1_000_000, 100_000), 2) == 0.42
+    assert p.equivalent("qwen2.5-coder:14b") is None         # nobody sells that exact model: no guess
+    assert p.equivalent("deepseek-v4-colibri", compare_to="deepseek-v4-pro")[1] == "deepseek-v4-pro"
+
+
+def test_the_estimate_is_recorded_and_totalled(project):
+    from muyah_code import usage
+
+    ledger = usage.Ledger()
+    call = usage.Call("deepseek-v4-colibri", "colab", "main", 1000, 100, cost=0.0)
+    call.equivalent, call.equivalent_to = 0.0042, "deepseek-v4-flash"
+    ledger.add(call)
+    assert ledger.cost == 0 and ledger.equivalent == (0.0042, "deepseek-v4-flash")
+    usage.record_call(project, call)
+    week = usage.summarize(project)["7 days"]
+    assert week.cost == 0 and round(week.equivalent, 4) == 0.0042

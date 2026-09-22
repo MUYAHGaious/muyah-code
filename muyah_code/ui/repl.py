@@ -627,6 +627,7 @@ class Repl:
             self.ui.begin_typing(carried=self._carry)
             self._carry = []
             cost_before, out_before = self.app.ledger.cost, self.app.ledger.tokens_out
+            eq_before = self.app.ledger.equivalent[0]
             try:
                 result = self.app.run_prompt(line)
             finally:
@@ -639,7 +640,8 @@ class Repl:
                                  "include its work.")
                 self.ui.turn_footer(result.status, result.duration, result.tool_calls, len(changes),
                                     self._ctx_pct(), warnings=weakened, cost=self.app.ledger.cost - cost_before,
-                                    tokens=self.app.ledger.tokens_out - out_before)
+                                    tokens=self.app.ledger.tokens_out - out_before,
+                                    equivalent=(self.app.ledger.equivalent[0] - eq_before, self.app.ledger.equivalent[1]))
                 if self._on_trial():
                     self.console.print(Text("  Free trial model: slow and public. /provider switches to your own "
                                             "key or a local model (faster, private).", style=theme().dim))

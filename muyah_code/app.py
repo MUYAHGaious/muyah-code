@@ -420,6 +420,12 @@ class App:
         cost = price.cost(n["in"], n["out"], n["cache_read"], n["cache_write"]) if price else None
         call = usage.Call(model, prov.name if prov else base_url, purpose, n["in"], n["out"], n["cache_read"],
                           n["cache_write"], cost, seconds)
+        if price is not None and price.source == "self-hosted":
+            # free for you; show what the same work would cost on a paid API
+            eq = self.pricing.equivalent(model, str(self.cfg.get("pricing.compare_to") or ""))
+            if eq is not None:
+                call.equivalent = eq[0].cost(n["in"], n["out"], n["cache_read"], n["cache_write"])
+                call.equivalent_to = eq[1]
         self.ledger.add(call)
         usage.record_call(self.home, call)
         events = getattr(self, "events", None)

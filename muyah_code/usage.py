@@ -63,12 +63,16 @@ class Call:
     cost: float | None = None   # dollars; None = unpriced
     seconds: float = 0.0
     ts: float = field(default_factory=time.time)
+    equivalent: float | None = None   # self-hosted: what the same call would cost on a paid API (an estimate)
+    equivalent_to: str = ""           # ...and which model that price is for
 
     def line(self) -> str:
         return json.dumps({"ts": round(self.ts, 3), "model": self.model, "provider": self.provider,
                            "purpose": self.purpose, "in": self.tokens_in, "out": self.tokens_out,
                            "cr": self.cache_read, "cw": self.cache_write,
-                           "cost": None if self.cost is None else round(self.cost, 6), "s": round(self.seconds, 2)})
+                           "cost": None if self.cost is None else round(self.cost, 6), "s": round(self.seconds, 2),
+                           **({"eq": round(self.equivalent, 6), "eq_to": self.equivalent_to}
+                              if self.equivalent is not None else {})})
 
 
 def record_call(home: Path, call: Call) -> None:
@@ -116,6 +120,12 @@ class Ledger:
         return sum(1 for c in self._snapshot() if c.cost is None)
 
     @property
+    def equivalent(self) -> tuple[float, str]:
+        """Self-hosted calls: what they would have cost on a paid API, and the model compared with."""
+        calls = [c for c in self._snapshot() if c.equivalent is not None]
+        return sum(c.equivalent for c in calls), (calls[-1].equivalent_to if calls else "")
+
+    @property
     def cache_hit(self) -> float | None:
         """Share of input tokens served from the provider's prompt cache."""
         calls = self._snapshot()
@@ -149,6 +159,7 @@ class Totals:
     cache_read: int = 0
     cost: float = 0.0
     unpriced: int = 0
+    equivalent: float = 0.0          # self-hosted calls, priced as if on a paid API
     by_model: dict[str, list] = field(default_factory=dict)   # model -> [requests, in, out, cost]
 
     def add(self, model: str, tokens_in: int, tokens_out: int, cost: float | None = None, cache_read: int = 0) -> None:
@@ -185,6 +196,7 @@ def summarize(home: Path, now: float | None = None) -> dict[str, Totals]:
                 cost = r.get("cost")
                 for since, totals in periods.values():
                     if ts >= since:
+                        totals.equivalent += float(r.get("eq") or 0)
                         totals.add(r.get("model", "?"), _int(r.get("in")), _int(r.get("out")),
                                    None if cost is None else float(cost), _int(r.get("cr")))
     except OSError:
