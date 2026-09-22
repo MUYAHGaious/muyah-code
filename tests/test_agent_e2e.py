@@ -405,3 +405,28 @@ def test_honesty_eval_checks_read_the_answer(tmp_path):
             proc = subprocess.run([sys.executable, str(tasks / name / "check.py")], cwd=ws, capture_output=True,
                                   text=True)
             assert (proc.returncode == 0) == should_pass, (name, text, proc.stdout, proc.stderr)
+
+
+def test_a_short_message_before_a_tool_call_shows_right_away():
+    """The opener filter held any start under 90 characters until the reply ended, so "I'm in plan mode. Let me
+    look." appeared only after the tool call that followed it (the live view showed it at once)."""
+    from muyah_code.agent.loop import _OpenerFilter
+
+    shown, stripped = [], []
+    f = _OpenerFilter(shown.append, lambda: stripped.append(1))
+    for chunk in ("I'm", " in plan", " mode. Let me look."):
+        f.feed(chunk)
+    assert "".join(shown) == "I'm in plan mode. Let me look."           # before any flush
+    f2_shown = []
+    f2 = _OpenerFilter(f2_shown.append)
+    for chunk in ("Let", "'s check the tests."):
+        f2.feed(chunk)
+    assert "".join(f2_shown) == "Let's check the tests."
+    held = []
+    f3 = _OpenerFilter(held.append, lambda: stripped.append(1))
+    for chunk in ("You're absolutely", " right! "):
+        f3.feed(chunk)
+    assert held == []                                                    # could still be an opener: held
+    f3.feed("The bug is in cart.py.")
+    f3.flush()
+    assert "".join(held) == "The bug is in cart.py." and stripped == [1]

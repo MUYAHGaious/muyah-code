@@ -99,8 +99,26 @@ def strip_stock_opener(text: str) -> str:
     return stripped
 
 
+# every stock opener starts with one of these words: any other first word means there is nothing to hold back
+OPENER_LEADS = ("you're", "you’re", "you", "great", "excellent", "good", "fantastic", "absolutely", "i", "sorry")
+
+
+def could_be_opener(start: str) -> bool:
+    """False as soon as the first word rules out a stock opener (then the text is shown right away)."""
+    words = start.lstrip().lower().split()
+    if not words:
+        return True                      # nothing but spaces yet
+    first = words[0].strip(".,!:;")
+    whole = len(words) > 1 or start.endswith((" ", "\t", "\n"))
+    if whole:
+        return first in OPENER_LEADS
+    return any(lead.startswith(first) for lead in OPENER_LEADS)
+
+
 class _OpenerFilter:
-    """Hold back the first words of a streamed answer until it is clear whether they are a stock opener."""
+    """Hold back the first words of a streamed answer only while they could be a stock opener ("You're
+    absolutely right!"). Anything else goes straight through: holding a short message until the reply
+    ended made it appear only after the tool call the model wrote next (the live view showed it at once)."""
 
     WINDOW = 90
 
@@ -115,7 +133,7 @@ class _OpenerFilter:
             self.sink(chunk)
             return
         self.buf += chunk
-        if len(self.buf) >= self.WINDOW or "\n" in self.buf.strip():
+        if len(self.buf) >= self.WINDOW or "\n" in self.buf.strip() or not could_be_opener(self.buf):
             self._decide()
 
     def _decide(self) -> None:
