@@ -209,3 +209,18 @@ def test_each_mode_really_does_what_it_says_including_a_switch_mid_turn(project)
         app.shutdown()
     last = [m["content"] for m in srv.requests[-1]["messages"] if m["role"] == "tool"][-1]
     assert (project / "m1.txt").exists() and not (project / "m2.txt").exists() and "plan mode" in last.lower()
+
+
+
+def test_looking_around_in_another_folder_is_read_only_so_plan_mode_allows_it():
+    from muyah_code.tools.shell import is_read_only_command as read_only
+
+    # exactly what a model ran in plan mode and was wrongly refused
+    assert read_only(r'cd "C:\Users\me\Desktop\shop" && ls -la && echo ---')
+    assert read_only(r'cd "C:\Users\me\Desktop\shop" && ls -la')
+    assert read_only("Set-Location src; Get-ChildItem -Force | Select-Object Name")
+    assert read_only("pushd src && dir && popd")
+    # moving around does not make a change harmless
+    assert not read_only("cd src && rm -rf build")
+    assert not read_only("cd src && python setup.py install")
+    assert not read_only("cd src && echo hi > notes.txt")

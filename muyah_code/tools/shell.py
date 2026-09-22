@@ -136,6 +136,10 @@ _SAFE_SIMPLE = {
     "du", "df", "env", "printenv", "date", "uname", "hostname", "type", "rg", "grep", "egrep", "fgrep",
     "diff", "cmp", "sort", "uniq", "basename", "dirname", "realpath", "readlink", "echo",
     "get-childitem", "get-content", "get-location", "get-command", "test-path", "select-string",
+    # moving around only changes where the rest of the command runs (`cd src && ls` is still just a look)
+    "cd", "chdir", "pushd", "popd", "set-location", "sl", "push-location", "pop-location",
+    "get-item", "get-itemproperty", "resolve-path", "measure-object", "select-object", "format-list",
+    "format-table", "gci", "gc", "gi", "gl", "cls", "clear", "true",
 }
 _SAFE_SUBCOMMANDS = {
     "git": {"status", "diff", "log", "show", "branch", "rev-parse", "ls-files", "blame", "remote", "describe",
