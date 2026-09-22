@@ -15,6 +15,7 @@
     muyah acp                     run as an ACP agent inside your editor (Zed, JetBrains, Neovim)
     muyah viz [--replay [id]]     watch this folder's session live in your browser, or replay one
     muyah path                    make `muyah` work from any folder (adds it to your PATH)
+    muyah import [--list]         continue work you started in another AI tool in this folder
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ from pathlib import Path
 
 from muyah_code import __version__
 
-SUBCOMMANDS = {"login", "logout", "connect", "serve", "doctor", "eval", "config", "sessions", "viz", "usage", "acp", "path"}
+SUBCOMMANDS = {"login", "logout", "connect", "serve", "doctor", "eval", "config", "sessions", "viz", "usage", "acp", "path", "import"}
 PICK = "__pick__"  # `--resume` given without an id
 
 
@@ -290,6 +291,12 @@ def _interactive(cfg, cwd, args, prompt: str | None) -> int:
     except (ValueError, FileNotFoundError) as e:
         console.print(f"[red]error:[/] {e}")
         return 2
+    opts = getattr(args, "import_opts", None)
+    if opts is not None:       # `muyah import`: bring the other tool's work in before the first prompt
+        from muyah_code.handover.importer import run as import_run
+
+        import_run(app, console, Prompter(), source=opts.tool,
+                   mode="full" if opts.full else "brief" if opts.brief else "auto", take_all=opts.all)
     try:
         return run_repl(app, ui, prompt)
     finally:
@@ -383,6 +390,9 @@ def _subcommand(name: str, argv: list[str]) -> int:
 
         return fix(console)
 
+    if name == "import":
+        return _import_cmd(argv, console)
+
     if name == "usage":
         from muyah_code.ui.commands import render_usage
 
@@ -390,6 +400,39 @@ def _subcommand(name: str, argv: list[str]) -> int:
         console.print("[dim]Your provider's live limits show with /usage inside a session (after a reply).[/]")
         return 0
     return 2
+
+
+def _import_cmd(argv: list[str], console) -> int:
+    """Start a session that continues work from another AI tool (--list only shows what was found)."""
+    from muyah_code.config import ConfigError, load_config
+    from muyah_code.handover.importer import listing
+    from muyah_code.handover.sources import discover
+
+    p = argparse.ArgumentParser(prog="muyah import", description="Continue work started in another AI tool.")
+    p.add_argument("tool", nargs="?", default="", help="claude | codex | opencode | gemini | aider")
+    p.add_argument("--list", action="store_true", help="Only show what was found")
+    p.add_argument("--all", action="store_true", help="Bring in every conversation for this folder")
+    p.add_argument("--full", action="store_true", help="Copy the messages as they are (uses more context)")
+    p.add_argument("--brief", action="store_true", help="Always build the short brief (no model call)")
+    p.add_argument("--cwd", help="Folder to look in (default: here)")
+    a = p.parse_args(argv)
+    cwd = Path(a.cwd).resolve() if a.cwd else Path.cwd()
+    if a.list:
+        found = discover(cwd)
+        if not found:
+            console.print("[dim]No earlier work from other AI tools was found for this folder.[/]")
+            return 0
+        console.print(listing(found))
+        console.print("[dim]Bring one in with [bold]muyah import[/] (or /import inside a session).[/]")
+        return 0
+    args = _parser().parse_args([])
+    args.import_opts = a
+    try:
+        cfg = load_config(cwd=cwd, settings_file=None, overrides=_overrides(args))
+    except ConfigError as e:
+        console.print(f"[red]error:[/] {e}")
+        return 2
+    return _interactive(cfg, cwd, args, None)
 
 
 def _viz(argv: list[str], console) -> int:

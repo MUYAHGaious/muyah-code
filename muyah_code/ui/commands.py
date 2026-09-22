@@ -81,6 +81,8 @@ class CommandRouter:
             Command("memory", "Show instruction files; '/memory add <text>' appends to MUYAH.md", self.memory,
                     "[add <text>]"),
             Command("init", "Generate a MUYAH.md for this project", self.init),
+            Command("import", "Continue work from another AI tool used in this folder (Claude Code, Codex, "
+                    "OpenCode, Gemini, Aider)", self.import_work, "[tool] [--all] [--full|--brief]"),
             Command("btw", "Ask a side question: answered now, not added to the conversation (works mid-turn)",
                     self.btw, "<question>"),
             Command("verify", "Check the last changes: quick (changed files) | full (all tests, lint) | e2e (run it)",
@@ -460,6 +462,16 @@ class CommandRouter:
         listing = "\n".join(f"- {c.kind}: {c.command}" for c in found)
         return ("prompt", INIT_PROMPT + "\n\nMUYAH-CODE detected these check commands from the config files "
                 "(confirm they work before listing them):\n" + listing)
+
+    def import_work(self, arg):
+        from muyah_code.handover.importer import run
+
+        words = arg.split()
+        flags = {w for w in words if w.startswith("--")}
+        source = next((w for w in words if not w.startswith("--")), "")
+        mode = "full" if "--full" in flags else "brief" if "--brief" in flags else "auto"
+        run(self.app, self.console, self.repl.prompter, source=source, mode=mode, take_all="--all" in flags,
+            only_new="--again" not in flags)
 
     def btw(self, arg):
         if not arg.strip():

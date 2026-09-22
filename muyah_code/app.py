@@ -199,6 +199,7 @@ class App:
         self.rewind = Rewind(self.home, self.root, self.session)
         self.checkpoints = self.rewind.files  # per-file snapshots (the fallback without git)
         self.resume_display = resume_meta.get("display") or []   # the whole conversation, for the screen
+        self.imported_ids = list(resume_meta.get("imported") or [])
         if resume_meta.get("rewind"):
             self.rewind.load(resume_meta["rewind"])
         # Live event stream for /viz; also recorded next to the session file so it can be replayed.
@@ -526,6 +527,17 @@ class App:
         return build
 
     active_plan: Path | None = None       # the approved plan being built (plans.py)
+    imported_ids: list = []               # "<tool>:<id>" already brought in (handover/importer.py)
+
+    def add_imported(self, imported, ids: list[str]) -> None:
+        """Put another tool's work at the start of this conversation, and remember what was imported."""
+        self.agent.messages[1:1] = list(imported.messages)          # after the system message
+        self.imported_ids = list(self.imported_ids) + list(ids)
+        if self.session is not None:
+            for message in imported.messages:
+                self.session.log_message(message)
+            self.session.log_event("imported", sources=list(ids), tokens=imported.tokens)
+        self.events.emit("imported", sources=list(ids), tokens=imported.tokens)
 
     def _plan_note(self, prompt: str) -> str:
         from muyah_code.plans import building_note, new_plan_path, planning_note

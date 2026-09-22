@@ -5,6 +5,12 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **Continue work you started in another AI tool** (`muyah import`, or `/import` in a session): it reads Claude Code, Codex CLI, OpenCode, Gemini CLI and Aider conversations for this folder, shows them with dates and sizes, and carries the chosen ones in.
+  - Small conversations are copied as they are; big ones become a brief built locally (no model call): what you asked, files touched, commands run, and the last exchanges word for word.
+  - Several tools at once: newest keeps its own words, older ones become briefs, each labelled with its tool and date, and files touched by more than one tool are listed as possible disagreements.
+  - Everything imported is marked second-hand: the repository and `git log` are the truth. Tool output is left out (it is stale), and another tool's own summaries are kept as quotes, not summarized again.
+  - Nothing leaves your machine, nothing of the other tool is changed, and what was imported is remembered so running it again brings only what is new.
+
 - **Resuming a session puts you back in its mode** (manual, edit, ask, plan or auto), with its plan file in plan mode and the approved plan while building.
   - `--mode` at resume still wins.
   - Bypass mode (no checks) is never restored on its own: you get manual mode and a note to ask for bypass again.
