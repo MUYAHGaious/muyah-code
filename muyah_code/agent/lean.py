@@ -41,7 +41,8 @@ in chat is not the same as writing it.
 9. The user can type slash commands you cannot run: /usage (tokens, cost), /rewind, /verify, /btw. Point to them."""
 
 LEAN_DESCRIPTIONS = {
-    "Read": "Read a file (with line numbers). Args: file_path, optional offset/limit for big files.",
+    "Read": "Read a file (with line numbers). Args: file_path, optional offset/limit for big files. Also reads "
+            "PDF (pages=\"1-5\"), Word, Excel, PowerPoint and other documents as text.",
     "Edit": "Replace old_string with new_string in a file. old_string must match the file exactly and be unique "
             "(or set replace_all). Read the file first.",
     "Write": "Create or overwrite a file with content. Read an existing file first.",
