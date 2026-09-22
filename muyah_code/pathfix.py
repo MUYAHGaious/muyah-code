@@ -76,8 +76,7 @@ def _add_windows(folder: Path) -> str:
         except FileNotFoundError:
             current, kind = "", winreg.REG_EXPAND_SZ
         if on_path(folder, current):
-            return (f"{folder} is already on your user PATH; this terminal was opened before that, so it "
-                    "cannot see it yet (in VS Code, restart VS Code itself: its terminals inherit its PATH).")
+            return f"{folder} is already on your user PATH, but this window started without it."
         parts = [p for p in current.split(";") if p.strip()]
         parts.append(str(folder))
         winreg.SetValueEx(key, "Path", 0, kind if kind in (winreg.REG_SZ, winreg.REG_EXPAND_SZ)
@@ -131,7 +130,18 @@ def fix(console) -> int:
         console.print(f"[red]Could not change PATH:[/] {e}. Add this folder to PATH yourself: {folder}")
         return 1
     console.print(f"[green]✓[/] {message}")
-    console.print("[dim]Open a new terminal, then type[/] [bold]muyah[/] [dim]from any folder.[/]")
+    if os.name == "nt":
+        # a terminal keeps the PATH it started with, and terminals inside an app (VS Code, Cursor, Windows
+        # Terminal) copy the app's: give the one line that reloads it in this window, with no restart
+        console.print("[dim]To use it in this window now (PowerShell), run:[/]")
+        console.print("  [bold]$env:Path = [Environment]::GetEnvironmentVariable('Path','User') + ';' + "
+                      "[Environment]::GetEnvironmentVariable('Path','Machine')[/]", soft_wrap=True)
+        console.print("[dim]New windows find it by themselves once the app they run in (VS Code, Cursor, "
+                      "Windows Terminal...) has been fully closed and opened again.[/]")
+    else:
+        console.print(f"[dim]To use it in this window now, run:[/] [bold]export PATH=\"{folder}:$PATH\"[/]",
+                      soft_wrap=True)
+        console.print("[dim]New terminals find it by themselves.[/]")
     return 0
 
 
