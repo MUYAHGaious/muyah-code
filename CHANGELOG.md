@@ -5,6 +5,12 @@ All notable changes to MUYAH-CODE. Versions follow [semantic versioning](https:/
 
 ## [Unreleased]
 
+- **Fix: harmless commands were handed over as "deletes".**
+  - A test script calling `/api/admin/remove-item`, and a seed script with SQL `DELETE FROM`, were refused as file deletes. The detector searched for words anywhere in the command, quoted text included.
+  - Like Claude Code's auto mode, it now judges what actually runs: the program in each part of the command, split where the shell splits it (never inside quotes), and for `python -c` the Python itself, parsed, so only real delete calls count (`os.remove`, `shutil.rmtree`, `.unlink()`, a subprocess running `rm`).
+  - Text in strings, list `.remove()` and Python `del` no longer count; every real delete is still caught.
+- **A long delete command shows its first 8 lines** in the panel; the whole command is on the clipboard.
+
 - **Live view: recording pauses by itself while the conversation is compacted** (there is nothing to watch) and resumes afterwards; a pause you made yourself is left alone. The caption says "Compacting the conversation…" meanwhile.
 - **The compaction bar always reaches the end.** It measures the summary against the most it may use, and summaries usually finish earlier, so it jumped from about 60% straight to "Compacted". It now fills up before the summary line appears.
 

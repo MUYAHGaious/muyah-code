@@ -1114,7 +1114,11 @@ class TerminalUI(UI):
         t = theme()
         self._stop_live()
         body = Text()
-        body.append(command.strip() + "\n", style=f"bold {t.tool}")
+        lines = command.strip().splitlines()
+        shown = lines if len(lines) <= 8 else lines[:8]     # a long script: the start; all of it is on the clipboard
+        body.append("\n".join(shown) + "\n", style=f"bold {t.tool}")
+        if len(lines) > len(shown):
+            body.append(f"… {len(lines) - len(shown)} more lines (the whole command is on your clipboard)\n", style=t.dim)
         if targets:
             body.append("\nWould remove:\n", style=t.dim)
             for path in targets[:12]:

@@ -55,11 +55,64 @@ _RULES: list[tuple[re.Pattern, str]] = [(re.compile(p, re.IGNORECASE), why) for 
 DELETE_PROGRAMS = {"rm", "rmdir", "rd", "del", "erase", "unlink", "shred", "srm", "wipe", "trash", "trash-put",
                    "remove-item", "ri", "rimraf", "deltree"}
 _PREFIXES = {"sudo", "doas", "time", "nohup", "command", "builtin", "exec", "nice", "env", "&", "."}
-_SEGMENT = re.compile(r"\s*(?:&&|\|\||;|\||\n|\$\(|`|\))\s*")
-_INLINE_DELETE = re.compile(
-    r"(os\.(remove|unlink|rmdir|removedirs)|shutil\.rmtree|\.unlink\s*\(|\.rmdir\s*\(|send2trash|"
-    r"fs(?:\.promises)?\.(rm|rmSync|unlink|unlinkSync|rmdir|rmdirSync)|\brimraf\b|Remove-Item|"
-    r"\[System\.IO\.(File|Directory)\]::Delete|File\.Delete|Directory\.Delete|FileUtils\.rm)", re.IGNORECASE)
+# delete calls written directly in a shell line (PowerShell / .NET), looked for OUTSIDE quoted text only
+_SHELL_INLINE = re.compile(r"\[System\.IO\.(File|Directory)\]::Delete|\bFileUtils\.rm", re.IGNORECASE)
+# delete calls in JavaScript / Ruby / Perl one-liners, looked for in their code with string literals blanked
+_CODE_DELETE = re.compile(
+    r"\.(rm|rmSync|unlink|unlinkSync|rmdir|rmdirSync)\s*\(|\brimraf\s*\(|"   # fs.rmSync, require('fs').rmSync
+    r"\bFileUtils\.(rm|rm_rf|remove_dir)|\bFile\.(delete|unlink)\s*\(|\bDir\.(delete|rmdir)\s*\(|\bunlink\s*\(", re.I)
+PYTHON = {"python", "python3", "py", "pypy", "pypy3"}
+SCRIPTING = {"node": ("-e", "--eval", "-p", "--print"), "deno": ("eval",), "bun": ("-e", "--eval"),
+             "ruby": ("-e",), "perl": ("-e", "-E")}
+SHELLS = {"cmd", "powershell", "pwsh", "bash", "sh", "zsh", "wsl", "dash"}
+
+
+def mask_quotes(text: str) -> str:
+    """The same text with the inside of every quoted string blanked out (same length). What is left is what the
+    shell itself acts on: `echo "rm -rf /"` prints text, it does not delete anything."""
+    out, quote, i = [], "", 0
+    while i < len(text):
+        ch = text[i]
+        if quote:
+            if ch == "\\" and quote == '"' and i + 1 < len(text):
+                out.append("  ")
+                i += 2
+                continue
+            if ch == quote:
+                quote = ""
+                out.append(ch)
+            else:
+                out.append(" ")         # a line break inside quotes is text too (a multi-line python -c)
+        else:
+            if ch in "'\"":
+                quote = ch
+            out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+_SPLIT = re.compile(r"&&|\|\||;|\||\n|\$\(|`|\)")
+
+
+def segments(command: str) -> list[str]:
+    """The command's parts, split where the SHELL splits it (never inside quotes: a python -c script with
+    many lines is one part)."""
+    masked = mask_quotes(command)
+    parts, last = [], 0
+    for m in _SPLIT.finditer(masked):
+        parts.append(command[last:m.start()])
+        last = m.end()
+    parts.append(command[last:])
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _tokens(segment: str) -> list[str]:
+    import shlex
+
+    try:
+        return shlex.split(segment, posix=True)
+    except ValueError:
+        return segment.split()
 
 
 def _program(tokens: list[str]) -> tuple[str, list[str]]:
@@ -81,37 +134,99 @@ def _program(tokens: list[str]) -> tuple[str, list[str]]:
     return prog, tokens[i + 1:]
 
 
+def python_deletes(code: str) -> bool:
+    """True if Python code deletes files: os.remove/unlink/rmdir/removedirs, shutil.rmtree, Path.unlink/rmdir,
+    send2trash, or a subprocess/os.system call that runs a delete. Text inside strings is just text (a route
+    called '/api/admin/remove-item', or SQL like 'DELETE FROM items', deletes no file)."""
+    import ast
+
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return bool(_CODE_DELETE.search(mask_quotes(code)) or
+                    re.search(r"\b(os\.(remove|unlink|rmdir|removedirs)|shutil\.rmtree)\s*\(|\.(unlink|rmdir)\s*\(",
+                              mask_quotes(code)))
+
+    def dotted(node) -> str:
+        parts = []
+        while isinstance(node, ast.Attribute):
+            parts.append(node.attr)
+            node = node.value
+        if isinstance(node, ast.Name):
+            parts.append(node.id)
+        return ".".join(reversed(parts))
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = dotted(node.func)
+        last = name.rsplit(".", 1)[-1]
+        if name in ("os.remove", "os.unlink", "os.rmdir", "os.removedirs", "shutil.rmtree", "send2trash",
+                    "send2trash.send2trash") or last in ("rmtree", "unlink", "rmdir", "removedirs"):
+            return True
+        if last in ("system", "run", "call", "Popen", "check_call", "check_output", "getoutput", "getstatusoutput"):
+            first = node.args[0] if node.args else None
+            if isinstance(first, ast.Constant) and isinstance(first.value, str) and is_delete_command(first.value):
+                return True
+            if isinstance(first, (ast.List, ast.Tuple)) and first.elts and isinstance(first.elts[0], ast.Constant) \
+                    and str(first.elts[0].value).lower() in DELETE_PROGRAMS:
+                return True
+    return False
+
+
+def _inline_code(prog: str, args: list[str]) -> tuple[str, str] | None:
+    """("python" | "script" | "shell", code) for `python -c CODE`, `node -e CODE`, `bash -c CODE`..."""
+    if prog in PYTHON and "-c" in args:
+        i = args.index("-c")
+        return ("python", args[i + 1]) if i + 1 < len(args) else None
+    flags = SCRIPTING.get(prog)
+    if flags:
+        for i, a in enumerate(args):
+            if a in flags and i + 1 < len(args):
+                return "script", args[i + 1]
+    if prog in SHELLS and args:
+        rest = list(args)
+        while rest and rest[0].startswith(("-", "/")):
+            rest.pop(0)
+        if rest:
+            return "shell", " ".join(rest)
+    return None
+
+
 def is_delete_command(command: str) -> bool:
-    """True if any part of the command deletes files or folders. The agent never runs these: the user
-    gets the command to run themselves (the user asked for this after agents wiped whole drives)."""
+    """True if running the command would delete files or folders. The agent never runs these: the user gets
+    the command to run themselves (the user asked for this after agents wiped whole drives).
+
+    Judged by what the command DOES, like Claude Code's auto mode: the program each part of the command runs
+    (`rm`, `del`, `Remove-Item`, `git clean`, `find -delete`...), and the calls inside inline code (python -c,
+    node -e, bash -c...). Words inside quoted text are not commands: `curl .../remove-item`, a SQL string with
+    DELETE, or a Python `del x` are not file deletes."""
     if not command or not command.strip():
         return False
-    if _INLINE_DELETE.search(command):
+    if _SHELL_INLINE.search(mask_quotes(command)):
         return True
-    for segment in _SEGMENT.split(command):
-        tokens = segment.split()
-        prog, args = _program(tokens)
+    for segment in segments(command):
+        prog, args = _program(_tokens(segment))
         if prog == "xargs":  # xargs [flags] rm ...
-            rest = [a for a in args if not a.startswith("-")]
-            prog, args = _program(rest)
+            prog, args = _program([a for a in args if not a.startswith("-")])
         if prog in DELETE_PROGRAMS:
             return True
         if prog == "git" and args and args[0].lower() in ("clean", "rm"):
             return True
         if prog in ("find", "fd"):
-            low = [a.lower().strip("'\"") for a in args]
+            low = [a.lower() for a in args]
             if "-delete" in low or "--delete" in low:
                 return True
-            if any(a in ("-exec", "-execdir", "-x", "--exec") for a in low) and \
-                    any(a in DELETE_PROGRAMS for a in low):
+            if any(a in ("-exec", "-execdir", "-x", "--exec") for a in low) and any(a in DELETE_PROGRAMS for a in low):
                 return True
-        if prog in ("cmd", "powershell", "pwsh", "bash", "sh", "zsh", "wsl") and args:
-            # cmd /c del x · bash -c "rm -rf x" · pwsh -Command "..." : look at the command inside
-            rest = list(args)
-            while rest and rest[0].startswith(("-", "/")):
-                rest.pop(0)
-            inner = " ".join(rest).strip("'\"")
-            if inner and is_delete_command(inner):
+        inline = _inline_code(prog, args)
+        if inline is not None:
+            kind, code = inline
+            if kind == "python" and python_deletes(code):
+                return True
+            if kind == "script" and _CODE_DELETE.search(mask_quotes(code)):
+                return True
+            if kind == "shell" and is_delete_command(code):
                 return True
     return False
 
@@ -122,8 +237,8 @@ def delete_targets(command: str, cwd) -> list[str]:
     from pathlib import Path
 
     targets: list[str] = []
-    for segment in _SEGMENT.split(command):
-        prog, args = _program(segment.split())
+    for segment in segments(command):
+        prog, args = _program(_tokens(segment))
         if prog == "xargs":
             prog, args = _program([a for a in args if not a.startswith("-")])
         if prog not in DELETE_PROGRAMS and not (prog == "git" and args and args[0] in ("clean", "rm")):
@@ -131,7 +246,6 @@ def delete_targets(command: str, cwd) -> list[str]:
         for arg in args:
             if arg.startswith("-") or arg.lower() in ("/s", "/q", "/f", "rm", "clean") or arg.startswith("2>"):
                 continue
-            arg = arg.strip("'\"")
             expanded = os.path.expandvars(os.path.expanduser(arg))
             path = Path(expanded)
             if not path.is_absolute():

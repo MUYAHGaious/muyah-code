@@ -224,3 +224,34 @@ def test_looking_around_in_another_folder_is_read_only_so_plan_mode_allows_it():
     assert not read_only("cd src && rm -rf build")
     assert not read_only("cd src && python setup.py install")
     assert not read_only("cd src && echo hi > notes.txt")
+
+
+
+def test_deletes_are_judged_by_what_runs_not_by_words_in_text():
+    """Two real false alarms: an API test script (a route named /api/admin/remove-item) and a seed script with
+    SQL DELETE were handed to the user as "deletes". Only commands and calls that remove files count."""
+    from muyah_code.risk import is_delete_command as deletes
+
+    api_test = (r'cd "C:\Users\me\Desktop\shop\backend" && python -c "' "\n"
+                "from fastapi.testclient import TestClient\nfrom app.main import app\nc = TestClient(app)\n"
+                "r = c.post('/api/admin/remove-item', json={'item_id': 4})\nprint('remove item:', r.status_code)\n"
+                "items = [1, 2]\nitems.remove(1)\ndel items[0]\n"
+                '" 2>&1 | tail -30')
+    seed = ('python -c "import sqlite3; db = sqlite3.connect(\'app.db\'); '
+            "db.execute('DELETE FROM items'); db.execute('DROP TABLE IF EXISTS tmp'); db.commit()\"")
+    for harmless in (api_test, seed, 'echo "rm -rf /"', "git commit -m 'remove the unused rm helper'",
+                     'curl http://localhost:8000/api/remove-item', 'grep -rn "Remove-Item" .',
+                     'node -e "console.log(\'fs.unlinkSync is not called\')"'):
+        assert not deletes(harmless), harmless
+
+    for real in ("rm -rf build", 'cd app && rm -rf dist', "Remove-Item -Recurse dist", "del /s /q build",
+                 "git clean -fdx", "find . -name '*.pyc' -delete", "ls | xargs rm",
+                 'python -c "import shutil; shutil.rmtree(\'build\')"',
+                 'python -c "import os; os.remove(\'db.sqlite3\')"',
+                 'python -c "from pathlib import Path; Path(\'x.txt\').unlink()"',
+                 'python -c "import subprocess; subprocess.run([\'rm\', \'-rf\', \'x\'])"',
+                 'python -c "import os; os.system(\'rm -rf x\')"',
+                 'node -e "require(\'fs\').rmSync(\'dist\', {recursive: true})"',
+                 'bash -c "rm -rf /tmp/x"', 'pwsh -Command "Remove-Item x"',
+                 "[System.IO.File]::Delete('x.txt')"):
+        assert deletes(real), real
